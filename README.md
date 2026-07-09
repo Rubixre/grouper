@@ -10,11 +10,11 @@ En nettside for tilfeldig generering av Catan-brett (grunnspill) med startposisj
 - **Tilfeldige tallbrikker** (2–12, unntatt ørken)
 - **6 havnebrikker** (kantbrikker à 3 kystsegmenter) som roteres som faste enheter rundt brettet
 
-### Genereringsregler (kan slås av/på)
-- 6 og 8 kan være naboer
-- 2 og 12 kan være naboer
-- Like ressurser kan være naboer
-- Like tall kan være naboer
+### Genereringsregler (på som standard)
+- 6 og 8 kan ikke være naboer
+- 2 og 12 kan ikke være naboer
+- Like ressurser kan ikke være naboer
+- Like tall kan ikke være naboer
 
 ### Startposisjon-simulator
 - Slange-draft: 1 → 2 → 3 → 4 → 4 → 3 → 2 → 1

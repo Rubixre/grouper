@@ -37,17 +37,21 @@ export interface PlacedHarborPiece {
 }
 
 export interface GeneratorSettings {
-  allowAdjacent6And8: boolean;
-  allowAdjacent2And12: boolean;
-  allowAdjacentSameResource: boolean;
-  allowAdjacentSameNumber: boolean;
+  /** When true (default), 6 and 8 may not be placed on adjacent hexes */
+  noAdjacent6And8: boolean;
+  /** When true (default), 2 and 12 may not be placed on adjacent hexes */
+  noAdjacent2And12: boolean;
+  /** When true (default), identical resources may not be placed on adjacent hexes */
+  noAdjacentSameResource: boolean;
+  /** When true (default), identical numbers may not be placed on adjacent hexes */
+  noAdjacentSameNumber: boolean;
 }
 
 export const DEFAULT_SETTINGS: GeneratorSettings = {
-  allowAdjacent6And8: false,
-  allowAdjacent2And12: false,
-  allowAdjacentSameResource: false,
-  allowAdjacentSameNumber: false,
+  noAdjacent6And8: true,
+  noAdjacent2And12: true,
+  noAdjacentSameResource: true,
+  noAdjacentSameNumber: true,
 };
 
 export interface Board {

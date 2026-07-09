@@ -56,13 +56,13 @@ function violatesNumberAdjacency(
     if (!tile?.number) continue;
     const nn = tile.number;
 
-    if (!settings.allowAdjacent6And8) {
+    if (settings.noAdjacent6And8) {
       if ((number === 6 && nn === 8) || (number === 8 && nn === 6)) return true;
     }
-    if (!settings.allowAdjacent2And12) {
+    if (settings.noAdjacent2And12) {
       if ((number === 2 && nn === 12) || (number === 12 && nn === 2)) return true;
     }
-    if (!settings.allowAdjacentSameNumber && number === nn) return true;
+    if (settings.noAdjacentSameNumber && number === nn) return true;
   }
   return false;
 }
@@ -74,7 +74,7 @@ function violatesResourceAdjacency(
   settings: GeneratorSettings,
   boardSet: Set<string>
 ): boolean {
-  if (settings.allowAdjacentSameResource || resource === 'desert') return false;
+  if (!settings.noAdjacentSameResource || resource === 'desert') return false;
   const neighbors = getBoardNeighbors(coord, boardSet);
   for (const n of neighbors) {
     const tile = hexes.get(coordKey(n));
