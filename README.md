@@ -6,7 +6,7 @@ En nettside for tilfeldig generering av Catan-brett (grunnspill) med startposisj
 
 ### Brettgenerering
 - **37 hexer** i 7 midtstilte rader (4-5-6-7-6-5-4)
-- **21 blå kanthexer** rundt ytterkanten + **16 landhexer** med ressurser
+- **18 blå kanthexer** rundt ytterkanten + **19 landhexer** med ressurser
 - **Tilfeldige ressurser** (4 tømmer, 4 ull, 4 korn, 3 tegl, 3 malm, 1 ørken)
 - **Tilfeldige tallbrikker** (2–12, unntatt ørken)
 - **6 havnebrikker** (kantbrikker à 3 kystsegmenter) som roteres som faste enheter rundt brettet

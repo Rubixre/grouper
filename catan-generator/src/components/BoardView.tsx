@@ -41,11 +41,17 @@ export function BoardView({
 }: BoardViewProps) {
   const maxScore = highlightedVertices[0]?.total ?? 1;
 
-  const bounds = board.hexes.map((h) => hexToPixel(h.coord, HEX_SIZE));
-  const minX = Math.min(...bounds.map((b) => b.x)) - HEX_SIZE * 2;
-  const maxX = Math.max(...bounds.map((b) => b.x)) + HEX_SIZE * 2;
-  const minY = Math.min(...bounds.map((b) => b.y)) - HEX_SIZE * 2;
-  const maxY = Math.max(...bounds.map((b) => b.y)) + HEX_SIZE * 2;
+  const sortedHexes = [...board.hexes].sort((a, b) => {
+    if (a.kind === b.kind) return 0;
+    return a.kind === 'edge' ? -1 : 1;
+  });
+
+  const bounds = sortedHexes.map((h) => hexToPixel(h.coord, HEX_SIZE));
+  const pad = HEX_SIZE * 1.8;
+  const minX = Math.min(...bounds.map((b) => b.x)) - pad;
+  const maxX = Math.max(...bounds.map((b) => b.x)) + pad;
+  const minY = Math.min(...bounds.map((b) => b.y)) - pad;
+  const maxY = Math.max(...bounds.map((b) => b.y)) + pad;
 
   const width = maxX - minX;
   const height = maxY - minY;
@@ -59,7 +65,7 @@ export function BoardView({
     >
       <rect x={minX} y={minY} width={width} height={height} fill="#1a5276" />
 
-      {board.hexes.map((tile) => (
+      {sortedHexes.map((tile) => (
         <BoardHex
           key={`${tile.coord.q},${tile.coord.r}`}
           coord={tile.coord}

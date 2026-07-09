@@ -16,17 +16,20 @@ import {
 import { placeHarborPieces } from './harbors';
 import { coordKey, getNeighbors } from './hex';
 
-/** 16 land tiles: 3 of each resource + 1 desert */
+/** 19 land tiles (standard base-game distribution) */
 const RESOURCES: ResourceType[] = [
   'wood',
   'wood',
   'wood',
+  'wood',
   'brick',
   'brick',
   'brick',
   'sheep',
   'sheep',
   'sheep',
+  'sheep',
+  'wheat',
   'wheat',
   'wheat',
   'wheat',
@@ -36,7 +39,7 @@ const RESOURCES: ResourceType[] = [
   'desert',
 ];
 
-const NUMBERS = [2, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 12];
+const NUMBERS = [2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12];
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];

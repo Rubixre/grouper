@@ -4,6 +4,8 @@
  */
 import {
   BOARD_HEX_COORDS,
+  EDGE_HEX_COUNT,
+  LAND_HEX_COUNT,
   ROW_COUNTS,
   buildCoastSlots,
   generateBoard,
@@ -11,12 +13,16 @@ import {
   getLandHexCoords,
   getPlacementOrder,
   getVertices,
+  resetVertices,
   createSimulation,
   advanceToHumanOrEnd,
   getOptionsForCurrentTurn,
   placeSettlement,
   DEFAULT_SETTINGS,
 } from '../src/catan/index.ts';
+import { hexToPixel } from '../src/catan/hex.ts';
+
+resetVertices();
 
 let passed = 0;
 let failed = 0;
@@ -36,8 +42,14 @@ console.log('Catan logic smoke test\n');
 console.log('Layout');
 assert(ROW_COUNTS.join(',') === '4,5,6,7,6,5,4', '7 centered rows');
 assert(BOARD_HEX_COORDS.length === 37, `37 board hexes (got ${BOARD_HEX_COORDS.length})`);
-assert(getEdgeHexSet().size === 21, `21 edge hexes (got ${getEdgeHexSet().size})`);
-assert(getLandHexCoords().length === 16, `16 land hexes (got ${getLandHexCoords().length})`);
+assert(getEdgeHexSet().size === EDGE_HEX_COUNT, `${EDGE_HEX_COUNT} edge hexes (got ${getEdgeHexSet().size})`);
+assert(getLandHexCoords().length === LAND_HEX_COUNT, `${LAND_HEX_COUNT} land hexes (got ${getLandHexCoords().length})`);
+
+const px = BOARD_HEX_COORDS.map((c) => hexToPixel(c, 1));
+const cx = px.reduce((s, p) => s + p.x, 0) / px.length;
+const cy = px.reduce((s, p) => s + p.y, 0) / px.length;
+assert(Math.abs(cx) < 0.001 && Math.abs(cy) < 0.001, `Board centered at origin (cx=${cx.toFixed(3)}, cy=${cy.toFixed(3)})`);
+
 const coastSlots = buildCoastSlots();
 assert(coastSlots.length === 18, `18 coast slots (got ${coastSlots.length})`);
 const vertices = getVertices();
@@ -50,13 +62,13 @@ if (board) {
   assert(board.hexes.length === 37, '37 hex tiles');
   const edges = board.hexes.filter((h) => h.kind === 'edge');
   const land = board.hexes.filter((h) => h.kind === 'land');
-  assert(edges.length === 21, '21 blue edge hexes');
-  assert(land.length === 16, '16 land hexes');
+  assert(edges.length === 18, '18 blue edge hexes');
+  assert(land.length === 19, '19 land hexes');
   assert(board.harbors.length === 6, '6 harbor pieces');
   const desert = land.filter((h) => h.resource === 'desert');
   assert(desert.length === 1, 'Exactly one desert');
   const numbered = land.filter((h) => h.number !== null);
-  assert(numbered.length === 15, '15 numbered land hexes');
+  assert(numbered.length === 18, '18 numbered land hexes');
 }
 
 console.log('\nSimulator');

@@ -4,12 +4,22 @@ import { coordKey, getNeighbors, hexEdgeMidpoint } from './hex';
 /** Seven centered rows: 4 + 5 + 6 + 7 + 6 + 5 + 4 = 37 hexes */
 export const ROW_COUNTS = [4, 5, 6, 7, 6, 5, 4] as const;
 
+export const EDGE_HEX_COUNT = 18;
+export const LAND_HEX_COUNT = 19;
 export const COAST_SLOT_COUNT = 18;
 export const HARBOR_PIECE_COUNT = 6;
 
+/**
+ * Build a centered row using odd-r offset → axial conversion.
+ * This keeps every row visually centered in pixel space.
+ */
 function rowHexes(r: number, count: number): HexCoord[] {
-  const startQ = count % 2 === 1 ? -(count - 1) / 2 : -count / 2;
-  return Array.from({ length: count }, (_, i) => ({ q: startQ + i, r }));
+  const startCol = count % 2 === 1 ? -(count - 1) / 2 : -count / 2;
+  return Array.from({ length: count }, (_, i) => {
+    const col = startCol + i;
+    const q = col - (r - (r & 1)) / 2;
+    return { q, r };
+  });
 }
 
 /** Build all 37 hex coordinates, rows centered on q = 0 */
@@ -34,7 +44,7 @@ export function getBoardSet(): Set<string> {
   return new Set(BOARD_HEX_COORDS.map(coordKey));
 }
 
-/** Perimeter hexes – at least one neighbor lies outside the board */
+/** Outer ring of 18 hexes (at least one neighbor outside the board) */
 export function getEdgeHexSet(): Set<string> {
   if (edgeHexCache) return edgeHexCache;
 
@@ -52,7 +62,7 @@ export function isEdgeHex(coord: HexCoord): boolean {
   return getEdgeHexSet().has(coordKey(coord));
 }
 
-/** Interior hexes that receive resources and numbers */
+/** Interior 19 hexes that receive resources and numbers */
 export function getLandHexCoords(): HexCoord[] {
   if (landHexCache) return landHexCache;
 
@@ -71,7 +81,7 @@ function coastEdgeAngle(hex: HexCoord, edge: number): number {
 }
 
 /**
- * Build 18 coast slots sampled from outward-facing edges on edge hexes.
+ * Build 18 coast slots from outward-facing edges on edge hexes.
  */
 export function buildCoastSlots(): CoastSlot[] {
   const boardSet = getBoardSet();
