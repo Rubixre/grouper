@@ -4,7 +4,6 @@ import { DEFAULT_SETTINGS } from './catan/types';
 import { generateBoard } from './catan/generator';
 import { getBoardMapping } from './catan/mapping';
 import {
-  advanceToHumanOrEnd,
   createSimulation,
   getOptionsForCurrentTurn,
   placeSettlement,
@@ -21,7 +20,6 @@ function App() {
   const [board, setBoard] = useState<Board | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [playerCount, setPlayerCount] = useState<PlayerCount>(4);
-  const [humanPlayer, setHumanPlayer] = useState(0);
   const [simulation, setSimulation] = useState<SimulationState | null>(null);
   const [selectedVertex, setSelectedVertex] = useState<string | null>(null);
   const [mode, setMode] = useState<'view' | 'simulate'>('view');
@@ -54,9 +52,7 @@ function App() {
 
   const startSimulation = () => {
     if (!board) return;
-    const sim = createSimulation(board, playerCount, humanPlayer);
-    const advanced = advanceToHumanOrEnd(sim);
-    setSimulation(advanced);
+    setSimulation(createSimulation(board, playerCount));
     setSelectedVertex(null);
     setMode('simulate');
   };
@@ -68,16 +64,8 @@ function App() {
 
   const handleConfirm = () => {
     if (!simulation || !selectedVertex) return;
-    let next = placeSettlement(simulation, selectedVertex);
-    next = advanceToHumanOrEnd(next);
-    setSimulation(next);
+    setSimulation(placeSettlement(simulation, selectedVertex));
     setSelectedVertex(null);
-  };
-
-  const handleAutoPlay = () => {
-    if (!simulation) return;
-    const next = advanceToHumanOrEnd(simulation);
-    setSimulation(next);
   };
 
   return (
@@ -144,21 +132,9 @@ function App() {
                 <option value={4}>4 spillere</option>
               </select>
             </label>
-            <label className="field">
-              Din spiller
-              <select
-                value={humanPlayer}
-                onChange={(e) => setHumanPlayer(Number(e.target.value))}
-              >
-                {Array.from({ length: playerCount }, (_, i) => (
-                  <option key={i} value={i}>
-                    Spiller {i + 1}
-                  </option>
-                ))}
-              </select>
-            </label>
             <p className="muted small">
-              Rekkefølge: 1 → 2 → 3 → 4 → 4 → 3 → 2 → 1 (slange-draft)
+              Rekkefølge: 1 → 2 → 3 → 4 → 4 → 3 → 2 → 1 (slange-draft). Hver
+              spiller plasserer manuelt når det er deres tur.
             </p>
             <button
               type="button"
@@ -178,7 +154,6 @@ function App() {
               selectedVertex={selectedVertex}
               onSelectVertex={setSelectedVertex}
               onConfirm={handleConfirm}
-              onAutoPlay={handleAutoPlay}
             />
           )}
         </aside>

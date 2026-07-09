@@ -1,11 +1,6 @@
 import type { SettlementScore } from '../catan/types';
 import type { SimulationState } from '../catan/simulator';
-import {
-  PLAYER_COLORS,
-  PLAYER_NAMES,
-  currentPlayer,
-  isHumanTurn,
-} from '../catan/simulator';
+import { PLAYER_COLORS, PLAYER_NAMES, currentPlayer } from '../catan/simulator';
 
 interface SettlementSimulatorProps {
   state: SimulationState;
@@ -13,7 +8,6 @@ interface SettlementSimulatorProps {
   selectedVertex: string | null;
   onSelectVertex: (vertexId: string) => void;
   onConfirm: () => void;
-  onAutoPlay: () => void;
 }
 
 export function SettlementSimulator({
@@ -22,10 +16,8 @@ export function SettlementSimulator({
   selectedVertex,
   onSelectVertex,
   onConfirm,
-  onAutoPlay,
 }: SettlementSimulatorProps) {
   const player = currentPlayer(state);
-  const humanTurn = isHumanTurn(state);
   const step = state.currentStep;
   const total = state.placementOrder.length;
 
@@ -42,19 +34,19 @@ export function SettlementSimulator({
             className="current-player"
             style={{ color: PLAYER_COLORS[player] }}
           >
-            {humanTurn ? 'Din tur' : PLAYER_NAMES[player]}
+            {PLAYER_NAMES[player]} plasserer
           </span>
         )}
       </div>
 
       {state.finished ? (
         <p className="sim-done">Alle startlandsbyer er plassert!</p>
-      ) : humanTurn ? (
+      ) : (
         <>
           <p className="sim-hint">
-            Klikk på en grønn markør på brettet for å velge plassering. Fargen
-            viser relativ styrke basert på ressurser, sannsynlighet, variasjon
-            og havn.
+            {PLAYER_NAMES[player!]}: klikk på en grønn markør på brettet, eller
+            velg fra listen. Fargen viser relativ styrke (ressurser,
+            sannsynlighet, variasjon, havn).
           </p>
           <div className="options-list">
             <h3>Toppkandidater</h3>
@@ -80,16 +72,7 @@ export function SettlementSimulator({
             disabled={!selectedVertex}
             onClick={onConfirm}
           >
-            Plasser landsby
-          </button>
-        </>
-      ) : (
-        <>
-          <p className="sim-hint">
-            {PLAYER_NAMES[player!]} velger automatisk (beste score)…
-          </p>
-          <button type="button" className="btn" onClick={onAutoPlay}>
-            Kjør AI-trekk
+            Plasser landsby for {PLAYER_NAMES[player!]}
           </button>
         </>
       )}
@@ -99,7 +82,7 @@ export function SettlementSimulator({
         {state.placements.length === 0 && (
           <p className="muted">Ingen landsbyer plassert ennå.</p>
         )}
-        {state.placements.map((p: { player: number }, i: number) => (
+        {state.placements.map((p, i) => (
           <div key={i} className="log-row">
             <span style={{ color: PLAYER_COLORS[p.player] }}>●</span>
             <span>

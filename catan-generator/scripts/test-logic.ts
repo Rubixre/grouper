@@ -21,9 +21,8 @@ import {
   resetBoardMapping,
   resetVertices,
   createSimulation,
-  advanceToHumanOrEnd,
-  getOptionsForCurrentTurn,
   placeSettlement,
+  getOptionsForCurrentTurn,
   DEFAULT_SETTINGS,
 } from '../src/catan/index.ts';
 import { hexCorner, hexToPixel } from '../src/catan/hex.ts';
@@ -121,12 +120,15 @@ assert(
   '4-player snake draft order'
 );
 if (board) {
-  const sim = advanceToHumanOrEnd(createSimulation(board, 4, 0));
+  const sim = createSimulation(board, 4);
   const options = getOptionsForCurrentTurn(sim);
-  assert(options.length > 0, 'Human player has placement options');
+  assert(options.length > 0, 'First player has placement options');
   if (options[0]) {
-    const next = placeSettlement(sim, options[0].vertexId);
-    assert(next.placements.length === 1, 'Placement recorded');
+    const afterP1 = placeSettlement(sim, options[0].vertexId);
+    assert(afterP1.placements.length === 1, 'Placement recorded');
+    assert(afterP1.currentStep === 1, 'Advances to next player');
+    const p2options = getOptionsForCurrentTurn(afterP1);
+    assert(p2options.length > 0, 'Second player has options');
   }
 }
 

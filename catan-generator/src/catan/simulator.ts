@@ -28,14 +28,12 @@ export interface SimulationState {
   placements: PlacedSettlement[];
   placementOrder: number[];
   currentStep: number;
-  humanPlayer: number;
   finished: boolean;
 }
 
 export function createSimulation(
   board: Board,
-  playerCount: PlayerCount,
-  humanPlayer = 0
+  playerCount: PlayerCount
 ): SimulationState {
   return {
     board,
@@ -43,7 +41,6 @@ export function createSimulation(
     placements: [],
     placementOrder: getPlacementOrder(playerCount),
     currentStep: 0,
-    humanPlayer,
     finished: false,
   };
 }
@@ -55,25 +52,11 @@ export function currentPlayer(state: SimulationState): number | null {
   return state.placementOrder[state.currentStep];
 }
 
-export function isHumanTurn(state: SimulationState): boolean {
-  const p = currentPlayer(state);
-  return p !== null && p === state.humanPlayer;
-}
-
 export function getOptionsForCurrentTurn(
   state: SimulationState,
   weights?: ResourceWeights
 ): SettlementScore[] {
   return rankVertices(state.board, state.placements, weights);
-}
-
-/** Simple greedy AI: pick highest-scoring valid vertex */
-export function aiPickVertex(
-  state: SimulationState,
-  weights?: ResourceWeights
-): string | null {
-  const options = getOptionsForCurrentTurn(state, weights);
-  return options[0]?.vertexId ?? null;
 }
 
 export function placeSettlement(
@@ -97,20 +80,6 @@ export function placeSettlement(
     currentStep: nextStep,
     finished,
   };
-}
-
-/** Auto-play AI turns until human's turn or finished */
-export function advanceToHumanOrEnd(
-  state: SimulationState,
-  weights?: ResourceWeights
-): SimulationState {
-  let s = state;
-  while (!s.finished && !isHumanTurn(s)) {
-    const pick = aiPickVertex(s, weights);
-    if (!pick) break;
-    s = placeSettlement(s, pick);
-  }
-  return s;
 }
 
 export function getPlayerSettlements(
