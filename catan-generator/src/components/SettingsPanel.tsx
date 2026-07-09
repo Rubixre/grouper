@@ -3,6 +3,8 @@ import type { GeneratorSettings } from '../catan/types';
 interface SettingsPanelProps {
   settings: GeneratorSettings;
   onChange: (settings: GeneratorSettings) => void;
+  /** In modal – uten panel-wrapper */
+  embedded?: boolean;
 }
 
 const SETTING_LABELS: {
@@ -38,10 +40,10 @@ const SETTING_LABELS: {
   },
 ];
 
-export function SettingsPanel({ settings, onChange }: SettingsPanelProps) {
-  return (
-    <div className="panel settings-panel">
-      <h2>Genereringsregler</h2>
+export function SettingsPanel({ settings, onChange, embedded = false }: SettingsPanelProps) {
+  const inner = (
+    <>
+      {embedded ? <h3>Genereringsregler</h3> : <h2>Genereringsregler</h2>}
       <p className="muted small">Avkrysset = tillatt / aktiv</p>
       <div className="settings-list">
         {SETTING_LABELS.map(({ key, label, description }) => (
@@ -60,6 +62,12 @@ export function SettingsPanel({ settings, onChange }: SettingsPanelProps) {
           </label>
         ))}
       </div>
-    </div>
+    </>
   );
+
+  if (embedded) {
+    return <section className="modal-section settings-panel-embedded">{inner}</section>;
+  }
+
+  return <div className="panel settings-panel">{inner}</div>;
 }

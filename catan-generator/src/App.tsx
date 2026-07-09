@@ -17,7 +17,7 @@ import {
 } from './catan/simulator';
 import { BoardView } from './components/BoardView';
 import { MappingPanel } from './components/MappingPanel';
-import { SettingsPanel } from './components/SettingsPanel';
+import { SettingsModal } from './components/SettingsModal';
 import { SettlementSimulator } from './components/SettlementSimulator';
 import { SimulationSummaryPanel } from './components/SimulationSummary';
 import './App.css';
@@ -40,11 +40,18 @@ function App() {
   const [selectedVertex, setSelectedVertex] = useState<string | null>(null);
   const [mode, setMode] = useState<'view' | 'simulate'>('view');
   const [mappingMode, setMappingMode] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [highlightEdge, setHighlightEdge] = useState<string | null>(null);
   const [highlightCorner, setHighlightCorner] = useState<string | null>(null);
 
   const boardMapping = useMemo(() => getBoardMapping(boardSize), [boardSize]);
   const simActive = mode === 'simulate' && simulation !== null;
+
+  const handleBoardSizeChange = (size: BoardSize) => {
+    setBoardSize(size);
+    if (size === 'base' && playerCount > 4) setPlayerCount(4);
+    if (size === 'base' && focusPlayer > 3) setFocusPlayer(3);
+  };
 
   const handleGenerate = useCallback(() => {
     const result = generateBoard(settings, boardSize);
@@ -91,6 +98,13 @@ function App() {
     setSelectedVertex(null);
   };
 
+  const toggleMapping = () => {
+    setMappingMode((on) => {
+      if (!on) setMode('view');
+      return !on;
+    });
+  };
+
   return (
     <div className="app">
       <header className="header">
@@ -102,94 +116,38 @@ function App() {
           </p>
         </div>
         <div className="header-actions">
+          <button
+            type="button"
+            className={`btn header-btn ${mappingMode ? 'active' : ''}`}
+            onClick={toggleMapping}
+          >
+            Kartlegging
+          </button>
+          <button
+            type="button"
+            className="btn header-btn"
+            onClick={() => setSettingsOpen(true)}
+          >
+            Innstillinger
+          </button>
           <button type="button" className="btn primary" onClick={handleGenerate}>
-            Generer nytt brett
+            Generer brett
           </button>
         </div>
       </header>
 
+      <SettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        settings={settings}
+        onSettingsChange={setSettings}
+        boardSize={boardSize}
+        onBoardSizeChange={handleBoardSizeChange}
+      />
+
       {error && <div className="error-banner">{error}</div>}
 
-      <div className="layout">
-        <aside className="sidebar sidebar-left">
-          <SettingsPanel settings={settings} onChange={setSettings} />
-
-          <div className="panel">
-            <h2>Brettstørrelse</h2>
-            <label className="field">
-              Variant
-              <select
-                value={boardSize}
-                onChange={(e) => {
-                  const size = e.target.value as BoardSize;
-                  setBoardSize(size);
-                  if (size === 'base' && playerCount > 4) {
-                    setPlayerCount(4);
-                  }
-                  if (size === 'base' && focusPlayer > 3) {
-                    setFocusPlayer(3);
-                  }
-                }}
-              >
-                {(Object.keys(BOARD_SIZE_CONFIG) as BoardSize[]).map((key) => (
-                  <option key={key} value={key}>
-                    {BOARD_SIZE_CONFIG[key].label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <div className="panel">
-            <h2>Kartlegging</h2>
-            <label className="setting-row">
-              <input
-                type="checkbox"
-                checked={mappingMode}
-                onChange={(e) => {
-                  setMappingMode(e.target.checked);
-                  if (e.target.checked) setMode('view');
-                }}
-              />
-              <span className="setting-text">
-                <strong>Vis K/H-nummerering</strong>
-                <small>
-                  K1–K{boardMapping.edgeHexes.length}, H1–H
-                  {boardMapping.coastCorners.length}
-                </small>
-              </span>
-            </label>
-          </div>
-
-          {mappingMode && (
-            <MappingPanel
-              mapping={boardMapping}
-              onHighlightEdge={setHighlightEdge}
-              onHighlightCorner={setHighlightCorner}
-            />
-          )}
-
-          {!mappingMode && board && !simulation?.finished && (
-            <details className="panel legend-collapsible">
-              <summary>Havner og kantbrikker</summary>
-              <p className="muted small">
-                Rotasjon {board.edgeRotation}/5 ·{' '}
-                {BOARD_SIZE_CONFIG[boardSize].harborTriplePieceCount}×3-hex
-                {boardSize === 'extension56' &&
-                  ` + ${BOARD_SIZE_CONFIG.extension56.singleEdgePieceCount} enkelt`}
-              </p>
-              <div className="legend-list">
-                {board.harbors.map((h) => (
-                  <div key={h.definition.id} className="harbor-legend-row">
-                    <strong>B{h.pieceGroup + 1}</strong>
-                    <span>{h.definition.name}</span>
-                  </div>
-                ))}
-              </div>
-            </details>
-          )}
-        </aside>
-
+      <div className="layout layout-two-col">
         <main className="board-area">
           {board ? (
             <BoardView
@@ -211,123 +169,145 @@ function App() {
           {simulation?.finished && (
             <SimulationSummaryPanel state={simulation} />
           )}
+
+          {!mappingMode && board && !simulation?.finished && (
+            <details className="panel legend-collapsible board-legend">
+              <summary>Havner</summary>
+              <div className="legend-list">
+                {board.harbors.map((h) => (
+                  <div key={h.definition.id} className="harbor-legend-row">
+                    <strong>B{h.pieceGroup + 1}</strong>
+                    <span>{h.definition.name}</span>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
         </main>
 
-        {!mappingMode && (
-          <aside className="sidebar sidebar-right">
-            <div className="panel simulation-setup">
-              <h2>Startposisjon</h2>
+        <aside className="sidebar sidebar-right">
+          {mappingMode ? (
+            <MappingPanel
+              mapping={boardMapping}
+              onHighlightEdge={setHighlightEdge}
+              onHighlightCorner={setHighlightCorner}
+            />
+          ) : (
+            <>
+              <div className="panel simulation-setup">
+                <h2>Startposisjon</h2>
 
-              <div className="field-row">
+                <div className="field-row">
+                  <label className="field">
+                    Spillere
+                    <select
+                      value={playerCount}
+                      disabled={simActive && !simulation?.finished}
+                      onChange={(e) =>
+                        setPlayerCount(Number(e.target.value) as PlayerCount)
+                      }
+                    >
+                      <option value={2}>2</option>
+                      <option value={3}>3</option>
+                      <option value={4}>4</option>
+                      {boardSize === 'extension56' && (
+                        <>
+                          <option value={5}>5</option>
+                          <option value={6}>6</option>
+                        </>
+                      )}
+                    </select>
+                  </label>
+                  <label className="field">
+                    Min spiller
+                    <select
+                      value={focusPlayer}
+                      onChange={(e) => setFocusPlayer(Number(e.target.value))}
+                    >
+                      {Array.from({ length: playerCount }, (_, i) => (
+                        <option key={i} value={i}>
+                          Spiller {i + 1}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
                 <label className="field">
-                  Spillere
+                  Strategi
                   <select
-                    value={playerCount}
-                    disabled={simActive && !simulation?.finished}
+                    value={strategyMode}
                     onChange={(e) =>
-                      setPlayerCount(Number(e.target.value) as PlayerCount)
+                      setStrategyMode(e.target.value as StrategyMode)
                     }
                   >
-                    <option value={2}>2</option>
-                    <option value={3}>3</option>
-                    <option value={4}>4</option>
-                    {boardSize === 'extension56' && (
-                      <>
-                        <option value={5}>5</option>
-                        <option value={6}>6</option>
-                      </>
-                    )}
-                  </select>
-                </label>
-                <label className="field">
-                  Min spiller
-                  <select
-                    value={focusPlayer}
-                    onChange={(e) => setFocusPlayer(Number(e.target.value))}
-                  >
-                    {Array.from({ length: playerCount }, (_, i) => (
-                      <option key={i} value={i}>
-                        Spiller {i + 1}
+                    {(Object.keys(STRATEGY_PROFILES) as StrategyMode[]).map((key) => (
+                      <option key={key} value={key}>
+                        {STRATEGY_PROFILES[key].label}
                       </option>
                     ))}
                   </select>
                 </label>
-              </div>
 
-              <label className="field">
-                Strategi
-                <select
-                  value={strategyMode}
-                  onChange={(e) =>
-                    setStrategyMode(e.target.value as StrategyMode)
-                  }
-                >
-                  {(Object.keys(STRATEGY_PROFILES) as StrategyMode[]).map((key) => (
-                    <option key={key} value={key}>
-                      {STRATEGY_PROFILES[key].label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                <p className="muted small draft-order">
+                  Draft: {formatDraftOrder(playerCount)}
+                </p>
 
-              <p className="muted small draft-order">
-                Draft: {formatDraftOrder(playerCount)}
-              </p>
-
-              {!simActive ? (
-                <button
-                  type="button"
-                  className="btn primary btn-block"
-                  disabled={!board}
-                  onClick={startSimulation}
-                >
-                  Start plassering
-                </button>
-              ) : (
-                <div className="sim-actions">
-                  {!simulation?.finished && (
-                    <button
-                      type="button"
-                      className="btn btn-block"
-                      onClick={resetSimulation}
-                    >
-                      Avbryt
-                    </button>
-                  )}
+                {!simActive ? (
                   <button
                     type="button"
                     className="btn primary btn-block"
+                    disabled={!board}
                     onClick={startSimulation}
                   >
-                    {simulation?.finished ? 'Ny runde' : 'Start på nytt'}
+                    Start plassering
                   </button>
+                ) : (
+                  <div className="sim-actions">
+                    {!simulation?.finished && (
+                      <button
+                        type="button"
+                        className="btn btn-block"
+                        onClick={resetSimulation}
+                      >
+                        Avbryt
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="btn primary btn-block"
+                      onClick={startSimulation}
+                    >
+                      {simulation?.finished ? 'Ny runde' : 'Start på nytt'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {simActive && simulation && (
+                <SettlementSimulator
+                  state={simulation}
+                  options={ranked.options}
+                  analysis={ranked.analysis}
+                  focusPlayer={focusPlayer}
+                  strategyMode={strategyMode}
+                  selectedVertex={selectedVertex}
+                  onSelectVertex={setSelectedVertex}
+                  onConfirm={handleConfirm}
+                />
+              )}
+
+              {!simActive && (
+                <div className="panel sim-placeholder">
+                  <p className="muted small">
+                    Velg spillere og strategi, trykk <strong>Start plassering</strong>,
+                    og klikk grønne markører på brettet.
+                  </p>
                 </div>
               )}
-            </div>
-
-            {simActive && simulation && (
-              <SettlementSimulator
-                state={simulation}
-                options={ranked.options}
-                analysis={ranked.analysis}
-                focusPlayer={focusPlayer}
-                strategyMode={strategyMode}
-                selectedVertex={selectedVertex}
-                onSelectVertex={setSelectedVertex}
-                onConfirm={handleConfirm}
-              />
-            )}
-
-            {!simActive && (
-              <div className="panel sim-placeholder">
-                <p className="muted small">
-                  Velg spillere og strategi, trykk <strong>Start plassering</strong>,
-                  og klikk deretter på grønne markører på brettet til venstre.
-                </p>
-              </div>
-            )}
-          </aside>
-        )}
+            </>
+          )}
+        </aside>
       </div>
 
       <footer className="footer">
