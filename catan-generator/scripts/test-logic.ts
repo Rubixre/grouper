@@ -6,13 +6,16 @@ import {
   BOARD_HEX_COORDS,
   EDGE_HEX_COUNT,
   LAND_HEX_COUNT,
-  ROW_COUNTS,
+  ROW_COUNTS_BASE,
   buildCoastSlots,
+  clearBoardCaches,
   generateBoard,
+  getBoardHexCoords,
   getEdgeHexSet,
   getEdgePieces,
   getLandHexCoords,
   getPlacementOrder,
+  getSingleEdgePieces,
   getVertices,
   getBoardMapping,
   HARBOR_H_PAIRS_ROT0,
@@ -20,6 +23,7 @@ import {
   placeHarbors,
   resetBoardMapping,
   resetVertices,
+  setBoardSize,
   createSimulation,
   placeSettlement,
   getOptionsForCurrentTurn,
@@ -30,7 +34,8 @@ import { hexCorner, hexToPixel } from '../src/catan/hex.ts';
 
 resetVertices();
 resetBoardMapping();
-
+setBoardSize('base');
+clearBoardCaches();
 let passed = 0;
 let failed = 0;
 
@@ -46,23 +51,23 @@ function assert(condition: boolean, message: string) {
 
 console.log('Catan logic smoke test\n');
 
-console.log('Layout');
-assert(ROW_COUNTS.join(',') === '4,5,6,7,6,5,4', '7 centered rows');
-assert(BOARD_HEX_COORDS.length === 37, `37 board hexes (got ${BOARD_HEX_COORDS.length})`);
-assert(getEdgeHexSet().size === EDGE_HEX_COUNT, `${EDGE_HEX_COUNT} edge hexes (got ${getEdgeHexSet().size})`);
-assert(getLandHexCoords().length === LAND_HEX_COUNT, `${LAND_HEX_COUNT} land hexes (got ${getLandHexCoords().length})`);
+console.log('Layout (base)');
+assert(ROW_COUNTS_BASE.join(',') === '4,5,6,7,6,5,4', '7 centered rows');
+assert(getBoardHexCoords('base').length === 37, `37 board hexes (got ${getBoardHexCoords('base').length})`);
+assert(getEdgeHexSet('base').size === EDGE_HEX_COUNT, `${EDGE_HEX_COUNT} edge hexes (got ${getEdgeHexSet('base').size})`);
+assert(getLandHexCoords('base').length === LAND_HEX_COUNT, `${LAND_HEX_COUNT} land hexes (got ${getLandHexCoords('base').length})`);
 
 const px = BOARD_HEX_COORDS.map((c) => hexToPixel(c, 1));
 const cx = px.reduce((s, p) => s + p.x, 0) / px.length;
 const cy = px.reduce((s, p) => s + p.y, 0) / px.length;
 assert(Math.abs(cx) < 0.001 && Math.abs(cy) < 0.001, `Board centered at origin (cx=${cx.toFixed(3)}, cy=${cy.toFixed(3)})`);
 
-const coastSlots = buildCoastSlots();
+const coastSlots = buildCoastSlots('base');
 assert(coastSlots.length === 18, `18 coast slots (got ${coastSlots.length})`);
 const vertices = getVertices();
 assert(vertices.size >= 60, `At least 60 vertices (got ${vertices.size})`);
 
-const mapping = getBoardMapping();
+const mapping = getBoardMapping('base');
 assert(mapping.edgeHexes.length === 18, `18 numbered edge hexes (got ${mapping.edgeHexes.length})`);
 assert(mapping.coastCorners.length === 30, `30 coast meet corners (got ${mapping.coastCorners.length})`);
 
@@ -87,16 +92,33 @@ for (const h of atZero) {
   }
 }
 
-const pieces = getEdgePieces(0);
+const pieces = getEdgePieces(0, 'base');
 assert(pieces.length === 6, '6 edge pieces');
 assert(pieces[0].kLabels.join(',') === 'K18,K1,K2', `B1 default ${pieces[0].kLabels}`);
-assert(kLabelForGroupSlot(0, 0, 1) === 'K3', 'rotation 1 moves B1 start to K3');
+assert(kLabelForGroupSlot(0, 0, 1, 'base') === 'K3', 'rotation 1 moves B1 start to K3');
 
-const rotated = placeHarbors(2);
+const rotated = placeHarbors(2, 1, 'base');
 assert(rotated.length === 9, '9 harbors after rotation');
 
+console.log('\nLayout (5–6 utvidelse)');
+setBoardSize('extension56');
+clearBoardCaches();
+resetVertices();
+resetBoardMapping();
+assert(getBoardHexCoords('extension56').length === 52, '52 hexes in extension');
+assert(getLandHexCoords('extension56').length === 30, '30 land hexes in extension');
+assert(getEdgeHexSet('extension56').size === 22, '22 edge hexes in extension');
+assert(getSingleEdgePieces('extension56').length === 4, '4 single edge pieces B7–B10');
+const extMapping = getBoardMapping('extension56');
+assert(extMapping.edgeHexes.length === 22, '22 numbered edge hexes');
+assert(extMapping.coastCorners.length > 30, 'More than 30 coast nodes on extension');
+
 console.log('\nGenerator');
-const board = generateBoard(DEFAULT_SETTINGS);
+setBoardSize('base');
+clearBoardCaches();
+resetVertices();
+resetBoardMapping();
+const board = generateBoard(DEFAULT_SETTINGS, 'base');
 assert(board !== null, 'Generates a valid board with default rules');
 if (board) {
   assert(board.hexes.length === 37, '37 hex tiles');
@@ -127,9 +149,25 @@ if (strictBoard) {
   assert(strictBoard.hexes.length === 37, 'Strict settings still generate board');
 }
 
-const fixedHarborBoard = generateBoard({ ...DEFAULT_SETTINGS, randomHarbors: false });
+const fixedHarborBoard = generateBoard({ ...DEFAULT_SETTINGS, randomHarbors: false }, 'base');
 if (fixedHarborBoard) {
   assert(fixedHarborBoard.edgeRotation === 0, 'Fixed harbors use rotation 0');
+}
+
+const extBoard = generateBoard(DEFAULT_SETTINGS, 'extension56');
+assert(extBoard !== null, 'Generates valid 5–6 player board');
+if (extBoard) {
+  assert(extBoard.boardSize === 'extension56', 'Board size flag set');
+  assert(extBoard.hexes.length === 52, '52 hex tiles in extension');
+  const extLand = extBoard.hexes.filter((h) => h.kind === 'land');
+  const extEdge = extBoard.hexes.filter((h) => h.kind === 'edge');
+  assert(extLand.length === 30, '30 land hexes in extension');
+  assert(extEdge.length === 22, '22 edge hexes in extension');
+  const wood = extLand.filter((h) => h.resource === 'wood');
+  const desert = extLand.filter((h) => h.resource === 'desert');
+  assert(wood.length === 6, '6 wood tiles in extension');
+  assert(desert.length === 2, '2 desert tiles in extension');
+  assert(extLand.filter((h) => h.number !== null).length === 28, '28 numbered land hexes');
 }
 
 console.log('\nResource weights');
@@ -249,6 +287,8 @@ assert(
   JSON.stringify(getPlacementOrder(4)) === JSON.stringify([0, 1, 2, 3, 3, 2, 1, 0]),
   '4-player snake draft order'
 );
+assert(getPlacementOrder(5).length === 10, '5-player draft has 10 placements');
+assert(getPlacementOrder(6).length === 12, '6-player draft has 12 placements');
 if (board) {
   const sim = createSimulation(board, 4);
   const options = getOptionsForCurrentTurn(sim);

@@ -24,11 +24,29 @@ export function getPlacementOrder(playerCount: PlayerCount): number[] {
       return [0, 1, 2, 2, 1, 0];
     case 4:
       return [0, 1, 2, 3, 3, 2, 1, 0];
+    case 5:
+      return [0, 1, 2, 3, 4, 4, 3, 2, 1, 0];
+    case 6:
+      return [0, 1, 2, 3, 4, 5, 5, 4, 3, 2, 1, 0];
   }
 }
 
-export const PLAYER_COLORS = ['#e74c3c', '#3498db', '#f39c12', '#2ecc71'];
-export const PLAYER_NAMES = ['Spiller 1', 'Spiller 2', 'Spiller 3', 'Spiller 4'];
+export const PLAYER_COLORS = [
+  '#e74c3c',
+  '#3498db',
+  '#f39c12',
+  '#2ecc71',
+  '#9b59b6',
+  '#1abc9c',
+];
+export const PLAYER_NAMES = [
+  'Spiller 1',
+  'Spiller 2',
+  'Spiller 3',
+  'Spiller 4',
+  'Spiller 5',
+  'Spiller 6',
+];
 
 export interface SimulationState {
   board: Board;

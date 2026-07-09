@@ -1,4 +1,5 @@
 import type { HarborDefinition, PlacedHarbor } from './types';
+import type { BoardSize } from './boardLayout';
 import type { CoastMeetCorner } from './mapping';
 import { kLabelForGroupSlot } from './edgePieces';
 import { getBoardMapping } from './mapping';
@@ -107,14 +108,19 @@ function hNodesForEdgeHex(
 }
 
 /** Place harbors after edge-piece rotation (0–5 = 1/6 turn each) */
-export function placeHarbors(rotation: number, hexSize = 1): PlacedHarbor[] {
-  const mapping = getBoardMapping();
+export function placeHarbors(
+  rotation: number,
+  hexSize = 1,
+  size: BoardSize = 'base'
+): PlacedHarbor[] {
+  const mapping = getBoardMapping(size);
 
   return HARBOR_LAYOUT.map((definition) => {
-    const kLabel = kLabelForGroupSlot(
+    const kLabel =       kLabelForGroupSlot(
       definition.pieceGroup,
       definition.hexOffset,
-      rotation
+      rotation,
+      size
     );
     const edge = mapping.edgeByLabel.get(kLabel)!;
     const [nodeA, nodeB] = hNodesForEdgeHex(kLabel, definition.hexOffset, mapping);

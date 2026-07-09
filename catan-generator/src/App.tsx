@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { Board, GeneratorSettings, PlayerCount } from './catan/types';
+import type { Board, BoardSize, GeneratorSettings, PlayerCount } from './catan/types';
 import { DEFAULT_SETTINGS } from './catan/types';
+import { BOARD_SIZE_CONFIG } from './catan/boardLayout';
 import {
   type StrategyMode,
   STRATEGY_PROFILES,
@@ -21,6 +22,7 @@ import './App.css';
 
 function App() {
   const [settings, setSettings] = useState<GeneratorSettings>(DEFAULT_SETTINGS);
+  const [boardSize, setBoardSize] = useState<BoardSize>('base');
   const [board, setBoard] = useState<Board | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [playerCount, setPlayerCount] = useState<PlayerCount>(4);
@@ -33,10 +35,10 @@ function App() {
   const [highlightEdge, setHighlightEdge] = useState<string | null>(null);
   const [highlightCorner, setHighlightCorner] = useState<string | null>(null);
 
-  const boardMapping = useMemo(() => getBoardMapping(), []);
+  const boardMapping = useMemo(() => getBoardMapping(boardSize), [boardSize]);
 
   const handleGenerate = useCallback(() => {
-    const result = generateBoard(settings);
+    const result = generateBoard(settings, boardSize);
     if (!result) {
       setError(
         'Kunne ikke generere gyldig brett med valgte regler. Prøv igjen eller slakk på begrensningene.'
@@ -50,7 +52,7 @@ function App() {
     setSimulation(null);
     setSelectedVertex(null);
     setMode('view');
-  }, [settings]);
+  }, [settings, boardSize]);
 
   useEffect(() => {
     handleGenerate();
@@ -80,7 +82,9 @@ function App() {
         <div>
           <h1>Catan Brettgenerator</h1>
           <p className="subtitle">
-            37-hex brett (7 rader) – ressurser, tall og havnebrikker
+            {BOARD_SIZE_CONFIG[boardSize].totalHexes}-hex brett – ressurser, tall og
+            havnebrikker
+            {boardSize === 'extension56' ? ' (5–6 spillere)' : ''}
           </p>
         </div>
         <div className="header-actions">
@@ -97,6 +101,33 @@ function App() {
           <SettingsPanel settings={settings} onChange={setSettings} />
 
           <div className="panel">
+            <h2>Brettstørrelse</h2>
+            <label className="field">
+              Variant
+              <select
+                value={boardSize}
+                onChange={(e) => {
+                  const size = e.target.value as BoardSize;
+                  setBoardSize(size);
+                  if (size === 'base' && playerCount > 4) {
+                    setPlayerCount(4);
+                  }
+                }}
+              >
+                {(Object.keys(BOARD_SIZE_CONFIG) as BoardSize[]).map((key) => (
+                  <option key={key} value={key}>
+                    {BOARD_SIZE_CONFIG[key].label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="muted small">
+              Utvidelse: +11 landhexer (2 av hver ressurs + ørken), +4 enkelt-hex
+              kantbrikker (B7–B10).
+            </p>
+          </div>
+
+          <div className="panel">
             <h2>Kartleggingsmodus</h2>
             <label className="setting-row">
               <input
@@ -109,7 +140,10 @@ function App() {
               />
               <span className="setting-text">
                 <strong>Vis nummerering</strong>
-                <small>K1–K18 kanthexer, H1–H30 møtehjørner, hjørne 0–5</small>
+                <small>
+                  K1–K{boardMapping.edgeHexes.length} kanthexer, H1–H
+                  {boardMapping.coastCorners.length} møtehjørner, hjørne 0–5
+                </small>
               </span>
             </label>
           </div>
@@ -135,6 +169,12 @@ function App() {
                 <option value={1}>Spiller 2</option>
                 <option value={2}>Spiller 3</option>
                 <option value={3}>Spiller 4</option>
+                {boardSize === 'extension56' && (
+                  <>
+                    <option value={4}>Spiller 5</option>
+                    <option value={5}>Spiller 6</option>
+                  </>
+                )}
               </select>
             </label>
             <label className="field">
@@ -176,6 +216,12 @@ function App() {
                 <option value={2}>2 spillere</option>
                 <option value={3}>3 spillere</option>
                 <option value={4}>4 spillere</option>
+                {boardSize === 'extension56' && (
+                  <>
+                    <option value={5}>5 spillere</option>
+                    <option value={6}>6 spillere</option>
+                  </>
+                )}
               </select>
             </label>
             <p className="muted small">
@@ -228,8 +274,12 @@ function App() {
           <div className="legend panel">
             <h3>Kantbrikker og havner</h3>
             <p className="muted small">
-              Rotasjon {board?.edgeRotation ?? 0}/5 (1/6 hvert steg). 6 brikker à 3 hexer
-              (B1: K18–K1–K2 ved rot. 0).
+              Rotasjon {board?.edgeRotation ?? 0}/5 (1/6 hvert steg).{' '}
+              {BOARD_SIZE_CONFIG[boardSize].harborTriplePieceCount} brikker à 3 hexer
+              (B1: K18–K1–K2 ved rot. 0)
+              {boardSize === 'extension56' &&
+                `, pluss ${BOARD_SIZE_CONFIG.extension56.singleEdgePieceCount} enkelt-hex brikker (B7–B10)`}
+              .
             </p>
             {board?.harbors.map((h) => (
               <div key={h.definition.id} className="harbor-legend-row">
@@ -247,7 +297,8 @@ function App() {
 
       <footer className="footer">
         <p>
-          Fase 1: Grunnspill · Fire seiersprofiler + auto-analyse (Board Game Analysis)
+          Grunnspill og 5–6-spillerutvidelse · Fire seiersprofiler + auto-analyse
+          (Board Game Analysis)
         </p>
       </footer>
     </div>

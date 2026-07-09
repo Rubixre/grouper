@@ -1,6 +1,6 @@
 import type { Board, PlacedSettlement, SettlementScore } from '../catan/types';
 import type { BoardMapping } from '../catan/mapping';
-import { getEdgePieces } from '../catan/edgePieces';
+import { getEdgePieces, getSingleEdgePieces } from '../catan/edgePieces';
 import { hexCorner, hexToPixel } from '../catan/hex';
 import { getVertices } from '../catan/settlements';
 import { PLAYER_COLORS } from '../catan/simulator';
@@ -65,7 +65,8 @@ export function BoardView({
   highlightCorner = null,
 }: BoardViewProps) {
   const maxScore = highlightedVertices[0]?.total ?? 1;
-  const edgePieces = getEdgePieces(board.edgeRotation);
+  const edgePieces = getEdgePieces(board.edgeRotation, board.boardSize);
+  const singleEdgePieces = getSingleEdgePieces(board.boardSize);
   const landHexes = board.hexes.filter((h) => h.kind === 'land');
 
   const bounds = board.hexes.map((h) => hexToPixel(h.coord, HEX_SIZE));
@@ -91,6 +92,15 @@ export function BoardView({
         <EdgePieceShape
           key={piece.label}
           coords={[...piece.coords]}
+          size={HEX_SIZE}
+          pieceLabel={mappingMode ? piece.label : undefined}
+        />
+      ))}
+
+      {singleEdgePieces.map((piece) => (
+        <EdgePieceShape
+          key={piece.label}
+          coords={[piece.coord]}
           size={HEX_SIZE}
           pieceLabel={mappingMode ? piece.label : undefined}
         />

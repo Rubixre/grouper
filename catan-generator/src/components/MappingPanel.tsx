@@ -19,8 +19,9 @@ export function MappingPanel({
     <div className="panel mapping-panel">
       <h2>Kartlegging (midlertidig)</h2>
       <p className="muted small">
-        <strong>K1–K18</strong> = kanthexer med lokale hjørner 0–5 (gul = mot
-        land). <strong>H1–H30</strong> = hjørner der kanthex og landhex møtes.
+        <strong>K1–K{mapping.edgeHexes.length}</strong> = kanthexer med lokale hjørner
+        0–5 (gul = mot land). <strong>H1–H{mapping.coastCorners.length}</strong> =
+        hjørner der kanthex og landhex møtes.
       </p>
 
       <div className="mapping-tabs">

@@ -1,6 +1,7 @@
 import type { HexCoord } from './types';
+import type { BoardSize } from './boardLayout';
 import {
-  BOARD_HEX_COORDS,
+  getBoardHexCoords,
   getEdgeHexSet,
   getLandSet,
 } from './boardLayout';
@@ -40,7 +41,7 @@ export interface BoardMapping {
   cornerByLabel: Map<string, CoastMeetCorner>;
 }
 
-let mappingCache: BoardMapping | null = null;
+const mappingCache = new Map<BoardSize, BoardMapping>();
 
 function vertexAngle(anchor: HexCoord, corner: number): number {
   const { x, y } = hexCorner(anchor, corner, 1);
@@ -64,11 +65,11 @@ function landCornersForEdgeHex(coord: HexCoord, landSet: Set<string>): {
   return { landCorners, waterCorners };
 }
 
-export function buildBoardMapping(): BoardMapping {
-  const edgeSet = getEdgeHexSet();
-  const landSet = getLandSet();
+export function buildBoardMapping(size: BoardSize = 'base'): BoardMapping {
+  const edgeSet = getEdgeHexSet(size);
+  const landSet = getLandSet(size);
 
-  const edgeCoords = BOARD_HEX_COORDS.filter((c) => edgeSet.has(coordKey(c))).sort(
+  const edgeCoords = getBoardHexCoords(size).filter((c) => edgeSet.has(coordKey(c))).sort(
     (a, b) => {
       const pa = hexToPixel(a, 1);
       const pb = hexToPixel(b, 1);
@@ -135,13 +136,13 @@ export function buildBoardMapping(): BoardMapping {
   };
 }
 
-export function getBoardMapping(): BoardMapping {
-  if (!mappingCache) mappingCache = buildBoardMapping();
-  return mappingCache;
+export function getBoardMapping(size: BoardSize = 'base'): BoardMapping {
+  if (!mappingCache.has(size)) mappingCache.set(size, buildBoardMapping(size));
+  return mappingCache.get(size)!;
 }
 
 export function resetBoardMapping(): void {
-  mappingCache = null;
+  mappingCache.clear();
 }
 
 export function formatCoord(c: HexCoord): string {

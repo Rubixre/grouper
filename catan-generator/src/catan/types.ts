@@ -1,3 +1,6 @@
+import type { BoardSize } from './boardLayout';
+
+export type { BoardSize };
 export type ResourceType = 'wood' | 'brick' | 'sheep' | 'wheat' | 'ore' | 'desert';
 
 export type HarborType =
@@ -82,6 +85,7 @@ export const DEFAULT_SETTINGS: GeneratorSettings = {
 };
 
 export interface Board {
+  boardSize: BoardSize;
   hexes: HexTile[];
   harbors: PlacedHarbor[];
   coastSlots: CoastSlot[];
@@ -137,4 +141,4 @@ export interface PlacedSettlement {
   isCity: boolean;
 }
 
-export type PlayerCount = 2 | 3 | 4;
+export type PlayerCount = 2 | 3 | 4 | 5 | 6;
