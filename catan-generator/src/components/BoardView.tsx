@@ -1,7 +1,7 @@
 import type { Board, PlacedSettlement, SettlementScore } from '../catan/types';
 import type { BoardMapping } from '../catan/mapping';
-import { harborSlotsForPiece } from '../catan/boardLayout';
-import { hexCorner, hexEdgeMidpoint, hexToPixel } from '../catan/hex';
+import { harborShortLabel } from '../catan/harbors';
+import { hexCorner, hexToPixel } from '../catan/hex';
 import { getVertices } from '../catan/settlements';
 import { PLAYER_COLORS } from '../catan/simulator';
 import { BoardHex } from './BoardHex';
@@ -88,58 +88,61 @@ export function BoardView({
         />
       ))}
 
-      {/* Harbor pieces (hidden in mapping mode) */}
+      {/* Fixed harbors on K-hexes, mellom to H-noder */}
       {!mappingMode &&
         board.harbors.map((h) => {
-        const slots = harborSlotsForPiece(h.startSlot).map(
-          (i) => board.coastSlots[i]
-        );
-        const midpoints = slots.map((s) => hexEdgeMidpoint(s.hex, s.edge, HEX_SIZE));
-        const hx = midpoints.reduce((s, p) => s + p.x, 0) / midpoints.length;
-        const hy = midpoints.reduce((s, p) => s + p.y, 0) / midpoints.length;
-        const angle = Math.atan2(hy, hx);
+          const vertices = getVertices();
+          const vA = vertices.get(h.nodeVertexIds[0]);
+          const vB = vertices.get(h.nodeVertexIds[1]);
+          if (!vA || !vB) return null;
 
-        const harbor = h.piece.harbor;
-        const color =
-          harbor.kind === 'generic'
-            ? HARBOR_COLORS.generic
-            : HARBOR_COLORS[harbor.resource] ?? '#1a5276';
+          const pA = hexCorner(vA.anchor, vA.corner, HEX_SIZE);
+          const pB = hexCorner(vB.anchor, vB.corner, HEX_SIZE);
+          const hx = (pA.x + pB.x) / 2;
+          const hy = (pA.y + pB.y) / 2;
+          const angle = h.angle;
 
-        const label =
-          harbor.kind === 'generic'
-            ? '3:1'
-            : `2:1 ${harbor.resource === 'wood' ? 'T' : harbor.resource === 'brick' ? 'Te' : harbor.resource === 'sheep' ? 'U' : 'K'}`;
+          const harbor = h.definition.harbor;
+          const color =
+            harbor.kind === 'generic'
+              ? HARBOR_COLORS.generic
+              : HARBOR_COLORS[harbor.resource] ?? '#1a5276';
 
-        return (
-          <g
-            key={h.piece.id}
-            transform={`translate(${hx}, ${hy}) rotate(${(angle * 180) / Math.PI})`}
-          >
-            <rect
-              x={-HEX_SIZE * 0.9}
-              y={-HEX_SIZE * 0.35}
-              width={HEX_SIZE * 1.8}
-              height={HEX_SIZE * 0.7}
-              rx={6}
-              fill={color}
-              stroke="#fff"
-              strokeWidth={2}
-              opacity={0.92}
-            />
-            <text
-              x={0}
-              y={5}
-              textAnchor="middle"
-              fill="#fff"
-              fontSize={11}
-              fontWeight={700}
-              transform={`rotate(${(-angle * 180) / Math.PI})`}
+          const label = harborShortLabel(harbor);
+
+          return (
+            <g
+              key={h.definition.id}
+              transform={`translate(${hx}, ${hy}) rotate(${(angle * 180) / Math.PI})`}
             >
-              ⚓ {label}
-            </text>
-          </g>
-        );
-      })}
+              <rect
+                x={-HEX_SIZE * 0.75}
+                y={-HEX_SIZE * 0.32}
+                width={HEX_SIZE * 1.5}
+                height={HEX_SIZE * 0.64}
+                rx={5}
+                fill={color}
+                stroke="#fff"
+                strokeWidth={2}
+                opacity={0.95}
+              />
+              <text
+                x={0}
+                y={4}
+                textAnchor="middle"
+                fill="#fff"
+                fontSize={10}
+                fontWeight={700}
+                transform={`rotate(${(-angle * 180) / Math.PI})`}
+              >
+                ⚓ {label}
+              </text>
+              <title>
+                {h.definition.name} på {h.edgeHexLabel} → {h.nodeLabels.join(', ')}
+              </title>
+            </g>
+          );
+        })}
 
       {mappingMode && mapping && (
         <MappingOverlay

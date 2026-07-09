@@ -13,7 +13,7 @@ import {
   getLandSet,
   isEdgeHex,
 } from './boardLayout';
-import { placeHarborPieces } from './harbors';
+import { placeFixedHarbors } from './harbors';
 import { coordKey, getNeighbors } from './hex';
 
 /** 19 land tiles (standard base-game distribution) */
@@ -171,7 +171,7 @@ export function generateBoard(
     if (!landHexes) continue;
     if (!tryPlaceNumbers(landHexes, settings, landSet)) continue;
 
-    const { harbors, rotation } = placeHarborPieces();
+    const harbors = placeFixedHarbors();
 
     const hexes: HexTile[] = BOARD_HEX_COORDS.map((coord) => {
       if (isEdgeHex(coord)) {
@@ -184,7 +184,6 @@ export function generateBoard(
       hexes,
       harbors,
       coastSlots,
-      rotation,
     };
   }
 

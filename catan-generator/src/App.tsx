@@ -202,16 +202,15 @@ function App() {
           )}
 
           <div className="legend panel">
-            <h3>Havnebrikker (kantbrikker)</h3>
+            <h3>Havner (faste plasseringer)</h3>
             <p className="muted small">
-              6 unike kantbrikker à 3 kystsegmenter roteres som faste enheter
-              rundt brettet. Hver brikke vender alltid mot sentrum.
+              Hver havn ligger på en kanthex (K) og påvirker to noder (H).
             </p>
             {board?.harbors.map((h) => (
-              <div key={h.piece.id} className="harbor-legend-row">
-                <strong>{h.piece.name}</strong>
+              <div key={h.definition.id} className="harbor-legend-row">
+                <strong>{h.definition.name}</strong>
                 <span>
-                  Slot {h.startSlot}–{(h.startSlot + 2) % 18}
+                  {h.edgeHexLabel} → {h.nodeLabels.join(', ')}
                 </span>
               </div>
             ))}

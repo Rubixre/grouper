@@ -35,7 +35,9 @@ export interface BoardMapping {
   edgeHexes: NumberedEdgeHex[];
   coastCorners: CoastMeetCorner[];
   edgeByCoord: Map<string, NumberedEdgeHex>;
+  edgeByLabel: Map<string, NumberedEdgeHex>;
   cornerByVertexId: Map<string, CoastMeetCorner>;
+  cornerByLabel: Map<string, CoastMeetCorner>;
 }
 
 let mappingCache: BoardMapping | null = null;
@@ -85,6 +87,7 @@ export function buildBoardMapping(): BoardMapping {
   const edgeByCoord = new Map(
     edgeHexes.map((e) => [coordKey(e.coord), e] as const)
   );
+  const edgeByLabel = new Map(edgeHexes.map((e) => [e.label, e] as const));
 
   const vertices = getVertices();
   const coastRaw = [...vertices.values()]
@@ -116,8 +119,16 @@ export function buildBoardMapping(): BoardMapping {
   const cornerByVertexId = new Map(
     coastCorners.map((c) => [c.vertexId, c] as const)
   );
+  const cornerByLabel = new Map(coastCorners.map((c) => [c.label, c] as const));
 
-  return { edgeHexes, coastCorners, edgeByCoord, cornerByVertexId };
+  return {
+    edgeHexes,
+    coastCorners,
+    edgeByCoord,
+    edgeByLabel,
+    cornerByVertexId,
+    cornerByLabel,
+  };
 }
 
 export function getBoardMapping(): BoardMapping {

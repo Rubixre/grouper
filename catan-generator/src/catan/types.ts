@@ -25,17 +25,37 @@ export interface CoastSlot {
   edge: number;
 }
 
+export interface HarborDefinition {
+  id: string;
+  name: string;
+  harbor: HarborType;
+  /** K-index (1–18) */
+  edgeHexIndex: number;
+  /** H-indices (1–30), harbor påvirker disse to nodene */
+  nodeIndices: [number, number];
+}
+
+export interface PlacedHarbor {
+  definition: HarborDefinition;
+  edgeHexLabel: string;
+  nodeLabels: [string, string];
+  edgeCoord: HexCoord;
+  nodeVertexIds: [string, string];
+  /** Radians, mot land mellom de to nodene */
+  angle: number;
+}
+
+/** @deprecated Old 3-slot frame pieces */
 export interface HarborPiece {
   id: string;
   name: string;
   harbor: HarborType;
-  /** Visual slot span (3 consecutive coast slots) */
   slotSpan: 3;
 }
 
+/** @deprecated */
 export interface PlacedHarborPiece {
   piece: HarborPiece;
-  /** Starting coast slot index (piece occupies start, start+1, start+2 mod 18) */
   startSlot: number;
 }
 
@@ -59,9 +79,8 @@ export const DEFAULT_SETTINGS: GeneratorSettings = {
 
 export interface Board {
   hexes: HexTile[];
-  harbors: PlacedHarborPiece[];
+  harbors: PlacedHarbor[];
   coastSlots: CoastSlot[];
-  rotation: number;
 }
 
 export interface Vertex {

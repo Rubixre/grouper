@@ -9,7 +9,7 @@ import type {
   Vertex,
 } from './types';
 import { DEFAULT_RESOURCE_WEIGHTS } from './types';
-import { coastSlotsForHex, getHarborAtSlot } from './harbors';
+import { getHarborsForVertex } from './harbors';
 import { coordKey, hexNeighbor } from './hex';
 import { getBoardSet, getLandSet } from './boardLayout';
 
@@ -151,20 +151,18 @@ export function isVertexAvailable(
 }
 
 function harborBonusForVertex(
+  vertexId: string,
   vertex: Vertex,
   board: Board,
   weights: ResourceWeights
 ): number {
-  let bonus = 0;
-  const seenHarbors = new Set<string>();
+  const affecting = getHarborsForVertex(vertexId, board.harbors);
+  if (affecting.length === 0) return 0;
 
-  for (const hex of vertex.hexes) {
-    const slots = coastSlotsForHex(hex, board.coastSlots);
-    for (const slot of slots) {
-      const harbor = getHarborAtSlot(slot, board.harbors);
-      if (!harbor || seenHarbors.has(harbor.piece.id)) continue;
-      seenHarbors.add(harbor.piece.id);
-      bonus += harborValue(harbor.piece.harbor, hex, board, weights);
+  let bonus = 0;
+  for (const placed of affecting) {
+    for (const hex of vertex.hexes) {
+      bonus += harborValue(placed.definition.harbor, hex, board, weights);
     }
   }
   return bonus;
@@ -212,7 +210,7 @@ export function scoreVertex(
   }
 
   const diversity = resourceSet.size * 0.08;
-  const harbor = harborBonusForVertex(vertex, board, weights);
+  const harbor = harborBonusForVertex(vertexId, vertex, board, weights);
 
   return {
     vertexId,

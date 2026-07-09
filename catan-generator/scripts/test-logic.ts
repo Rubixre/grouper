@@ -69,7 +69,10 @@ if (board) {
   const land = board.hexes.filter((h) => h.kind === 'land');
   assert(edges.length === 18, '18 blue edge hexes');
   assert(land.length === 19, '19 land hexes');
-  assert(board.harbors.length === 6, '6 harbor pieces');
+  assert(board.harbors.length === 9, '9 fixed harbors');
+  for (const h of board.harbors) {
+    assert(h.nodeLabels.length === 2, `${h.edgeHexLabel} affects 2 nodes`);
+  }
   const desert = land.filter((h) => h.resource === 'desert');
   assert(desert.length === 1, 'Exactly one desert');
   const numbered = land.filter((h) => h.number !== null);
