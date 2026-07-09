@@ -56,7 +56,13 @@ export function getOptionsForCurrentTurn(
   state: SimulationState,
   weights?: ResourceWeights
 ): SettlementScore[] {
-  return rankVertices(state.board, state.placements, weights);
+  const player = currentPlayer(state);
+  return rankVertices(
+    state.board,
+    state.placements,
+    weights,
+    player ?? undefined
+  );
 }
 
 export function placeSettlement(

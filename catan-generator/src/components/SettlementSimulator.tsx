@@ -45,8 +45,10 @@ export function SettlementSimulator({
         <>
           <p className="sim-hint">
             {PLAYER_NAMES[player!]}: klikk på en grønn markør på brettet, eller
-            velg fra listen. Fargen viser relativ styrke (ressurser,
-            sannsynlighet, variasjon, havn).
+            velg fra listen.{' '}
+            {options[0]?.placementKind === 'second'
+              ? 'Andre landsby: startressurser fra denne plasseringen, men vurdering inkluderer utfylling mot første landsby og havn på total inntekt.'
+              : 'Fargen viser relativ styrke (ressurser, sannsynlighet, variasjon, havn).'}
           </p>
           <div className="options-list">
             <h3>Toppkandidater</h3>
@@ -60,8 +62,18 @@ export function SettlementSimulator({
                 <span className="option-rank">#{i + 1}</span>
                 <span className="option-score">{opt.total.toFixed(3)}</span>
                 <span className="option-detail">
-                  Prod {opt.production.toFixed(2)} · Var {opt.diversity.toFixed(2)} · Havn{' '}
-                  {opt.harbor.toFixed(2)}
+                  {opt.placementKind === 'second' ? (
+                    <>
+                      Start {opt.production.toFixed(2)} · Portef.{' '}
+                      {((opt.portfolio ?? 0) - (opt.overlap ?? 0)).toFixed(2)} · Havn tot.{' '}
+                      {opt.harbor.toFixed(2)}
+                    </>
+                  ) : (
+                    <>
+                      Prod {opt.production.toFixed(2)} · Var {opt.diversity.toFixed(2)} · Havn{' '}
+                      {opt.harbor.toFixed(2)}
+                    </>
+                  )}
                 </span>
               </button>
             ))}

@@ -27,6 +27,24 @@ const NUMBER_PROB: Record<number, number> = {
   12: 1 / 36,
 };
 
+const PROD_RESOURCES: Exclude<ResourceType, 'desert'>[] = [
+  'wood',
+  'brick',
+  'sheep',
+  'wheat',
+  'ore',
+];
+
+type ProdResource = Exclude<ResourceType, 'desert'>;
+
+interface ProductionProfile {
+  byResource: Partial<Record<ProdResource, number>>;
+  byNumber: Partial<Record<number, number>>;
+  total: number;
+  resources: Set<ProdResource>;
+  breakdown: { resource: ResourceType; value: number }[];
+}
+
 function vertexKey(hexes: HexCoord[]): string {
   return hexes
     .map(coordKey)
@@ -150,6 +168,75 @@ export function isVertexAvailable(
   return true;
 }
 
+function buildProductionProfile(
+  vertexId: string,
+  board: Board,
+  weights: ResourceWeights
+): ProductionProfile {
+  const vertices = getVertices();
+  const vertex = vertices.get(vertexId)!;
+  const breakdown: { resource: ResourceType; value: number }[] = [];
+  const byResource: Partial<Record<ProdResource, number>> = {};
+  const byNumber: Partial<Record<number, number>> = {};
+  const resources = new Set<ProdResource>();
+  let total = 0;
+
+  for (const hex of vertex.hexes) {
+    const tile = board.hexes.find((h) => h.coord.q === hex.q && h.coord.r === hex.r);
+    if (!tile || tile.kind !== 'land' || !tile.resource || tile.resource === 'desert' || !tile.number) {
+      continue;
+    }
+
+    const resource = tile.resource;
+    const value =
+      (NUMBER_PROB[tile.number] ?? 0) *
+      weights[resource as keyof ResourceWeights];
+
+    resources.add(resource);
+    byResource[resource] = (byResource[resource] ?? 0) + value;
+    byNumber[tile.number] = (byNumber[tile.number] ?? 0) + value;
+    total += value;
+    breakdown.push({ resource, value });
+  }
+
+  return { byResource, byNumber, total, resources, breakdown };
+}
+
+function mergeProfiles(a: ProductionProfile, b: ProductionProfile): ProductionProfile {
+  const byResource: Partial<Record<ProdResource, number>> = { ...a.byResource };
+  const byNumber: Partial<Record<number, number>> = { ...a.byNumber };
+  const resources = new Set<ProdResource>([...a.resources, ...b.resources]);
+
+  for (const resource of PROD_RESOURCES) {
+    const sum = (a.byResource[resource] ?? 0) + (b.byResource[resource] ?? 0);
+    if (sum > 0) byResource[resource] = sum;
+  }
+
+  for (const number of Object.keys(NUMBER_PROB).map(Number)) {
+    const sum = (a.byNumber[number] ?? 0) + (b.byNumber[number] ?? 0);
+    if (sum > 0) byNumber[number] = sum;
+  }
+
+  return {
+    byResource,
+    byNumber,
+    total: a.total + b.total,
+    resources,
+    breakdown: [...a.breakdown, ...b.breakdown],
+  };
+}
+
+function harborValueForResource(
+  harbor: HarborType,
+  resource: ProdResource,
+  production: number
+): number {
+  if (production <= 0) return 0;
+  if (harbor.kind === 'generic') return production * 0.5;
+  if (harbor.resource === resource) return production * 1.0;
+  return production * 0.15;
+}
+
 function harborBonusForVertex(
   vertexId: string,
   vertex: Vertex,
@@ -162,13 +249,13 @@ function harborBonusForVertex(
   let bonus = 0;
   for (const placed of affecting) {
     for (const hex of vertex.hexes) {
-      bonus += harborValue(placed.definition.harbor, hex, board, weights);
+      bonus += harborValueForHex(placed.definition.harbor, hex, board, weights);
     }
   }
   return bonus;
 }
 
-function harborValue(
+function harborValueForHex(
   harbor: HarborType,
   hex: HexCoord,
   board: Board,
@@ -186,6 +273,65 @@ function harborValue(
   return prod * 0.15;
 }
 
+/** Havn vurdert mot spillerens samlede produksjon (begge landsbyer). */
+function harborBonusForPlayer(
+  vertexIds: string[],
+  combined: ProductionProfile,
+  board: Board
+): number {
+  const seen = new Set<string>();
+  const harbors = vertexIds.flatMap((vertexId) =>
+    getHarborsForVertex(vertexId, board.harbors).filter((h) => {
+      if (seen.has(h.definition.id)) return false;
+      seen.add(h.definition.id);
+      return true;
+    })
+  );
+
+  let bonus = 0;
+  for (const placed of harbors) {
+    for (const resource of PROD_RESOURCES) {
+      const production = combined.byResource[resource] ?? 0;
+      bonus += harborValueForResource(placed.definition.harbor, resource, production);
+    }
+  }
+  return bonus;
+}
+
+function portfolioSynergy(first: ProductionProfile, second: ProductionProfile): {
+  portfolio: number;
+  overlap: number;
+} {
+  let gapFill = 0;
+  let resourceOverlap = 0;
+
+  for (const resource of PROD_RESOURCES) {
+    const v1 = first.byResource[resource] ?? 0;
+    const v2 = second.byResource[resource] ?? 0;
+
+    if (v1 === 0 && v2 > 0) {
+      gapFill += v2 * 0.55;
+    } else if (v1 > 0 && v2 > 0) {
+      resourceOverlap += Math.min(v1, v2) * 0.4;
+    }
+  }
+
+  let numberOverlap = 0;
+  for (const number of Object.keys(NUMBER_PROB).map(Number)) {
+    const v1 = first.byNumber[number] ?? 0;
+    const v2 = second.byNumber[number] ?? 0;
+    if (v1 > 0 && v2 > 0) {
+      numberOverlap += Math.min(v1, v2) * 0.2;
+    }
+  }
+
+  const combinedDiversity = new Set([...first.resources, ...second.resources]).size * 0.14;
+  const portfolio = gapFill + combinedDiversity;
+  const overlap = resourceOverlap + numberOverlap;
+
+  return { portfolio, overlap };
+}
+
 export function scoreVertex(
   vertexId: string,
   board: Board,
@@ -193,32 +339,53 @@ export function scoreVertex(
 ): SettlementScore {
   const vertices = getVertices();
   const vertex = vertices.get(vertexId)!;
-  const breakdown: { resource: ResourceType; value: number }[] = [];
-  let production = 0;
-  const resourceSet = new Set<ResourceType>();
-
-  for (const hex of vertex.hexes) {
-    const tile = board.hexes.find((h) => h.coord.q === hex.q && h.coord.r === hex.r);
-    if (!tile || tile.kind !== 'land' || !tile.resource || tile.resource === 'desert' || !tile.number) continue;
-
-    resourceSet.add(tile.resource);
-    const value =
-      (NUMBER_PROB[tile.number] ?? 0) *
-      weights[tile.resource as keyof ResourceWeights];
-    production += value;
-    breakdown.push({ resource: tile.resource, value });
-  }
-
-  const diversity = resourceSet.size * 0.08;
+  const profile = buildProductionProfile(vertexId, board, weights);
+  const diversity = profile.resources.size * 0.08;
   const harbor = harborBonusForVertex(vertexId, vertex, board, weights);
 
   return {
     vertexId,
-    total: production + diversity + harbor,
-    production,
+    total: profile.total + diversity + harbor,
+    production: profile.total,
     diversity,
     harbor,
-    breakdown,
+    placementKind: 'first',
+    breakdown: profile.breakdown,
+  };
+}
+
+/** Sterkere vurdering når spilleren plasserer sin andre startlandsby. */
+export function scoreSecondSettlement(
+  secondVertexId: string,
+  firstVertexId: string,
+  board: Board,
+  weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS
+): SettlementScore {
+  const first = buildProductionProfile(firstVertexId, board, weights);
+  const second = buildProductionProfile(secondVertexId, board, weights);
+  const combined = mergeProfiles(first, second);
+  const { portfolio, overlap } = portfolioSynergy(first, second);
+  const harbor = harborBonusForPlayer([firstVertexId, secondVertexId], combined, board);
+  const diversity = combined.resources.size * 0.1;
+
+  // Produksjon fra landsby 2 = startressurser; portefølje og havn på total inntekt.
+  const total =
+    second.total * 1.25 +
+    portfolio -
+    overlap +
+    diversity +
+    harbor;
+
+  return {
+    vertexId: secondVertexId,
+    total,
+    production: second.total,
+    diversity,
+    harbor,
+    portfolio,
+    overlap,
+    placementKind: 'second',
+    breakdown: second.breakdown,
   };
 }
 
@@ -236,9 +403,22 @@ export function getValidVertices(placed: PlacedSettlement[]): string[] {
 export function rankVertices(
   board: Board,
   placed: PlacedSettlement[],
-  weights?: ResourceWeights
+  weights?: ResourceWeights,
+  currentPlayer?: number
 ): SettlementScore[] {
+  const w = weights ?? DEFAULT_RESOURCE_WEIGHTS;
+
+  if (currentPlayer !== undefined) {
+    const playerSettlements = placed.filter((p) => p.player === currentPlayer);
+    if (playerSettlements.length === 1) {
+      const firstVertexId = playerSettlements[0].vertexId;
+      return getValidVertices(placed)
+        .map((id) => scoreSecondSettlement(id, firstVertexId, board, w))
+        .sort((a, b) => b.total - a.total);
+    }
+  }
+
   return getValidVertices(placed)
-    .map((id) => scoreVertex(id, board, weights))
+    .map((id) => scoreVertex(id, board, w))
     .sort((a, b) => b.total - a.total);
 }

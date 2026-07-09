@@ -119,6 +119,11 @@ export interface SettlementScore {
   production: number;
   diversity: number;
   harbor: number;
+  /** Utfylling mellom 1. og 2. landsby (kun andre plassering) */
+  portfolio?: number;
+  /** Overlapp-straff mellom landsbyene (kun andre plassering) */
+  overlap?: number;
+  placementKind?: 'first' | 'second';
   breakdown: { resource: ResourceType; value: number }[];
 }
 

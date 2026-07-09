@@ -23,6 +23,7 @@ import {
   createSimulation,
   placeSettlement,
   getOptionsForCurrentTurn,
+  scoreSecondSettlement,
   DEFAULT_SETTINGS,
 } from '../src/catan/index.ts';
 import { hexCorner, hexToPixel } from '../src/catan/hex.ts';
@@ -129,7 +130,42 @@ if (board) {
     assert(afterP1.currentStep === 1, 'Advances to next player');
     const p2options = getOptionsForCurrentTurn(afterP1);
     assert(p2options.length > 0, 'Second player has options');
+    assert(
+      p2options.every((o) => o.placementKind === 'first'),
+      'First settlement uses first-placement scoring'
+    );
   }
+
+  // Second settlement uses pair scoring for returning player
+  const sim4 = createSimulation(board, 4);
+  let state = sim4;
+  for (let i = 0; i < 7; i++) {
+    const opts = getOptionsForCurrentTurn(state);
+    assert(opts.length > 0, `Step ${i} has options`);
+    state = placeSettlement(state, opts[0].vertexId);
+  }
+  const p1second = getOptionsForCurrentTurn(state);
+  assert(p1second.length > 0, 'Player 1 second settlement has options');
+  assert(
+    p1second.every((o) => o.placementKind === 'second'),
+    'Second settlement uses pair scoring'
+  );
+  assert(
+    p1second.every((o) => o.portfolio !== undefined && o.overlap !== undefined),
+    'Second settlement exposes portfolio and overlap'
+  );
+
+  const firstPlacement = state.placements.find((p) => p.player === 0)!;
+  const ranked = p1second[0];
+  const direct = scoreSecondSettlement(
+    ranked.vertexId,
+    firstPlacement.vertexId,
+    board
+  );
+  assert(
+    Math.abs(direct.total - ranked.total) < 1e-9,
+    'Second settlement score matches scoreSecondSettlement'
+  );
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
