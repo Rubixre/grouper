@@ -11,7 +11,7 @@ import type {
 import { DEFAULT_RESOURCE_WEIGHTS } from './types';
 import { coastSlotsForHex, getHarborAtSlot } from './harbors';
 import { coordKey, hexNeighbor } from './hex';
-import { getBoardSet } from './boardLayout';
+import { getBoardSet, getLandSet } from './boardLayout';
 
 /** Dice roll probability for each number token */
 const NUMBER_PROB: Record<number, number> = {
@@ -128,6 +128,10 @@ export function getVertices(): Map<string, Vertex> {
   return vertexCache;
 }
 
+export function resetVertices(): void {
+  vertexCache = null;
+}
+
 /** Catan distance rule: no settlement within 1 edge of another */
 export function isVertexAvailable(
   vertexId: string,
@@ -173,7 +177,7 @@ function harborValue(
   weights: ResourceWeights
 ): number {
   const tile = board.hexes.find((h) => h.coord.q === hex.q && h.coord.r === hex.r);
-  if (!tile || tile.resource === 'desert' || !tile.number) return 0;
+  if (!tile || tile.kind !== 'land' || tile.resource === 'desert' || !tile.number) return 0;
 
   const prod =
     (NUMBER_PROB[tile.number] ?? 0) *
@@ -197,7 +201,7 @@ export function scoreVertex(
 
   for (const hex of vertex.hexes) {
     const tile = board.hexes.find((h) => h.coord.q === hex.q && h.coord.r === hex.r);
-    if (!tile || tile.resource === 'desert' || !tile.number) continue;
+    if (!tile || tile.kind !== 'land' || !tile.resource || tile.resource === 'desert' || !tile.number) continue;
 
     resourceSet.add(tile.resource);
     const value =
@@ -222,7 +226,13 @@ export function scoreVertex(
 
 export function getValidVertices(placed: PlacedSettlement[]): string[] {
   const vertices = getVertices();
-  return [...vertices.keys()].filter((id) => isVertexAvailable(id, placed));
+  const landSet = getLandSet();
+  return [...vertices.keys()].filter((id) => {
+    const v = vertices.get(id);
+    if (!v) return false;
+    const touchesLand = v.hexes.some((h) => landSet.has(coordKey(h)));
+    return touchesLand && isVertexAvailable(id, placed);
+  });
 }
 
 export function rankVertices(

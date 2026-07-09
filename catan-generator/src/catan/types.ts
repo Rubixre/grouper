@@ -9,10 +9,13 @@ export interface HexCoord {
   r: number;
 }
 
+export type HexKind = 'land' | 'edge';
+
 export interface HexTile {
   coord: HexCoord;
-  resource: ResourceType;
-  number: number | null; // null for desert
+  kind: HexKind;
+  resource: ResourceType | null;
+  number: number | null;
 }
 
 export interface CoastSlot {

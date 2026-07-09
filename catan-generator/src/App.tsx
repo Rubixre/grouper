@@ -79,7 +79,7 @@ function App() {
         <div>
           <h1>Catan Brettgenerator</h1>
           <p className="subtitle">
-            Tilfeldig brett for grunnspillet – ressurser, tall og havnebrikker
+            37-hex brett (7 rader) – ressurser, tall og havnebrikker
           </p>
         </div>
         <div className="header-actions">

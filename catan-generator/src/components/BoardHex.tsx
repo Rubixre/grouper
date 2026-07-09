@@ -1,4 +1,4 @@
-import type { HexCoord } from '../catan/types';
+import type { HexCoord, HexKind, ResourceType } from '../catan/types';
 import { hexCorner } from '../catan/hex';
 
 const RESOURCE_COLORS: Record<string, string> = {
@@ -19,14 +19,18 @@ const RESOURCE_LABELS: Record<string, string> = {
   desert: 'Ørken',
 };
 
+const EDGE_FILL = '#3498db';
+const EDGE_STROKE = '#2471a3';
+
 interface BoardHexProps {
   coord: HexCoord;
-  resource: string;
+  kind: HexKind;
+  resource: ResourceType | null;
   number: number | null;
   size: number;
 }
 
-export function BoardHex({ coord, resource, number, size }: BoardHexProps) {
+export function BoardHex({ coord, kind, resource, number, size }: BoardHexProps) {
   const points = Array.from({ length: 6 }, (_, i) => {
     const { x, y } = hexCorner(coord, i, size);
     return `${x},${y}`;
@@ -35,11 +39,24 @@ export function BoardHex({ coord, resource, number, size }: BoardHexProps) {
   const cx = Math.sqrt(3) * size * (coord.q + coord.r / 2);
   const cy = size * (3 / 2) * coord.r;
 
-  const fill = RESOURCE_COLORS[resource] ?? '#ccc';
+  if (kind === 'edge') {
+    return (
+      <g className="hex-tile hex-edge">
+        <polygon
+          points={points}
+          fill={EDGE_FILL}
+          stroke={EDGE_STROKE}
+          strokeWidth={2}
+        />
+      </g>
+    );
+  }
+
+  const fill = RESOURCE_COLORS[resource ?? ''] ?? '#ccc';
   const isDesert = resource === 'desert';
 
   return (
-    <g className="hex-tile">
+    <g className="hex-tile hex-land">
       <polygon
         points={points}
         fill={fill}
@@ -55,7 +72,7 @@ export function BoardHex({ coord, resource, number, size }: BoardHexProps) {
         fontSize={9}
         fontWeight={600}
       >
-        {RESOURCE_LABELS[resource] ?? resource}
+        {RESOURCE_LABELS[resource ?? ''] ?? resource}
       </text>
       {!isDesert && number !== null && (
         <>

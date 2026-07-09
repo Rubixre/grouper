@@ -22,7 +22,7 @@ interface BoardViewProps {
   interactive?: boolean;
 }
 
-const HEX_SIZE = 42;
+const HEX_SIZE = 34;
 
 function getVertexPixel(vertexId: string, size: number): { x: number; y: number } | null {
   const vertices = getVertices();
@@ -57,12 +57,13 @@ export function BoardView({
       role="img"
       aria-label="Catan-brett"
     >
-      <rect x={minX} y={minY} width={width} height={height} fill="#4a90c2" />
+      <rect x={minX} y={minY} width={width} height={height} fill="#1a5276" />
 
       {board.hexes.map((tile) => (
         <BoardHex
           key={`${tile.coord.q},${tile.coord.r}`}
           coord={tile.coord}
+          kind={tile.kind}
           resource={tile.resource}
           number={tile.number}
           size={HEX_SIZE}
