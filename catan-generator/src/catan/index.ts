@@ -5,5 +5,6 @@ export * from './edgePieces';
 export * from './harbors';
 export * from './generator';
 export * from './settlements';
+export * from './resourceWeights';
 export * from './mapping';
 export * from './simulator';

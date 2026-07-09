@@ -132,6 +132,44 @@ if (fixedHarborBoard) {
   assert(fixedHarborBoard.edgeRotation === 0, 'Fixed harbors use rotation 0');
 }
 
+console.log('\nResource weights');
+import {
+  WEIGHTS_GENERAL,
+  WEIGHTS_LONGEST_ROAD,
+  WEIGHTS_LARGEST_ARMY,
+  coverageBonus,
+  getWeightsForProfile,
+} from '../src/catan/resourceWeights.ts';
+import { DEFAULT_RESOURCE_WEIGHTS } from '../src/catan/types.ts';
+
+assert(DEFAULT_RESOURCE_WEIGHTS.wheat === 1.35, 'Default wheat weight from BGA top 50');
+assert(DEFAULT_RESOURCE_WEIGHTS.ore === 1.33, 'Default ore weight from BGA top 50');
+assert(
+  getWeightsForProfile('longestRoad').wood > WEIGHTS_GENERAL.wood,
+  'Longest road boosts wood vs general'
+);
+assert(
+  getWeightsForProfile('largestArmy').ore > WEIGHTS_GENERAL.ore,
+  'Largest army boosts ore vs general'
+);
+const highValueCoverage = coverageBonus(
+  new Set(['wheat', 'ore', 'wood']),
+  WEIGHTS_GENERAL
+);
+const lowValueCoverage = coverageBonus(
+  new Set(['wood', 'brick', 'sheep']),
+  WEIGHTS_GENERAL
+);
+assert(
+  highValueCoverage > lowValueCoverage,
+  'Coverage bonus favors high-value resource mix'
+);
+assert(
+  coverageBonus(new Set(['wheat', 'ore', 'wood', 'brick', 'sheep']), WEIGHTS_GENERAL) >
+    highValueCoverage,
+  'Full resource coverage scores higher'
+);
+
 console.log('\nSimulator');
 assert(
   JSON.stringify(getPlacementOrder(4)) === JSON.stringify([0, 1, 2, 3, 3, 2, 1, 0]),

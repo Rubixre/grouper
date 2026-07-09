@@ -1,10 +1,13 @@
 import type { SettlementScore } from '../catan/types';
 import type { SimulationState } from '../catan/simulator';
+import type { StrategyProfile } from '../catan/resourceWeights';
+import { STRATEGY_PROFILES } from '../catan/resourceWeights';
 import { PLAYER_COLORS, PLAYER_NAMES, currentPlayer } from '../catan/simulator';
 
 interface SettlementSimulatorProps {
   state: SimulationState;
   options: SettlementScore[];
+  strategyProfile: StrategyProfile;
   selectedVertex: string | null;
   onSelectVertex: (vertexId: string) => void;
   onConfirm: () => void;
@@ -13,6 +16,7 @@ interface SettlementSimulatorProps {
 export function SettlementSimulator({
   state,
   options,
+  strategyProfile,
   selectedVertex,
   onSelectVertex,
   onConfirm,
@@ -47,8 +51,8 @@ export function SettlementSimulator({
             {PLAYER_NAMES[player!]}: klikk på en grønn markør på brettet, eller
             velg fra listen.{' '}
             {options[0]?.placementKind === 'second'
-              ? 'Andre landsby: startressurser fra denne plasseringen, men vurdering inkluderer utfylling mot første landsby og havn på total inntekt.'
-              : 'Fargen viser relativ styrke (ressurser, sannsynlighet, variasjon, havn).'}
+              ? 'Andre landsby: startressurser fra denne plasseringen, men vurdering inkluderer vektet utfylling mot første landsby og havn på total inntekt.'
+              : `Fargen viser relativ styrke (${STRATEGY_PROFILES[strategyProfile].label}: produksjon, dekningsgrad, havn).`}
           </p>
           <div className="options-list">
             <h3>Toppkandidater</h3>
@@ -70,7 +74,7 @@ export function SettlementSimulator({
                     </>
                   ) : (
                     <>
-                      Prod {opt.production.toFixed(2)} · Var {opt.diversity.toFixed(2)} · Havn{' '}
+                      Prod {opt.production.toFixed(2)} · Dekk {opt.diversity.toFixed(2)} · Havn{' '}
                       {opt.harbor.toFixed(2)}
                     </>
                   )}

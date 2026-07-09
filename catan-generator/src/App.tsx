@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Board, GeneratorSettings, PlayerCount } from './catan/types';
 import { DEFAULT_SETTINGS } from './catan/types';
+import {
+  type StrategyProfile,
+  getWeightsForProfile,
+  STRATEGY_PROFILES,
+} from './catan/resourceWeights';
 import { generateBoard } from './catan/generator';
 import { getBoardMapping } from './catan/mapping';
 import {
@@ -20,6 +25,7 @@ function App() {
   const [board, setBoard] = useState<Board | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [playerCount, setPlayerCount] = useState<PlayerCount>(4);
+  const [strategyProfile, setStrategyProfile] = useState<StrategyProfile>('general');
   const [simulation, setSimulation] = useState<SimulationState | null>(null);
   const [selectedVertex, setSelectedVertex] = useState<string | null>(null);
   const [mode, setMode] = useState<'view' | 'simulate'>('view');
@@ -57,9 +63,11 @@ function App() {
     setMode('simulate');
   };
 
+  const scoringWeights = getWeightsForProfile(strategyProfile);
+
   const options =
     simulation && board
-      ? getOptionsForCurrentTurn(simulation)
+      ? getOptionsForCurrentTurn(simulation, scoringWeights)
       : [];
 
   const handleConfirm = () => {
@@ -120,6 +128,32 @@ function App() {
           <div className="panel">
             <h2>Simulering</h2>
             <label className="field">
+              Strategiprofil
+              <select
+                value={strategyProfile}
+                onChange={(e) =>
+                  setStrategyProfile(e.target.value as StrategyProfile)
+                }
+              >
+                {(Object.keys(STRATEGY_PROFILES) as StrategyProfile[]).map((key) => (
+                  <option key={key} value={key}>
+                    {STRATEGY_PROFILES[key].label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="muted small">
+              {STRATEGY_PROFILES[strategyProfile].description}. Vekter fra{' '}
+              <a
+                href="https://www.boardgameanalysis.com/what-is-the-strategic-value-of-each-catan-resources/"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Board Game Analysis
+              </a>
+              .
+            </p>
+            <label className="field">
               Antall spillere
               <select
                 value={playerCount}
@@ -151,6 +185,7 @@ function App() {
             <SettlementSimulator
               state={simulation}
               options={options}
+              strategyProfile={strategyProfile}
               selectedVertex={selectedVertex}
               onSelectVertex={setSelectedVertex}
               onConfirm={handleConfirm}
@@ -198,8 +233,8 @@ function App() {
 
       <footer className="footer">
         <p>
-          Fase 1: Grunnspill · Utvidelse kommer senere · Ressursverdier: Malm
-          1.2, Korn 1.15, Tømmer/Tegl 1.0, Ull 0.85
+          Fase 1: Grunnspill · Ressursvekter fra Board Game Analysis (hvete 1,35,
+          malm 1,33, tre/tegl 0,78, ull 0,76 i generell profil)
         </p>
       </footer>
     </div>

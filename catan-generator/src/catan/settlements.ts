@@ -9,6 +9,7 @@ import type {
   Vertex,
 } from './types';
 import { DEFAULT_RESOURCE_WEIGHTS } from './types';
+import { coverageBonus } from './resourceWeights';
 import { getHarborsForVertex } from './harbors';
 import { coordKey, hexNeighbor } from './hex';
 import { getBoardSet, getLandSet } from './boardLayout';
@@ -298,7 +299,11 @@ function harborBonusForPlayer(
   return bonus;
 }
 
-function portfolioSynergy(first: ProductionProfile, second: ProductionProfile): {
+function portfolioSynergy(
+  first: ProductionProfile,
+  second: ProductionProfile,
+  weights: ResourceWeights
+): {
   portfolio: number;
   overlap: number;
 } {
@@ -308,11 +313,12 @@ function portfolioSynergy(first: ProductionProfile, second: ProductionProfile): 
   for (const resource of PROD_RESOURCES) {
     const v1 = first.byResource[resource] ?? 0;
     const v2 = second.byResource[resource] ?? 0;
+    const resourceWeight = weights[resource];
 
     if (v1 === 0 && v2 > 0) {
-      gapFill += v2 * 0.55;
+      gapFill += v2 * resourceWeight * 0.5;
     } else if (v1 > 0 && v2 > 0) {
-      resourceOverlap += Math.min(v1, v2) * 0.4;
+      resourceOverlap += Math.min(v1, v2) * resourceWeight * 0.35;
     }
   }
 
@@ -325,8 +331,9 @@ function portfolioSynergy(first: ProductionProfile, second: ProductionProfile): 
     }
   }
 
-  const combinedDiversity = new Set([...first.resources, ...second.resources]).size * 0.14;
-  const portfolio = gapFill + combinedDiversity;
+  const combinedResources = new Set([...first.resources, ...second.resources]);
+  const portfolioCoverage = coverageBonus(combinedResources, weights, 0.2);
+  const portfolio = gapFill + portfolioCoverage;
   const overlap = resourceOverlap + numberOverlap;
 
   return { portfolio, overlap };
@@ -340,7 +347,7 @@ export function scoreVertex(
   const vertices = getVertices();
   const vertex = vertices.get(vertexId)!;
   const profile = buildProductionProfile(vertexId, board, weights);
-  const diversity = profile.resources.size * 0.08;
+  const diversity = coverageBonus(profile.resources, weights);
   const harbor = harborBonusForVertex(vertexId, vertex, board, weights);
 
   return {
@@ -364,9 +371,9 @@ export function scoreSecondSettlement(
   const first = buildProductionProfile(firstVertexId, board, weights);
   const second = buildProductionProfile(secondVertexId, board, weights);
   const combined = mergeProfiles(first, second);
-  const { portfolio, overlap } = portfolioSynergy(first, second);
+  const { portfolio, overlap } = portfolioSynergy(first, second, weights);
   const harbor = harborBonusForPlayer([firstVertexId, secondVertexId], combined, board);
-  const diversity = combined.resources.size * 0.1;
+  const diversity = coverageBonus(combined.resources, weights);
 
   // Produksjon fra landsby 2 = startressurser; portefølje og havn på total inntekt.
   const total =
