@@ -30,30 +30,34 @@ export function SettlementSimulator({
   const player = currentPlayer(state);
   const step = state.currentStep;
   const total = state.placementOrder.length;
+  const progress = state.finished ? 100 : (step / total) * 100;
   const isFocusTurn = player === focusPlayer;
   const advising = strategyMode === 'auto' && isFocusTurn;
 
   return (
     <div className="panel simulator-panel">
-      <h2>Startposisjon-simulator</h2>
-
-      <div className="sim-meta">
-        <span>
-          Trekk {step + 1} / {total}
-        </span>
-        {player !== null && (
-          <span
-            className="current-player"
-            style={{ color: PLAYER_COLORS[player] }}
-          >
-            {PLAYER_NAMES[player]} plasserer
+      <div className="sim-progress-wrap">
+        <div className="sim-progress-label">
+          <span>
+            Trekk {Math.min(step + 1, total)} / {total}
           </span>
-        )}
+          {player !== null && !state.finished && (
+            <span
+              className="current-player"
+              style={{ color: PLAYER_COLORS[player] }}
+            >
+              {PLAYER_NAMES[player]}
+            </span>
+          )}
+        </div>
+        <div className="sim-progress-track" role="progressbar" aria-valuenow={progress}>
+          <div className="sim-progress-fill" style={{ width: `${progress}%` }} />
+        </div>
       </div>
 
       {advising && analysis && (
         <div className="strategy-analysis">
-          <h3>Strategianalyse for {PLAYER_NAMES[focusPlayer]}</h3>
+          <h3>Analyse · {PLAYER_NAMES[focusPlayer]}</h3>
           <p className="muted small">{getAnalysisSummary(analysis)}</p>
           <div className="profile-scores">
             {Object.entries(analysis.profileScores).map(([profile, score]) => (
@@ -66,30 +70,26 @@ export function SettlementSimulator({
         </div>
       )}
 
-      {!isFocusTurn && strategyMode === 'auto' && (
+      {!isFocusTurn && strategyMode === 'auto' && !state.finished && (
         <p className="muted small sim-hint">
-          Motstander plasserer – auto-råd vises når {PLAYER_NAMES[focusPlayer]} skal
-          plassere.
+          Venter på {PLAYER_NAMES[player!]} – råd vises når det er din tur.
         </p>
       )}
 
       {state.finished ? (
         <p className="sim-done">
-          Alle startlandsbyer er plassert! Se statistikk under brettet.
+          Ferdig! Statistikk vises under brettet.
         </p>
       ) : (
         <>
           <p className="sim-hint">
-            {PLAYER_NAMES[player!]}: klikk på en grønn markør på brettet, eller
-            velg fra listen.{' '}
-            {options[0]?.placementKind === 'second'
-              ? 'Andre landsby: startressurser fra denne plasseringen, men vurdering inkluderer vektet utfylling mot første landsby og havn på total inntekt.'
-              : advising
-                ? 'Auto: vekter basert på seiersprofil, tilgjengelige noder og forventede motstandertrekk.'
-                : `Vurdering med ${STRATEGY_PROFILES[strategyMode].label}.`}
+            Klikk grønn markør på brettet eller velg i listen.
+            {options[0]?.placementKind === 'second' && (
+              <> Andre landsby gir startressurser.</>
+            )}
           </p>
           <div className="options-list">
-            <h3>Toppkandidater</h3>
+            <h3>Topp {Math.min(8, options.length)} plasseringer</h3>
             {options.slice(0, 8).map((opt, i) => (
               <button
                 key={opt.vertexId}
@@ -98,18 +98,16 @@ export function SettlementSimulator({
                 onClick={() => onSelectVertex(opt.vertexId)}
               >
                 <span className="option-rank">#{i + 1}</span>
-                <span className="option-score">{opt.total.toFixed(3)}</span>
+                <span className="option-score">{opt.total.toFixed(2)}</span>
                 <span className="option-detail">
                   {opt.placementKind === 'second' ? (
                     <>
                       Start {opt.production.toFixed(2)} · Portef.{' '}
-                      {((opt.portfolio ?? 0) - (opt.overlap ?? 0)).toFixed(2)} · Havn tot.{' '}
-                      {opt.harbor.toFixed(2)}
+                      {((opt.portfolio ?? 0) - (opt.overlap ?? 0)).toFixed(2)}
                     </>
                   ) : (
                     <>
-                      Prod {opt.production.toFixed(2)} · Dekk {opt.diversity.toFixed(2)} · Havn{' '}
-                      {opt.harbor.toFixed(2)}
+                      Prod {opt.production.toFixed(2)} · Dekk {opt.diversity.toFixed(2)}
                     </>
                   )}
                 </span>
@@ -118,29 +116,28 @@ export function SettlementSimulator({
           </div>
           <button
             type="button"
-            className="btn primary"
+            className="btn primary btn-block"
             disabled={!selectedVertex}
             onClick={onConfirm}
           >
-            Plasser landsby for {PLAYER_NAMES[player!]}
+            Bekreft for {PLAYER_NAMES[player!]}
           </button>
         </>
       )}
 
-      <div className="placement-log">
-        <h3>Plasseringer</h3>
-        {state.placements.length === 0 && (
-          <p className="muted">Ingen landsbyer plassert ennå.</p>
-        )}
-        {state.placements.map((p, i) => (
-          <div key={i} className="log-row">
-            <span style={{ color: PLAYER_COLORS[p.player] }}>●</span>
-            <span>
-              {PLAYER_NAMES[p.player]} – trekk {i + 1}
-            </span>
-          </div>
-        ))}
-      </div>
+      {state.placements.length > 0 && (
+        <details className="placement-log" open={state.placements.length <= 4}>
+          <summary>Plasseringer ({state.placements.length})</summary>
+          {state.placements.map((p, i) => (
+            <div key={i} className="log-row">
+              <span style={{ color: PLAYER_COLORS[p.player] }}>●</span>
+              <span>
+                {PLAYER_NAMES[p.player]} · trekk {i + 1}
+              </span>
+            </div>
+          ))}
+        </details>
+      )}
     </div>
   );
 }

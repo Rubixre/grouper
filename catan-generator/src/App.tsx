@@ -11,6 +11,7 @@ import { getBoardMapping } from './catan/mapping';
 import {
   createSimulation,
   getOptionsWithAnalysis,
+  getPlacementOrder,
   placeSettlement,
   type SimulationState,
 } from './catan/simulator';
@@ -20,6 +21,12 @@ import { SettingsPanel } from './components/SettingsPanel';
 import { SettlementSimulator } from './components/SettlementSimulator';
 import { SimulationSummaryPanel } from './components/SimulationSummary';
 import './App.css';
+
+function formatDraftOrder(count: PlayerCount): string {
+  return getPlacementOrder(count)
+    .map((p) => p + 1)
+    .join(' → ');
+}
 
 function App() {
   const [settings, setSettings] = useState<GeneratorSettings>(DEFAULT_SETTINGS);
@@ -37,6 +44,7 @@ function App() {
   const [highlightCorner, setHighlightCorner] = useState<string | null>(null);
 
   const boardMapping = useMemo(() => getBoardMapping(boardSize), [boardSize]);
+  const simActive = mode === 'simulate' && simulation !== null;
 
   const handleGenerate = useCallback(() => {
     const result = generateBoard(settings, boardSize);
@@ -66,6 +74,12 @@ function App() {
     setMode('simulate');
   };
 
+  const resetSimulation = () => {
+    setSimulation(null);
+    setSelectedVertex(null);
+    setMode('view');
+  };
+
   const ranked =
     simulation && board
       ? getOptionsWithAnalysis(simulation, focusPlayer, strategyMode)
@@ -83,9 +97,8 @@ function App() {
         <div>
           <h1>Catan Brettgenerator</h1>
           <p className="subtitle">
-            {BOARD_SIZE_CONFIG[boardSize].totalHexes}-hex brett – ressurser, tall og
-            havnebrikker
-            {boardSize === 'extension56' ? ' (5–6 spillere)' : ''}
+            {BOARD_SIZE_CONFIG[boardSize].totalHexes} hex ·{' '}
+            {BOARD_SIZE_CONFIG[boardSize].label}
           </p>
         </div>
         <div className="header-actions">
@@ -98,7 +111,7 @@ function App() {
       {error && <div className="error-banner">{error}</div>}
 
       <div className="layout">
-        <aside className="sidebar">
+        <aside className="sidebar sidebar-left">
           <SettingsPanel settings={settings} onChange={setSettings} />
 
           <div className="panel">
@@ -113,6 +126,9 @@ function App() {
                   if (size === 'base' && playerCount > 4) {
                     setPlayerCount(4);
                   }
+                  if (size === 'base' && focusPlayer > 3) {
+                    setFocusPlayer(3);
+                  }
                 }}
               >
                 {(Object.keys(BOARD_SIZE_CONFIG) as BoardSize[]).map((key) => (
@@ -122,14 +138,10 @@ function App() {
                 ))}
               </select>
             </label>
-            <p className="muted small">
-              Utvidelse: +11 landhexer (2 av hver ressurs + ørken), +4 enkelt-hex
-              kantbrikker (B7–B10).
-            </p>
           </div>
 
           <div className="panel">
-            <h2>Kartleggingsmodus</h2>
+            <h2>Kartlegging</h2>
             <label className="setting-row">
               <input
                 type="checkbox"
@@ -140,10 +152,10 @@ function App() {
                 }}
               />
               <span className="setting-text">
-                <strong>Vis nummerering</strong>
+                <strong>Vis K/H-nummerering</strong>
                 <small>
-                  K1–K{boardMapping.edgeHexes.length} kanthexer, H1–H
-                  {boardMapping.coastCorners.length} møtehjørner, hjørne 0–5
+                  K1–K{boardMapping.edgeHexes.length}, H1–H
+                  {boardMapping.coastCorners.length}
                 </small>
               </span>
             </label>
@@ -157,100 +169,24 @@ function App() {
             />
           )}
 
-          {!mappingMode && (
-          <div className="panel">
-            <h2>Simulering</h2>
-            <label className="field">
-              Min spiller
-              <select
-                value={focusPlayer}
-                onChange={(e) => setFocusPlayer(Number(e.target.value))}
-              >
-                <option value={0}>Spiller 1</option>
-                <option value={1}>Spiller 2</option>
-                <option value={2}>Spiller 3</option>
-                <option value={3}>Spiller 4</option>
-                {boardSize === 'extension56' && (
-                  <>
-                    <option value={4}>Spiller 5</option>
-                    <option value={5}>Spiller 6</option>
-                  </>
-                )}
-              </select>
-            </label>
-            <label className="field">
-              Strategi
-              <select
-                value={strategyMode}
-                onChange={(e) =>
-                  setStrategyMode(e.target.value as StrategyMode)
-                }
-              >
-                {(Object.keys(STRATEGY_PROFILES) as StrategyMode[]).map((key) => (
-                  <option key={key} value={key}>
-                    {STRATEGY_PROFILES[key].label}
-                  </option>
+          {!mappingMode && board && !simulation?.finished && (
+            <details className="panel legend-collapsible">
+              <summary>Havner og kantbrikker</summary>
+              <p className="muted small">
+                Rotasjon {board.edgeRotation}/5 ·{' '}
+                {BOARD_SIZE_CONFIG[boardSize].harborTriplePieceCount}×3-hex
+                {boardSize === 'extension56' &&
+                  ` + ${BOARD_SIZE_CONFIG.extension56.singleEdgePieceCount} enkelt`}
+              </p>
+              <div className="legend-list">
+                {board.harbors.map((h) => (
+                  <div key={h.definition.id} className="harbor-legend-row">
+                    <strong>B{h.pieceGroup + 1}</strong>
+                    <span>{h.definition.name}</span>
+                  </div>
                 ))}
-              </select>
-            </label>
-            <p className="muted small">
-              {STRATEGY_PROFILES[strategyMode].description}. I auto-modus
-              analyseres tilgjengelige plasseringer og forventede motstandertrekk
-              før landsby nr. 2.{' '}
-              <a
-                href="https://www.boardgameanalysis.com/what-is-the-strategic-value-of-each-catan-resources/"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Board Game Analysis
-              </a>
-              .
-            </p>
-            <label className="field">
-              Antall spillere
-              <select
-                value={playerCount}
-                onChange={(e) =>
-                  setPlayerCount(Number(e.target.value) as PlayerCount)
-                }
-              >
-                <option value={2}>2 spillere</option>
-                <option value={3}>3 spillere</option>
-                <option value={4}>4 spillere</option>
-                {boardSize === 'extension56' && (
-                  <>
-                    <option value={5}>5 spillere</option>
-                    <option value={6}>6 spillere</option>
-                  </>
-                )}
-              </select>
-            </label>
-            <p className="muted small">
-              Rekkefølge: 1 → 2 → 3 → 4 → 4 → 3 → 2 → 1 (slange-draft). Hver
-              spiller plasserer manuelt når det er deres tur.
-            </p>
-            <button
-              type="button"
-              className="btn"
-              disabled={!board}
-              onClick={startSimulation}
-            >
-              Start plassering
-            </button>
-          </div>
-          )}
-
-          {!mappingMode && mode === 'simulate' && simulation && (
-            <SettlementSimulator
-              state={simulation}
-              options={ranked.options}
-              analysis={ranked.analysis}
-              focusPlayer={focusPlayer}
-              strategyMode={strategyMode}
-              selectedVertex={selectedVertex}
-              onSelectVertex={setSelectedVertex}
-              onConfirm={handleConfirm}
-            />
+              </div>
+            </details>
           )}
         </aside>
 
@@ -259,10 +195,10 @@ function App() {
             <BoardView
               board={board}
               placements={simulation?.placements ?? []}
-              highlightedVertices={mode === 'simulate' ? ranked.options : []}
+              highlightedVertices={simActive ? ranked.options : []}
               selectedVertex={selectedVertex}
               onVertexClick={setSelectedVertex}
-              interactive={mode === 'simulate'}
+              interactive={simActive && !simulation?.finished}
               mappingMode={mappingMode}
               mapping={boardMapping}
               highlightEdge={highlightEdge}
@@ -275,38 +211,127 @@ function App() {
           {simulation?.finished && (
             <SimulationSummaryPanel state={simulation} />
           )}
-
-          {!simulation?.finished && (
-          <div className="legend panel">
-            <h3>Kantbrikker og havner</h3>
-            <p className="muted small">
-              Rotasjon {board?.edgeRotation ?? 0}/5 (1/6 hvert steg).{' '}
-              {BOARD_SIZE_CONFIG[boardSize].harborTriplePieceCount} brikker à 3 hexer
-              (B1: K18–K1–K2 ved rot. 0)
-              {boardSize === 'extension56' &&
-                `, pluss ${BOARD_SIZE_CONFIG.extension56.singleEdgePieceCount} enkelt-hex brikker (B7–B10)`}
-              .
-            </p>
-            {board?.harbors.map((h) => (
-              <div key={h.definition.id} className="harbor-legend-row">
-                <strong>
-                  B{h.pieceGroup + 1} · {h.definition.name}
-                </strong>
-                <span>
-                  {h.edgeHexLabel} → {h.nodeLabels.join(', ')}
-                </span>
-              </div>
-            ))}
-          </div>
-          )}
         </main>
+
+        {!mappingMode && (
+          <aside className="sidebar sidebar-right">
+            <div className="panel simulation-setup">
+              <h2>Startposisjon</h2>
+
+              <div className="field-row">
+                <label className="field">
+                  Spillere
+                  <select
+                    value={playerCount}
+                    disabled={simActive && !simulation?.finished}
+                    onChange={(e) =>
+                      setPlayerCount(Number(e.target.value) as PlayerCount)
+                    }
+                  >
+                    <option value={2}>2</option>
+                    <option value={3}>3</option>
+                    <option value={4}>4</option>
+                    {boardSize === 'extension56' && (
+                      <>
+                        <option value={5}>5</option>
+                        <option value={6}>6</option>
+                      </>
+                    )}
+                  </select>
+                </label>
+                <label className="field">
+                  Min spiller
+                  <select
+                    value={focusPlayer}
+                    onChange={(e) => setFocusPlayer(Number(e.target.value))}
+                  >
+                    {Array.from({ length: playerCount }, (_, i) => (
+                      <option key={i} value={i}>
+                        Spiller {i + 1}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <label className="field">
+                Strategi
+                <select
+                  value={strategyMode}
+                  onChange={(e) =>
+                    setStrategyMode(e.target.value as StrategyMode)
+                  }
+                >
+                  {(Object.keys(STRATEGY_PROFILES) as StrategyMode[]).map((key) => (
+                    <option key={key} value={key}>
+                      {STRATEGY_PROFILES[key].label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <p className="muted small draft-order">
+                Draft: {formatDraftOrder(playerCount)}
+              </p>
+
+              {!simActive ? (
+                <button
+                  type="button"
+                  className="btn primary btn-block"
+                  disabled={!board}
+                  onClick={startSimulation}
+                >
+                  Start plassering
+                </button>
+              ) : (
+                <div className="sim-actions">
+                  {!simulation?.finished && (
+                    <button
+                      type="button"
+                      className="btn btn-block"
+                      onClick={resetSimulation}
+                    >
+                      Avbryt
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn primary btn-block"
+                    onClick={startSimulation}
+                  >
+                    {simulation?.finished ? 'Ny runde' : 'Start på nytt'}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {simActive && simulation && (
+              <SettlementSimulator
+                state={simulation}
+                options={ranked.options}
+                analysis={ranked.analysis}
+                focusPlayer={focusPlayer}
+                strategyMode={strategyMode}
+                selectedVertex={selectedVertex}
+                onSelectVertex={setSelectedVertex}
+                onConfirm={handleConfirm}
+              />
+            )}
+
+            {!simActive && (
+              <div className="panel sim-placeholder">
+                <p className="muted small">
+                  Velg spillere og strategi, trykk <strong>Start plassering</strong>,
+                  og klikk deretter på grønne markører på brettet til venstre.
+                </p>
+              </div>
+            )}
+          </aside>
+        )}
       </div>
 
       <footer className="footer">
-        <p>
-          Grunnspill og 5–6-spillerutvidelse · Fire seiersprofiler + auto-analyse
-          (Board Game Analysis)
-        </p>
+        <p>Grunnspill + 5–6 utvidelse · Auto-strategi (Board Game Analysis)</p>
       </footer>
     </div>
   );
