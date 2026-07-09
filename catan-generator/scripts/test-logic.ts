@@ -203,6 +203,47 @@ if (board) {
   assert(analysis.usedLookahead, 'First turn analysis uses lookahead');
 }
 
+console.log('\nHarbor scoring');
+import { getHarborsForVertex } from '../src/catan/harbors.ts';
+import { scoreVertex, scoreSecondSettlement } from '../src/catan/settlements.ts';
+if (board) {
+  const w = getWeightsForProfile('general');
+  const sim = createSimulation(board, 4);
+  let state = sim;
+  for (let i = 0; i < 7; i++) {
+    const opts = getOptionsForCurrentTurn(state, 0, 'general');
+    state = placeSettlement(state, opts[0].vertexId);
+  }
+  const secondOpts = getOptionsForCurrentTurn(state, 0, 'general');
+  const harborOpts = secondOpts.filter(
+    (o) => getHarborsForVertex(o.vertexId, board.harbors).length > 0
+  );
+  const inlandOpts = secondOpts.filter(
+    (o) => getHarborsForVertex(o.vertexId, board.harbors).length === 0
+  );
+  if (harborOpts[0] && inlandOpts[0]) {
+    const hRank = secondOpts.indexOf(harborOpts[0]) + 1;
+    const iRank = secondOpts.indexOf(inlandOpts[0]) + 1;
+    assert(
+      harborOpts[0].harbor < harborOpts[0].production * 1.5,
+      'Harbor bonus no longer dwarfs local production'
+    );
+    assert(
+      inlandOpts[0].total >= harborOpts[0].total * 0.85 || iRank <= hRank + 3,
+      'Inland options competitive with harbor options'
+    );
+  }
+
+  const withHarbor = secondOpts.find(
+    (o) => getHarborsForVertex(o.vertexId, board.harbors).length > 0
+  );
+  if (withHarbor) {
+    const firstId = state.placements.find((p) => p.player === 0)!.vertexId;
+    const scored = scoreSecondSettlement(withHarbor.vertexId, firstId, board, w);
+    assert(scored.harbor < 0.15, 'Typical harbor bonus stays modest in early game');
+  }
+}
+
 console.log('\nSimulator');
 assert(
   JSON.stringify(getPlacementOrder(4)) === JSON.stringify([0, 1, 2, 3, 3, 2, 1, 0]),

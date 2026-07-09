@@ -203,39 +203,48 @@ function buildProductionProfile(
   return { byResource, byNumber, total, resources, breakdown };
 }
 
-function mergeProfiles(a: ProductionProfile, b: ProductionProfile): ProductionProfile {
-  const byResource: Partial<Record<ProdResource, number>> = { ...a.byResource };
-  const byNumber: Partial<Record<number, number>> = { ...a.byNumber };
-  const resources = new Set<ProdResource>([...a.resources, ...b.resources]);
-
-  for (const resource of PROD_RESOURCES) {
-    const sum = (a.byResource[resource] ?? 0) + (b.byResource[resource] ?? 0);
-    if (sum > 0) byResource[resource] = sum;
+function countProductiveLandHexes(vertex: Vertex, board: Board): number {
+  let count = 0;
+  for (const hex of vertex.hexes) {
+    const tile = board.hexes.find((h) => h.coord.q === hex.q && h.coord.r === hex.r);
+    if (tile?.kind === 'land' && tile.resource && tile.resource !== 'desert' && tile.number) {
+      count++;
+    }
   }
-
-  for (const number of Object.keys(NUMBER_PROB).map(Number)) {
-    const sum = (a.byNumber[number] ?? 0) + (b.byNumber[number] ?? 0);
-    if (sum > 0) byNumber[number] = sum;
-  }
-
-  return {
-    byResource,
-    byNumber,
-    total: a.total + b.total,
-    resources,
-    breakdown: [...a.breakdown, ...b.breakdown],
-  };
+  return count;
 }
 
-function harborValueForResource(
+/** Havneverdier kalibrert for startfasen – handel gir lite før overskudd bygges opp */
+const HARBOR_EARLY_GAME_FACTOR = 0.45;
+const HARBOR_GENERIC_SURPLUS_SHARE = 0.2;
+const HARBOR_GENERIC_TRADE_EFFICIENCY = 0.33;
+const HARBOR_MATCH_EFFICIENCY = 0.4;
+const HARBOR_CROSS_SETTLEMENT_FACTOR = 0.15;
+const MISSING_LAND_HEX_PENALTY = 0.07;
+
+function estimateTradeableSurplus(profile: ProductionProfile): number {
+  return profile.total * HARBOR_GENERIC_SURPLUS_SHARE;
+}
+
+function harborValueForProfile(
   harbor: HarborType,
-  resource: ProdResource,
-  production: number
+  profile: ProductionProfile,
+  earlyGame = true
 ): number {
+  const phase = earlyGame ? HARBOR_EARLY_GAME_FACTOR : 1;
+
+  if (harbor.kind === 'generic') {
+    return estimateTradeableSurplus(profile) * HARBOR_GENERIC_TRADE_EFFICIENCY * phase;
+  }
+
+  const production = profile.byResource[harbor.resource] ?? 0;
   if (production <= 0) return 0;
-  if (harbor.kind === 'generic') return production * 0.5;
-  if (harbor.resource === resource) return production * 1.0;
-  return production * 0.15;
+  return production * HARBOR_MATCH_EFFICIENCY * phase;
+}
+
+function harborLandHexPenalty(vertex: Vertex, board: Board): number {
+  const missing = Math.max(0, 3 - countProductiveLandHexes(vertex, board));
+  return missing * MISSING_LAND_HEX_PENALTY;
 }
 
 function harborBonusForVertex(
@@ -247,56 +256,39 @@ function harborBonusForVertex(
   const affecting = getHarborsForVertex(vertexId, board.harbors);
   if (affecting.length === 0) return 0;
 
+  const profile = buildProductionProfile(vertexId, board, weights);
   let bonus = 0;
   for (const placed of affecting) {
-    for (const hex of vertex.hexes) {
-      bonus += harborValueForHex(placed.definition.harbor, hex, board, weights);
-    }
+    bonus += harborValueForProfile(placed.definition.harbor, profile, true);
   }
-  return bonus;
+  return Math.max(0, bonus - harborLandHexPenalty(vertex, board));
 }
 
-function harborValueForHex(
-  harbor: HarborType,
-  hex: HexCoord,
-  board: Board,
-  weights: ResourceWeights
-): number {
-  const tile = board.hexes.find((h) => h.coord.q === hex.q && h.coord.r === hex.r);
-  if (!tile || tile.kind !== 'land' || tile.resource === 'desert' || !tile.number) return 0;
-
-  const prod =
-    (NUMBER_PROB[tile.number] ?? 0) *
-    weights[tile.resource as keyof ResourceWeights];
-
-  if (harbor.kind === 'generic') return prod * 0.5;
-  if (harbor.resource === tile.resource) return prod * 1.0;
-  return prod * 0.15;
-}
-
-/** Havn vurdert mot spillerens samlede produksjon (begge landsbyer). */
-function harborBonusForPlayer(
-  vertexIds: string[],
-  combined: ProductionProfile,
+/** Havn ved 2. landsby: hovedsakelig fra ny produksjon, liten 2:1-kryss fra landsby 1 */
+function harborBonusForSecondSettlement(
+  first: ProductionProfile,
+  second: ProductionProfile,
+  secondVertexId: string,
   board: Board
 ): number {
-  const seen = new Set<string>();
-  const harbors = vertexIds.flatMap((vertexId) =>
-    getHarborsForVertex(vertexId, board.harbors).filter((h) => {
-      if (seen.has(h.definition.id)) return false;
-      seen.add(h.definition.id);
-      return true;
-    })
-  );
+  const harbors = getHarborsForVertex(secondVertexId, board.harbors);
+  if (harbors.length === 0) return 0;
+
+  const vertices = getVertices();
+  const vertex = vertices.get(secondVertexId)!;
 
   let bonus = 0;
   for (const placed of harbors) {
-    for (const resource of PROD_RESOURCES) {
-      const production = combined.byResource[resource] ?? 0;
-      bonus += harborValueForResource(placed.definition.harbor, resource, production);
+    const harbor = placed.definition.harbor;
+    bonus += harborValueForProfile(harbor, second, true);
+
+    if (harbor.kind === 'resource') {
+      const fromFirst = first.byResource[harbor.resource] ?? 0;
+      bonus += fromFirst * HARBOR_MATCH_EFFICIENCY * HARBOR_CROSS_SETTLEMENT_FACTOR;
     }
   }
-  return bonus;
+
+  return Math.max(0, bonus - harborLandHexPenalty(vertex, board));
 }
 
 function portfolioSynergy(
@@ -370,10 +362,17 @@ export function scoreSecondSettlement(
 ): SettlementScore {
   const first = buildProductionProfile(firstVertexId, board, weights);
   const second = buildProductionProfile(secondVertexId, board, weights);
-  const combined = mergeProfiles(first, second);
   const { portfolio, overlap } = portfolioSynergy(first, second, weights);
-  const harbor = harborBonusForPlayer([firstVertexId, secondVertexId], combined, board);
-  const diversity = coverageBonus(combined.resources, weights);
+  const harbor = harborBonusForSecondSettlement(
+    first,
+    second,
+    secondVertexId,
+    board
+  );
+  const diversity = coverageBonus(
+    new Set([...first.resources, ...second.resources]),
+    weights
+  );
 
   // Produksjon fra landsby 2 = startressurser; portefølje og havn på total inntekt.
   const total =
