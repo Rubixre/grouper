@@ -25,6 +25,7 @@ import {
   resetVertices,
   setBoardSize,
   createSimulation,
+  currentPlayer,
   placeSettlement,
   getOptionsForCurrentTurn,
   scoreSecondSettlement,
@@ -183,6 +184,7 @@ import {
 import { DEFAULT_RESOURCE_WEIGHTS } from '../src/catan/types.ts';
 import {
   analyzeStrategy,
+  countOpponentSteps,
   getSecondPlacementStep,
   getRankedOptions,
   projectPlacements,
@@ -224,8 +226,22 @@ assert(blended.wheat === getWeightsForProfile('both').wheat, 'Blend single profi
 
 console.log('\nStrategy inference');
 const order4 = getPlacementOrder(4);
+const order3 = getPlacementOrder(3);
 assert(getSecondPlacementStep(order4, 0) === 7, 'Player 0 second placement at step 7');
 assert(getSecondPlacementStep(order4, 3) === 4, 'Player 3 second placement at step 4');
+assert(getSecondPlacementStep(order3, 2) === 3, 'Player 2 (P3) second placement at step 3');
+assert(
+  countOpponentSteps(order3, 2, 3, 3) === 0,
+  'No opponent steps between P3 first and second (consecutive turns)'
+);
+assert(
+  countOpponentSteps(order3, 2, 2, 3) === 0,
+  'No opponents between step 2 and 3 for P3 in 3-player draft'
+);
+assert(
+  countOpponentSteps(order4, 0, 1, 7) === 6,
+  'Six opponent steps before P0 second in 4-player draft'
+);
 if (board) {
   const sim = createSimulation(board, 4);
   const autoRanked = getRankedOptions(sim, 0, 'auto');
@@ -236,10 +252,25 @@ if (board) {
     'Four victory profile scores'
   );
 
-  const projected = projectPlacements(board, [], order4, 0, 7);
-  assert(projected.length === 7, 'Projects 7 placements before P0 second settlement');
+  const projected = projectPlacements(board, [], order4, 1, 7, 0);
+  assert(projected.length === 6, 'Projects 6 opponent placements before P0 second settlement');
   const analysis = analyzeStrategy(board, [], order4, 0, 0);
   assert(analysis.usedLookahead, 'First turn analysis uses lookahead');
+  assert(analysis.projectedSteps === 6, 'P0 first turn projects 6 opponent moves');
+
+  const sim3 = createSimulation(board, 3);
+  let state3 = sim3;
+  for (let i = 0; i < 2; i++) {
+    const opts = getOptionsForCurrentTurn(state3);
+    state3 = placeSettlement(state3, opts[0].vertexId);
+  }
+  assert(currentPlayer(state3) === 2, 'Step 2 is player 3 (index 2)');
+  const p3first = getRankedOptions(state3, 2, 'auto');
+  assert(p3first.analysis !== null, 'P3 auto analysis on first settlement turn');
+  assert(
+    p3first.analysis!.projectedSteps === 0,
+    'P3 places twice in a row – no opponent projection before 2nd settlement'
+  );
 }
 
 console.log('\nHarbor scoring');

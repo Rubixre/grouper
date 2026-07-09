@@ -45,18 +45,35 @@ export function getSecondPlacementStep(
   return placementOrder.length;
 }
 
+/** Motstandertrekk mellom fromStep (inkl.) og toStep (ekskl.) */
+export function countOpponentSteps(
+  placementOrder: number[],
+  focusPlayer: number,
+  fromStep: number,
+  toStep: number
+): number {
+  let count = 0;
+  for (let step = fromStep; step < toStep; step++) {
+    if (placementOrder[step] !== focusPlayer) count++;
+  }
+  return count;
+}
+
 /** Gjett motstanderes plasseringer (grådig, standardvekter) mellom fromStep og toStep */
 export function projectPlacements(
   board: Board,
   placements: PlacedSettlement[],
   placementOrder: number[],
   fromStep: number,
-  toStep: number
+  toStep: number,
+  focusPlayer?: number
 ): PlacedSettlement[] {
   const projected = [...placements];
 
   for (let step = fromStep; step < toStep; step++) {
     const player = placementOrder[step];
+    if (focusPlayer !== undefined && player === focusPlayer) continue;
+
     const priorForPlayer = projected.filter((p) => p.player === player).length;
     const options = rankVertices(
       board,
@@ -167,14 +184,23 @@ export function analyzeStrategy(
   let projectedSteps = 0;
 
   if (currentStep < secondStep) {
-    projectedSteps = secondStep - currentStep;
-    analysisPlacements = projectPlacements(
-      board,
-      placements,
+    const fromStep = currentStep + 1;
+    projectedSteps = countOpponentSteps(
       placementOrder,
-      currentStep,
+      focusPlayer,
+      fromStep,
       secondStep
     );
+    if (projectedSteps > 0) {
+      analysisPlacements = projectPlacements(
+        board,
+        placements,
+        placementOrder,
+        fromStep,
+        secondStep,
+        focusPlayer
+      );
+    }
   }
 
   const profileScores = computeProfileScores(
@@ -206,14 +232,21 @@ function rankFirstWithLookahead(
         ...state.placements,
         { vertexId, player: focusPlayer, isCity: false },
       ];
+      const fromStep = state.currentStep + 1;
       const projected = projectPlacements(
         state.board,
         hypothetical,
         state.placementOrder,
-        state.currentStep + 1,
+        fromStep,
+        secondStep,
+        focusPlayer
+      );
+      projectedStepsSum = countOpponentSteps(
+        state.placementOrder,
+        focusPlayer,
+        fromStep,
         secondStep
       );
-      projectedStepsSum = secondStep - state.currentStep;
 
       const profileScores = computeProfileScores(
         state.board,
