@@ -15,8 +15,10 @@ import {
   getPlacementOrder,
   getVertices,
   getBoardMapping,
+  HARBOR_H_PAIRS_ROT0,
   kLabelForGroupSlot,
   placeHarbors,
+  resetBoardMapping,
   resetVertices,
   createSimulation,
   advanceToHumanOrEnd,
@@ -24,9 +26,10 @@ import {
   placeSettlement,
   DEFAULT_SETTINGS,
 } from '../src/catan/index.ts';
-import { hexToPixel } from '../src/catan/hex.ts';
+import { hexCorner, hexToPixel } from '../src/catan/hex.ts';
 
 resetVertices();
+resetBoardMapping();
 
 let passed = 0;
 let failed = 0;
@@ -62,6 +65,27 @@ assert(vertices.size >= 60, `At least 60 vertices (got ${vertices.size})`);
 const mapping = getBoardMapping();
 assert(mapping.edgeHexes.length === 18, `18 numbered edge hexes (got ${mapping.edgeHexes.length})`);
 assert(mapping.coastCorners.length === 30, `30 coast meet corners (got ${mapping.coastCorners.length})`);
+
+let prevAngle = -Infinity;
+for (const c of mapping.coastCorners) {
+  const p = hexCorner(c.anchor, c.corner, 1);
+  const ang = Math.atan2(p.y, p.x);
+  assert(ang >= prevAngle - 0.001, `${c.label} clockwise order`);
+  prevAngle = ang;
+}
+assert(mapping.coastCorners[0].label === 'H1', 'First coast node is H1');
+assert(mapping.coastCorners[29].label === 'H30', 'Last coast node is H30');
+
+const atZero = placeHarbors(0);
+for (const h of atZero) {
+  const expected = HARBOR_H_PAIRS_ROT0[h.edgeHexLabel];
+  if (expected) {
+    const pair = h.nodeLabels.join(',');
+    const exp = expected.join(',');
+    const rev = [...expected].reverse().join(',');
+    assert(pair === exp || pair === rev, `${h.edgeHexLabel} nodes ${pair} expected ${exp}`);
+  }
+}
 
 const pieces = getEdgePieces(0);
 assert(pieces.length === 6, '6 edge pieces');

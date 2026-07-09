@@ -6,7 +6,8 @@ import { hexCorner, hexToPixel } from './hex';
 
 /**
  * Havner festet til en fysisk kantbrikke (B1–B6) på en bestemt hex i triplet (offset 0–2).
- * Ved rotasjon flytter havnen med brikken til nye K-posisjoner; H-noder resolves dynamisk.
+ * H-noder nummereres H1–H30 med klokken rundt kanten; hver havn påvirker to påfølgende
+ * noder på den aktuelle kanthexen.
  */
 export const HARBOR_LAYOUT: HarborDefinition[] = [
   {
@@ -74,15 +75,27 @@ export const HARBOR_LAYOUT: HarborDefinition[] = [
   },
 ];
 
+/** H-noder på en kanthex, sortert H1→H30 langs kysten */
+function hNodesOnEdgeHex(
+  kLabel: string,
+  mapping: ReturnType<typeof getBoardMapping>
+): CoastMeetCorner[] {
+  return mapping.coastCorners
+    .filter((c) => c.edgeHexLabels.includes(kLabel))
+    .sort((a, b) => a.index - b.index);
+}
+
+/**
+ * Velg to påfølgende H-noder på kanthexen for havnens plassering.
+ * - 2 noder: begge
+ * - 3 noder: offset 0/2 = første par, offset 1 = siste par langs kysten
+ */
 function hNodesForEdgeHex(
   kLabel: string,
   hexOffset: number,
   mapping: ReturnType<typeof getBoardMapping>
 ): [CoastMeetCorner, CoastMeetCorner] {
-  const edge = mapping.edgeByLabel.get(kLabel)!;
-  const sorted = mapping.coastCorners
-    .filter((c) => c.edgeHexLabels.includes(kLabel))
-    .sort((a, b) => a.index - b.index);
+  const sorted = hNodesOnEdgeHex(kLabel, mapping);
 
   if (sorted.length === 2) return [sorted[0], sorted[1]];
   if (sorted.length !== 3) {
@@ -90,13 +103,6 @@ function hNodesForEdgeHex(
   }
 
   if (hexOffset === 1) return [sorted[1], sorted[2]];
-
-  if (hexOffset === 2) {
-    const hasWideGap = edge.landCorners.includes(4) && edge.landCorners.includes(5);
-    if (hasWideGap) return [sorted[1], sorted[2]];
-    return [sorted[0], sorted[1]];
-  }
-
   return [sorted[0], sorted[1]];
 }
 
@@ -151,3 +157,16 @@ export function harborShortLabel(harbor: PlacedHarbor['definition']['harbor']): 
   const map = { wood: 'Tømmer', brick: 'Tegl', sheep: 'Ull', wheat: 'Korn', ore: 'Malm' };
   return `2:1 ${map[harbor.resource]}`;
 }
+
+/** Expected H pairs at rotation 0 (for tests / docs) */
+export const HARBOR_H_PAIRS_ROT0: Record<string, [string, string]> = {
+  K18: ['H30', 'H1'],
+  K2: ['H3', 'H4'],
+  K4: ['H7', 'H8'],
+  K6: ['H10', 'H11'],
+  K8: ['H13', 'H14'],
+  K10: ['H17', 'H18'],
+  K12: ['H20', 'H21'],
+  K14: ['H23', 'H24'],
+  K16: ['H27', 'H28'],
+};

@@ -4,7 +4,7 @@ import {
   getEdgeHexSet,
   getLandSet,
 } from './boardLayout';
-import { coordKey, hexNeighbor, hexToPixel } from './hex';
+import { coordKey, hexCorner, hexNeighbor, hexToPixel } from './hex';
 import { getVertices } from './settlements';
 
 export interface NumberedEdgeHex {
@@ -42,8 +42,8 @@ export interface BoardMapping {
 
 let mappingCache: BoardMapping | null = null;
 
-function angleFromCenter(coord: HexCoord): number {
-  const { x, y } = hexToPixel(coord, 1);
+function vertexAngle(anchor: HexCoord, corner: number): number {
+  const { x, y } = hexCorner(anchor, corner, 1);
   return Math.atan2(y, x);
 }
 
@@ -69,7 +69,11 @@ export function buildBoardMapping(): BoardMapping {
   const landSet = getLandSet();
 
   const edgeCoords = BOARD_HEX_COORDS.filter((c) => edgeSet.has(coordKey(c))).sort(
-    (a, b) => angleFromCenter(a) - angleFromCenter(b)
+    (a, b) => {
+      const pa = hexToPixel(a, 1);
+      const pb = hexToPixel(b, 1);
+      return Math.atan2(pa.y, pa.x) - Math.atan2(pb.y, pb.x);
+    }
   );
 
   const edgeHexes: NumberedEdgeHex[] = edgeCoords.map((coord, i) => {
@@ -96,7 +100,7 @@ export function buildBoardMapping(): BoardMapping {
       const hasLand = v.hexes.some((h) => landSet.has(coordKey(h)));
       return hasEdge && hasLand;
     })
-    .sort((a, b) => angleFromCenter(a.anchor) - angleFromCenter(b.anchor));
+    .sort((a, b) => vertexAngle(a.anchor, a.corner) - vertexAngle(b.anchor, b.corner));
 
   const coastCorners: CoastMeetCorner[] = coastRaw.map((v, i) => {
     const index = i + 1;
