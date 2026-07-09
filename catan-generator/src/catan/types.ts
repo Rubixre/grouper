@@ -61,21 +61,24 @@ export interface PlacedHarborPiece {
 }
 
 export interface GeneratorSettings {
-  /** When true (default), 6 and 8 may not be placed on adjacent hexes */
-  noAdjacent6And8: boolean;
-  /** When true (default), 2 and 12 may not be placed on adjacent hexes */
-  noAdjacent2And12: boolean;
-  /** When true (default), identical resources may not be placed on adjacent hexes */
-  noAdjacentSameResource: boolean;
-  /** When true (default), identical numbers may not be placed on adjacent hexes */
-  noAdjacentSameNumber: boolean;
+  /** When true, 6 and 8 may be placed on adjacent hexes */
+  allowAdjacent6And8: boolean;
+  /** When true, 2 and 12 may be placed on adjacent hexes */
+  allowAdjacent2And12: boolean;
+  /** When true, identical resources may be placed on adjacent hexes */
+  allowAdjacentSameResource: boolean;
+  /** When true, identical numbers may be placed on adjacent hexes */
+  allowAdjacentSameNumber: boolean;
+  /** When true, edge pieces are randomly rotated; when false, original B1–B6 order */
+  randomHarbors: boolean;
 }
 
 export const DEFAULT_SETTINGS: GeneratorSettings = {
-  noAdjacent6And8: true,
-  noAdjacent2And12: true,
-  noAdjacentSameResource: true,
-  noAdjacentSameNumber: true,
+  allowAdjacent6And8: true,
+  allowAdjacent2And12: true,
+  allowAdjacentSameResource: true,
+  allowAdjacentSameNumber: true,
+  randomHarbors: true,
 };
 
 export interface Board {

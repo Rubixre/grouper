@@ -68,13 +68,13 @@ function violatesNumberAdjacency(
     if (!tile?.number) continue;
     const nn = tile.number;
 
-    if (settings.noAdjacent6And8) {
+    if (!settings.allowAdjacent6And8) {
       if ((number === 6 && nn === 8) || (number === 8 && nn === 6)) return true;
     }
-    if (settings.noAdjacent2And12) {
+    if (!settings.allowAdjacent2And12) {
       if ((number === 2 && nn === 12) || (number === 12 && nn === 2)) return true;
     }
-    if (settings.noAdjacentSameNumber && number === nn) return true;
+    if (!settings.allowAdjacentSameNumber && number === nn) return true;
   }
   return false;
 }
@@ -86,7 +86,7 @@ function violatesResourceAdjacency(
   settings: GeneratorSettings,
   landSet: Set<string>
 ): boolean {
-  if (!settings.noAdjacentSameResource || resource === 'desert') return false;
+  if (settings.allowAdjacentSameResource || resource === 'desert') return false;
   const neighbors = getLandNeighbors(coord, landSet);
   for (const n of neighbors) {
     const tile = hexes.get(coordKey(n));
@@ -172,7 +172,7 @@ export function generateBoard(
     if (!landHexes) continue;
     if (!tryPlaceNumbers(landHexes, settings, landSet)) continue;
 
-    const edgeRotation = randomEdgeRotation();
+    const edgeRotation = settings.randomHarbors ? randomEdgeRotation() : 0;
     const harbors = placeHarbors(edgeRotation);
 
     const hexes: HexTile[] = BOARD_HEX_COORDS.map((coord) => {

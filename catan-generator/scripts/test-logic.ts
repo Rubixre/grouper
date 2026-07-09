@@ -115,6 +115,23 @@ if (board) {
   assert(numbered.length === 18, '18 numbered land hexes');
 }
 
+const strictSettings = {
+  ...DEFAULT_SETTINGS,
+  allowAdjacent6And8: false,
+  allowAdjacent2And12: false,
+  allowAdjacentSameResource: false,
+  allowAdjacentSameNumber: false,
+};
+const strictBoard = generateBoard(strictSettings);
+if (strictBoard) {
+  assert(strictBoard.hexes.length === 37, 'Strict settings still generate board');
+}
+
+const fixedHarborBoard = generateBoard({ ...DEFAULT_SETTINGS, randomHarbors: false });
+if (fixedHarborBoard) {
+  assert(fixedHarborBoard.edgeRotation === 0, 'Fixed harbors use rotation 0');
+}
+
 console.log('\nSimulator');
 assert(
   JSON.stringify(getPlacementOrder(4)) === JSON.stringify([0, 1, 2, 3, 3, 2, 1, 0]),

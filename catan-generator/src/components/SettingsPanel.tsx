@@ -11,24 +11,30 @@ const SETTING_LABELS: {
   description: string;
 }[] = [
   {
-    key: 'noAdjacent6And8',
-    label: '6 og 8 kan ikke være naboer',
-    description: 'Standard Catan-regel: tallbrikkene 6 og 8 skal ikke ligge ved siden av hverandre',
+    key: 'allowAdjacent6And8',
+    label: '6 og 8 kan være naboer',
+    description: 'Tillater at tallbrikkene 6 og 8 ligger ved siden av hverandre',
   },
   {
-    key: 'noAdjacent2And12',
-    label: '2 og 12 kan ikke være naboer',
-    description: 'Tallbrikkene 2 og 12 skal ikke ligge ved siden av hverandre',
+    key: 'allowAdjacent2And12',
+    label: '2 og 12 kan være naboer',
+    description: 'Tillater at tallbrikkene 2 og 12 ligger ved siden av hverandre',
   },
   {
-    key: 'noAdjacentSameResource',
-    label: 'Like ressurser kan ikke være naboer',
-    description: 'To like ressursbrikker skal ikke ligge ved siden av hverandre',
+    key: 'allowAdjacentSameResource',
+    label: 'Like ressurser kan være naboer',
+    description: 'Tillater at to like ressursbrikker ligger ved siden av hverandre',
   },
   {
-    key: 'noAdjacentSameNumber',
-    label: 'Like tall kan ikke være naboer',
-    description: 'To like tallbrikker skal ikke ligge ved siden av hverandre',
+    key: 'allowAdjacentSameNumber',
+    label: 'Like tall kan være naboer',
+    description: 'Tillater at to like tallbrikker ligger ved siden av hverandre',
+  },
+  {
+    key: 'randomHarbors',
+    label: 'Tilfeldige havner',
+    description:
+      'Roterer kantbrikkene tilfeldig (1/6). Av = original rekkefølge (B1–B6, rotasjon 0)',
   },
 ];
 
@@ -36,7 +42,7 @@ export function SettingsPanel({ settings, onChange }: SettingsPanelProps) {
   return (
     <div className="panel settings-panel">
       <h2>Genereringsregler</h2>
-      <p className="muted small">Avkrysset = regelen er aktiv</p>
+      <p className="muted small">Avkrysset = tillatt / aktiv</p>
       <div className="settings-list">
         {SETTING_LABELS.map(({ key, label, description }) => (
           <label key={key} className="setting-row">
