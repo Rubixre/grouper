@@ -1,109 +1,117 @@
 import type { HarborDefinition, PlacedHarbor } from './types';
+import type { CoastMeetCorner } from './mapping';
+import { kLabelForGroupSlot } from './edgePieces';
 import { getBoardMapping } from './mapping';
 import { hexCorner, hexToPixel } from './hex';
 
 /**
- * Fixed harbor layout (klokken fra topp, K / H-nummerering fra kartlegging).
- * Hver havn påvirker nøyaktig to noder (H).
+ * Havner festet til en fysisk kantbrikke (B1–B6) på en bestemt hex i triplet (offset 0–2).
+ * Ved rotasjon flytter havnen med brikken til nye K-posisjoner; H-noder resolves dynamisk.
  */
 export const HARBOR_LAYOUT: HarborDefinition[] = [
   {
-    id: 'harbor-18',
+    id: 'harbor-g0-o0',
     name: '3:1 havn',
     harbor: { kind: 'generic' },
-    edgeHexIndex: 18,
-    nodeIndices: [29, 2],
+    pieceGroup: 0,
+    hexOffset: 0,
   },
   {
-    id: 'harbor-2',
+    id: 'harbor-g0-o2',
     name: 'Ullhavn',
     harbor: { kind: 'resource', resource: 'sheep' },
-    edgeHexIndex: 2,
-    nodeIndices: [4, 3],
+    pieceGroup: 0,
+    hexOffset: 2,
   },
   {
-    id: 'harbor-4',
+    id: 'harbor-g1-o1',
     name: '3:1 havn',
     harbor: { kind: 'generic' },
-    edgeHexIndex: 4,
-    nodeIndices: [8, 7],
+    pieceGroup: 1,
+    hexOffset: 1,
   },
   {
-    id: 'harbor-6',
+    id: 'harbor-g2-o0',
     name: '3:1 havn',
     harbor: { kind: 'generic' },
-    edgeHexIndex: 6,
-    nodeIndices: [9, 12],
+    pieceGroup: 2,
+    hexOffset: 0,
   },
   {
-    id: 'harbor-8',
+    id: 'harbor-g2-o2',
     name: 'Teglhavn',
     harbor: { kind: 'resource', resource: 'brick' },
-    edgeHexIndex: 8,
-    nodeIndices: [13, 14],
+    pieceGroup: 2,
+    hexOffset: 2,
   },
   {
-    id: 'harbor-10',
+    id: 'harbor-g3-o1',
     name: 'Tømmerhavn',
     harbor: { kind: 'resource', resource: 'wood' },
-    edgeHexIndex: 10,
-    nodeIndices: [17, 18],
+    pieceGroup: 3,
+    hexOffset: 1,
   },
   {
-    id: 'harbor-12',
+    id: 'harbor-g4-o0',
     name: '3:1 havn',
     harbor: { kind: 'generic' },
-    edgeHexIndex: 12,
-    nodeIndices: [21, 20],
+    pieceGroup: 4,
+    hexOffset: 0,
   },
   {
-    id: 'harbor-14',
+    id: 'harbor-g4-o2',
     name: 'Kornhavn',
     harbor: { kind: 'resource', resource: 'wheat' },
-    edgeHexIndex: 14,
-    nodeIndices: [24, 23],
+    pieceGroup: 4,
+    hexOffset: 2,
   },
   {
-    id: 'harbor-16',
+    id: 'harbor-g5-o1',
     name: 'Malmhavn',
     harbor: { kind: 'resource', resource: 'ore' },
-    edgeHexIndex: 16,
-    nodeIndices: [27, 28],
+    pieceGroup: 5,
+    hexOffset: 1,
   },
 ];
 
-function nodeLabel(index: number): string {
-  return `H${index}`;
-}
+function hNodesForEdgeHex(
+  kLabel: string,
+  hexOffset: number,
+  mapping: ReturnType<typeof getBoardMapping>
+): [CoastMeetCorner, CoastMeetCorner] {
+  const edge = mapping.edgeByLabel.get(kLabel)!;
+  const sorted = mapping.coastCorners
+    .filter((c) => c.edgeHexLabels.includes(kLabel))
+    .sort((a, b) => a.index - b.index);
 
-function edgeLabel(index: number): string {
-  return `K${index}`;
-}
-
-function resolveNode(mapping: ReturnType<typeof getBoardMapping>, index: number) {
-  const corner = mapping.cornerByLabel.get(nodeLabel(index));
-  if (!corner) {
-    throw new Error(`Unknown coast node H${index}`);
+  if (sorted.length === 2) return [sorted[0], sorted[1]];
+  if (sorted.length !== 3) {
+    throw new Error(`Expected 2 or 3 H-nodes for ${kLabel}, got ${sorted.length}`);
   }
-  return corner;
-}
 
-function resolveEdge(mapping: ReturnType<typeof getBoardMapping>, index: number) {
-  const edge = mapping.edgeByLabel.get(edgeLabel(index));
-  if (!edge) {
-    throw new Error(`Unknown edge hex K${index}`);
+  if (hexOffset === 1) return [sorted[1], sorted[2]];
+
+  if (hexOffset === 2) {
+    const hasWideGap = edge.landCorners.includes(4) && edge.landCorners.includes(5);
+    if (hasWideGap) return [sorted[1], sorted[2]];
+    return [sorted[0], sorted[1]];
   }
-  return edge;
+
+  return [sorted[0], sorted[1]];
 }
 
-/** Place harbors at fixed K/H positions from design spec */
-export function placeFixedHarbors(hexSize = 1): PlacedHarbor[] {
+/** Place harbors after edge-piece rotation (0–5 = 1/6 turn each) */
+export function placeHarbors(rotation: number, hexSize = 1): PlacedHarbor[] {
   const mapping = getBoardMapping();
 
   return HARBOR_LAYOUT.map((definition) => {
-    const edge = resolveEdge(mapping, definition.edgeHexIndex);
-    const nodeA = resolveNode(mapping, definition.nodeIndices[0]);
-    const nodeB = resolveNode(mapping, definition.nodeIndices[1]);
+    const kLabel = kLabelForGroupSlot(
+      definition.pieceGroup,
+      definition.hexOffset,
+      rotation
+    );
+    const edge = mapping.edgeByLabel.get(kLabel)!;
+    const [nodeA, nodeB] = hNodesForEdgeHex(kLabel, definition.hexOffset, mapping);
 
     const pA = hexCorner(nodeA.anchor, nodeA.corner, hexSize);
     const pB = hexCorner(nodeB.anchor, nodeB.corner, hexSize);
@@ -114,7 +122,8 @@ export function placeFixedHarbors(hexSize = 1): PlacedHarbor[] {
 
     return {
       definition,
-      edgeHexLabel: edge.label,
+      pieceGroup: definition.pieceGroup,
+      edgeHexLabel: kLabel,
       nodeLabels: [nodeA.label, nodeB.label] as [string, string],
       edgeCoord: edge.coord,
       nodeVertexIds: [nodeA.vertexId, nodeB.vertexId] as [string, string],
@@ -123,7 +132,11 @@ export function placeFixedHarbors(hexSize = 1): PlacedHarbor[] {
   });
 }
 
-/** Harbors that affect a settlement vertex (must be one of the two H nodes) */
+/** @deprecated Use placeHarbors */
+export function placeFixedHarbors(hexSize = 1): PlacedHarbor[] {
+  return placeHarbors(0, hexSize);
+}
+
 export function getHarborsForVertex(
   vertexId: string,
   harbors: PlacedHarbor[]

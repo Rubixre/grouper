@@ -10,10 +10,13 @@ import {
   buildCoastSlots,
   generateBoard,
   getEdgeHexSet,
+  getEdgePieces,
   getLandHexCoords,
   getPlacementOrder,
   getVertices,
   getBoardMapping,
+  kLabelForGroupSlot,
+  placeHarbors,
   resetVertices,
   createSimulation,
   advanceToHumanOrEnd,
@@ -60,6 +63,14 @@ const mapping = getBoardMapping();
 assert(mapping.edgeHexes.length === 18, `18 numbered edge hexes (got ${mapping.edgeHexes.length})`);
 assert(mapping.coastCorners.length === 30, `30 coast meet corners (got ${mapping.coastCorners.length})`);
 
+const pieces = getEdgePieces(0);
+assert(pieces.length === 6, '6 edge pieces');
+assert(pieces[0].kLabels.join(',') === 'K18,K1,K2', `B1 default ${pieces[0].kLabels}`);
+assert(kLabelForGroupSlot(0, 0, 1) === 'K3', 'rotation 1 moves B1 start to K3');
+
+const rotated = placeHarbors(2);
+assert(rotated.length === 9, '9 harbors after rotation');
+
 console.log('\nGenerator');
 const board = generateBoard(DEFAULT_SETTINGS);
 assert(board !== null, 'Generates a valid board with default rules');
@@ -69,7 +80,8 @@ if (board) {
   const land = board.hexes.filter((h) => h.kind === 'land');
   assert(edges.length === 18, '18 blue edge hexes');
   assert(land.length === 19, '19 land hexes');
-  assert(board.harbors.length === 9, '9 fixed harbors');
+  assert(board.edgeRotation >= 0 && board.edgeRotation <= 5, 'edge rotation 0-5');
+  assert(board.harbors.length === 9, '9 harbors');
   for (const h of board.harbors) {
     assert(h.nodeLabels.length === 2, `${h.edgeHexLabel} affects 2 nodes`);
   }

@@ -1,10 +1,12 @@
 import type { Board, PlacedSettlement, SettlementScore } from '../catan/types';
 import type { BoardMapping } from '../catan/mapping';
+import { getEdgePieces } from '../catan/edgePieces';
 import { harborShortLabel } from '../catan/harbors';
 import { hexCorner, hexToPixel } from '../catan/hex';
 import { getVertices } from '../catan/settlements';
 import { PLAYER_COLORS } from '../catan/simulator';
 import { BoardHex } from './BoardHex';
+import { EdgePieceShape } from './EdgePieceShape';
 import { MappingOverlay } from './MappingOverlay';
 
 export const BOARD_HEX_SIZE = 34;
@@ -52,13 +54,10 @@ export function BoardView({
   highlightCorner = null,
 }: BoardViewProps) {
   const maxScore = highlightedVertices[0]?.total ?? 1;
+  const edgePieces = getEdgePieces(board.edgeRotation);
+  const landHexes = board.hexes.filter((h) => h.kind === 'land');
 
-  const sortedHexes = [...board.hexes].sort((a, b) => {
-    if (a.kind === b.kind) return 0;
-    return a.kind === 'edge' ? -1 : 1;
-  });
-
-  const bounds = sortedHexes.map((h) => hexToPixel(h.coord, HEX_SIZE));
+  const bounds = board.hexes.map((h) => hexToPixel(h.coord, HEX_SIZE));
   const pad = HEX_SIZE * 1.8;
   const minX = Math.min(...bounds.map((b) => b.x)) - pad;
   const maxX = Math.max(...bounds.map((b) => b.x)) + pad;
@@ -77,7 +76,16 @@ export function BoardView({
     >
       <rect x={minX} y={minY} width={width} height={height} fill="#1a5276" />
 
-      {sortedHexes.map((tile) => (
+      {edgePieces.map((piece) => (
+        <EdgePieceShape
+          key={piece.label}
+          coords={[...piece.coords]}
+          size={HEX_SIZE}
+          pieceLabel={mappingMode ? piece.label : undefined}
+        />
+      ))}
+
+      {landHexes.map((tile) => (
         <BoardHex
           key={`${tile.coord.q},${tile.coord.r}`}
           coord={tile.coord}
@@ -88,7 +96,7 @@ export function BoardView({
         />
       ))}
 
-      {/* Fixed harbors on K-hexes, mellom to H-noder */}
+      {/* Havner – roterer med kantbrikken, vendt mot midten */}
       {!mappingMode &&
         board.harbors.map((h) => {
           const vertices = getVertices();
@@ -100,7 +108,7 @@ export function BoardView({
           const pB = hexCorner(vB.anchor, vB.corner, HEX_SIZE);
           const hx = (pA.x + pB.x) / 2;
           const hy = (pA.y + pB.y) / 2;
-          const angle = h.angle;
+          const angle = Math.atan2(-hy, -hx);
 
           const harbor = h.definition.harbor;
           const color =
@@ -138,7 +146,8 @@ export function BoardView({
                 ⚓ {label}
               </text>
               <title>
-                {h.definition.name} på {h.edgeHexLabel} → {h.nodeLabels.join(', ')}
+                {h.definition.name} (B{h.pieceGroup + 1}) på {h.edgeHexLabel} →{' '}
+                {h.nodeLabels.join(', ')}
               </title>
             </g>
           );

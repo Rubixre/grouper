@@ -29,14 +29,15 @@ export interface HarborDefinition {
   id: string;
   name: string;
   harbor: HarborType;
-  /** K-index (1–18) */
-  edgeHexIndex: number;
-  /** H-indices (1–30), harbor påvirker disse to nodene */
-  nodeIndices: [number, number];
+  /** Physical piece group 0–5 (B1–B6), default G0 = K18,K1,K2 */
+  pieceGroup: number;
+  /** Position within the 3-hex piece (0, 1, 2) */
+  hexOffset: number;
 }
 
 export interface PlacedHarbor {
   definition: HarborDefinition;
+  pieceGroup: number;
   edgeHexLabel: string;
   nodeLabels: [string, string];
   edgeCoord: HexCoord;
@@ -81,6 +82,8 @@ export interface Board {
   hexes: HexTile[];
   harbors: PlacedHarbor[];
   coastSlots: CoastSlot[];
+  /** Edge piece rotation 0–5 (each step = 1/6 turn clockwise) */
+  edgeRotation: number;
 }
 
 export interface Vertex {

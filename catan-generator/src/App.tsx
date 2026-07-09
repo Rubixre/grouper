@@ -202,13 +202,16 @@ function App() {
           )}
 
           <div className="legend panel">
-            <h3>Havner (faste plasseringer)</h3>
+            <h3>Kantbrikker og havner</h3>
             <p className="muted small">
-              Hver havn ligger på en kanthex (K) og påvirker to noder (H).
+              Rotasjon {board?.edgeRotation ?? 0}/5 (1/6 hvert steg). 6 brikker à 3 hexer
+              (B1: K18–K1–K2 ved rot. 0).
             </p>
             {board?.harbors.map((h) => (
               <div key={h.definition.id} className="harbor-legend-row">
-                <strong>{h.definition.name}</strong>
+                <strong>
+                  B{h.pieceGroup + 1} · {h.definition.name}
+                </strong>
                 <span>
                   {h.edgeHexLabel} → {h.nodeLabels.join(', ')}
                 </span>
