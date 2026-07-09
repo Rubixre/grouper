@@ -361,6 +361,10 @@ body {
   margin-bottom: 0;
 }
 
+.scoring-hint {
+  margin: 0 0 0.75rem;
+}
+
 .draft-order {
   margin: 0 0 0.75rem;
   word-break: break-word;

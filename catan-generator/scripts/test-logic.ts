@@ -25,7 +25,6 @@ import {
   resetVertices,
   setBoardSize,
   createSimulation,
-  currentPlayer,
   placeSettlement,
   getOptionsForCurrentTurn,
   scoreSecondSettlement,
@@ -178,26 +177,17 @@ import {
   WEIGHTS_LONGEST_ROAD_ONLY,
   WEIGHTS_LARGEST_ARMY_ONLY,
   coverageBonus,
-  getWeightsForProfile,
-  blendWeightsByScores,
 } from '../src/catan/resourceWeights.ts';
 import { DEFAULT_RESOURCE_WEIGHTS } from '../src/catan/types.ts';
-import {
-  analyzeStrategy,
-  countOpponentSteps,
-  getSecondPlacementStep,
-  getRankedOptions,
-  projectPlacements,
-} from '../src/catan/strategyInference.ts';
 
 assert(Math.abs(DEFAULT_RESOURCE_WEIGHTS.wheat - WEIGHTS_GENERAL.wheat) < 0.01, 'Default matches general average');
 assert(
-  getWeightsForProfile('longestRoadOnly').wood > WEIGHTS_GENERAL.wood,
-  'Longest road boosts wood vs general'
+  WEIGHTS_LONGEST_ROAD_ONLY.wood > WEIGHTS_GENERAL.wood,
+  'Longest road profile has higher wood weight'
 );
 assert(
-  getWeightsForProfile('largestArmyOnly').ore > WEIGHTS_GENERAL.ore,
-  'Largest army boosts ore vs general'
+  WEIGHTS_LARGEST_ARMY_ONLY.ore > WEIGHTS_GENERAL.ore,
+  'Largest army profile has higher ore weight'
 );
 const highValueCoverage = coverageBonus(
   new Set(['wheat', 'ore', 'wood']),
@@ -216,101 +206,59 @@ assert(
     highValueCoverage,
   'Full resource coverage scores higher'
 );
-const blended = blendWeightsByScores({
-  both: 1,
-  largestArmyOnly: 0,
-  longestRoadOnly: 0,
-  neither: 0,
-});
-assert(blended.wheat === getWeightsForProfile('both').wheat, 'Blend single profile');
 
-console.log('\nStrategy inference');
-const order4 = getPlacementOrder(4);
-const order3 = getPlacementOrder(3);
-assert(getSecondPlacementStep(order4, 0) === 7, 'Player 0 second placement at step 7');
-assert(getSecondPlacementStep(order4, 3) === 4, 'Player 3 second placement at step 4');
-assert(getSecondPlacementStep(order3, 2) === 3, 'Player 2 (P3) second placement at step 3');
-assert(
-  countOpponentSteps(order3, 2, 3, 3) === 0,
-  'No opponent steps between P3 first and second (consecutive turns)'
-);
-assert(
-  countOpponentSteps(order3, 2, 2, 3) === 0,
-  'No opponents between step 2 and 3 for P3 in 3-player draft'
-);
-assert(
-  countOpponentSteps(order4, 0, 1, 7) === 6,
-  'Six opponent steps before P0 second in 4-player draft'
-);
-if (board) {
-  const sim = createSimulation(board, 4);
-  const autoRanked = getRankedOptions(sim, 0, 'auto');
-  assert(autoRanked.options.length > 0, 'Auto ranking has options');
-  assert(autoRanked.analysis !== null, 'Auto ranking provides analysis for focus player turn');
-  assert(
-    Object.keys(autoRanked.analysis!.profileScores).length === 4,
-    'Four victory profile scores'
-  );
-
-  const projected = projectPlacements(board, [], order4, 1, 7, 0);
-  assert(projected.length === 6, 'Projects 6 opponent placements before P0 second settlement');
-  const analysis = analyzeStrategy(board, [], order4, 0, 0);
-  assert(analysis.usedLookahead, 'First turn analysis uses lookahead');
-  assert(analysis.projectedSteps === 6, 'P0 first turn projects 6 opponent moves');
-
-  const sim3 = createSimulation(board, 3);
-  let state3 = sim3;
-  for (let i = 0; i < 2; i++) {
-    const opts = getOptionsForCurrentTurn(state3);
-    state3 = placeSettlement(state3, opts[0].vertexId);
-  }
-  assert(currentPlayer(state3) === 2, 'Step 2 is player 3 (index 2)');
-  const p3first = getRankedOptions(state3, 2, 'auto');
-  assert(p3first.analysis !== null, 'P3 auto analysis on first settlement turn');
-  assert(
-    p3first.analysis!.projectedSteps === 0,
-    'P3 places twice in a row – no opponent projection before 2nd settlement'
-  );
-}
-
-console.log('\nHarbor scoring');
+console.log('\nPlacement scoring');
 import { getHarborsForVertex } from '../src/catan/harbors.ts';
-import { scoreVertex, scoreSecondSettlement } from '../src/catan/settlements.ts';
+import { scoreSecondSettlement } from '../src/catan/settlements.ts';
 if (board) {
-  const w = getWeightsForProfile('general');
   const sim = createSimulation(board, 4);
+  const options = getOptionsForCurrentTurn(sim);
+  assert(options.length > 0, 'First turn has ranked placement options');
+  assert(options[0].placementKind === 'first', 'First turn uses first-settlement scoring');
+
   let state = sim;
   for (let i = 0; i < 7; i++) {
-    const opts = getOptionsForCurrentTurn(state, 0, 'general');
+    const opts = getOptionsForCurrentTurn(state);
     state = placeSettlement(state, opts[0].vertexId);
   }
-  const secondOpts = getOptionsForCurrentTurn(state, 0, 'general');
+  const secondOpts = getOptionsForCurrentTurn(state);
+  assert(secondOpts.length > 0, 'Second settlement has options');
+  assert(
+    secondOpts.every((o) => o.placementKind === 'second'),
+    'Second settlement uses pair scoring'
+  );
+  assert(
+    secondOpts.every((o) => o.portfolio !== undefined && o.overlap !== undefined),
+    'Second settlement exposes portfolio and overlap'
+  );
+
   const harborOpts = secondOpts.filter(
     (o) => getHarborsForVertex(o.vertexId, board.harbors).length > 0
   );
-  const inlandOpts = secondOpts.filter(
-    (o) => getHarborsForVertex(o.vertexId, board.harbors).length === 0
-  );
-  if (harborOpts[0] && inlandOpts[0]) {
-    const hRank = secondOpts.indexOf(harborOpts[0]) + 1;
-    const iRank = secondOpts.indexOf(inlandOpts[0]) + 1;
+  if (harborOpts[0]) {
     assert(
-      harborOpts[0].harbor < harborOpts[0].production * 1.5,
-      'Harbor bonus no longer dwarfs local production'
-    );
-    assert(
-      inlandOpts[0].total >= harborOpts[0].total * 0.85 || iRank <= hRank + 3,
-      'Inland options competitive with harbor options'
+      harborOpts[0].harbor <= harborOpts[0].production * 0.05,
+      'Harbor bonus capped to minimal share of production'
     );
   }
 
-  const withHarbor = secondOpts.find(
-    (o) => getHarborsForVertex(o.vertexId, board.harbors).length > 0
+  const firstId = state.placements.find((p) => p.player === 0)!.vertexId;
+  const ranked = secondOpts[0];
+  const direct = scoreSecondSettlement(ranked.vertexId, firstId, board);
+  assert(
+    Math.abs(direct.total - ranked.total) < 1e-9,
+    'Second settlement score matches scoreSecondSettlement'
   );
-  if (withHarbor) {
-    const firstId = state.placements.find((p) => p.player === 0)!.vertexId;
-    const scored = scoreSecondSettlement(withHarbor.vertexId, firstId, board, w);
-    assert(scored.harbor < 0.15, 'Typical harbor bonus stays modest in early game');
+
+  const inland = secondOpts.find(
+    (o) => getHarborsForVertex(o.vertexId, board.harbors).length === 0
+  );
+  if (inland && harborOpts[0]) {
+    assert(
+      inland.production >= harborOpts[0].production * 0.9 ||
+        inland.total >= harborOpts[0].total * 0.8,
+      'Production matters more than harbor access'
+    );
   }
 }
 
@@ -345,7 +293,7 @@ if (board) {
     assert(opts.length > 0, `Step ${i} has options`);
     state = placeSettlement(state, opts[0].vertexId);
   }
-  const p1second = getOptionsForCurrentTurn(state, 0, 'general');
+  const p1second = getOptionsForCurrentTurn(state);
   assert(p1second.length > 0, 'Player 1 second settlement has options');
   assert(
     p1second.every((o) => o.placementKind === 'second'),
@@ -361,8 +309,7 @@ if (board) {
   const direct = scoreSecondSettlement(
     ranked.vertexId,
     firstPlacement.vertexId,
-    board,
-    getWeightsForProfile('general')
+    board
   );
   assert(
     Math.abs(direct.total - ranked.total) < 1e-9,

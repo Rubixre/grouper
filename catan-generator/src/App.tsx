@@ -2,15 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Board, BoardSize, GeneratorSettings, PlayerCount } from './catan/types';
 import { DEFAULT_SETTINGS } from './catan/types';
 import { BOARD_SIZE_CONFIG } from './catan/boardLayout';
-import {
-  type StrategyMode,
-  STRATEGY_PROFILES,
-} from './catan/resourceWeights';
 import { generateBoard } from './catan/generator';
 import { getBoardMapping } from './catan/mapping';
 import {
   createSimulation,
-  getOptionsWithAnalysis,
+  getOptionsForCurrentTurn,
   getPlacementOrder,
   placeSettlement,
   type SimulationState,
@@ -34,8 +30,6 @@ function App() {
   const [board, setBoard] = useState<Board | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [playerCount, setPlayerCount] = useState<PlayerCount>(4);
-  const [focusPlayer, setFocusPlayer] = useState(0);
-  const [strategyMode, setStrategyMode] = useState<StrategyMode>('auto');
   const [simulation, setSimulation] = useState<SimulationState | null>(null);
   const [selectedVertex, setSelectedVertex] = useState<string | null>(null);
   const [mode, setMode] = useState<'view' | 'simulate'>('view');
@@ -50,7 +44,6 @@ function App() {
   const handleBoardSizeChange = (size: BoardSize) => {
     setBoardSize(size);
     if (size === 'base' && playerCount > 4) setPlayerCount(4);
-    if (size === 'base' && focusPlayer > 3) setFocusPlayer(3);
   };
 
   const handleGenerate = useCallback(() => {
@@ -87,10 +80,8 @@ function App() {
     setMode('view');
   };
 
-  const ranked =
-    simulation && board
-      ? getOptionsWithAnalysis(simulation, focusPlayer, strategyMode)
-      : { options: [], analysis: null };
+  const rankedOptions =
+    simulation && simActive ? getOptionsForCurrentTurn(simulation) : [];
 
   const handleConfirm = () => {
     if (!simulation || !selectedVertex) return;
@@ -153,7 +144,7 @@ function App() {
             <BoardView
               board={board}
               placements={simulation?.placements ?? []}
-              highlightedVertices={simActive ? ranked.options : []}
+              highlightedVertices={simActive ? rankedOptions : []}
               selectedVertex={selectedVertex}
               onVertexClick={setSelectedVertex}
               interactive={simActive && !simulation?.finished}
@@ -197,60 +188,35 @@ function App() {
               <div className="panel simulation-setup">
                 <h2>Startposisjon</h2>
 
-                <div className="field-row">
-                  <label className="field">
-                    Spillere
-                    <select
-                      value={playerCount}
-                      disabled={simActive && !simulation?.finished}
-                      onChange={(e) =>
-                        setPlayerCount(Number(e.target.value) as PlayerCount)
-                      }
-                    >
-                      <option value={2}>2</option>
-                      <option value={3}>3</option>
-                      <option value={4}>4</option>
-                      {boardSize === 'extension56' && (
-                        <>
-                          <option value={5}>5</option>
-                          <option value={6}>6</option>
-                        </>
-                      )}
-                    </select>
-                  </label>
-                  <label className="field">
-                    Min spiller
-                    <select
-                      value={focusPlayer}
-                      onChange={(e) => setFocusPlayer(Number(e.target.value))}
-                    >
-                      {Array.from({ length: playerCount }, (_, i) => (
-                        <option key={i} value={i}>
-                          Spiller {i + 1}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-
                 <label className="field">
-                  Strategi
+                  Antall spillere
                   <select
-                    value={strategyMode}
+                    value={playerCount}
+                    disabled={simActive && !simulation?.finished}
                     onChange={(e) =>
-                      setStrategyMode(e.target.value as StrategyMode)
+                      setPlayerCount(Number(e.target.value) as PlayerCount)
                     }
                   >
-                    {(Object.keys(STRATEGY_PROFILES) as StrategyMode[]).map((key) => (
-                      <option key={key} value={key}>
-                        {STRATEGY_PROFILES[key].label}
-                      </option>
-                    ))}
+                    <option value={2}>2 spillere</option>
+                    <option value={3}>3 spillere</option>
+                    <option value={4}>4 spillere</option>
+                    {boardSize === 'extension56' && (
+                      <>
+                        <option value={5}>5 spillere</option>
+                        <option value={6}>6 spillere</option>
+                      </>
+                    )}
                   </select>
                 </label>
 
                 <p className="muted small draft-order">
                   Draft: {formatDraftOrder(playerCount)}
+                </p>
+
+                <p className="muted small scoring-hint">
+                  Poeng: vektet produksjon + ressursdekning. Landsby nr. 2
+                  vurderes også mot nr. 1 (utfylling/overlapp). Havner teller
+                  lite.
                 </p>
 
                 {!simActive ? (
@@ -287,10 +253,7 @@ function App() {
               {simActive && simulation && (
                 <SettlementSimulator
                   state={simulation}
-                  options={ranked.options}
-                  analysis={ranked.analysis}
-                  focusPlayer={focusPlayer}
-                  strategyMode={strategyMode}
+                  options={rankedOptions}
                   selectedVertex={selectedVertex}
                   onSelectVertex={setSelectedVertex}
                   onConfirm={handleConfirm}
@@ -300,8 +263,9 @@ function App() {
               {!simActive && (
                 <div className="panel sim-placeholder">
                   <p className="muted small">
-                    Velg spillere og strategi, trykk <strong>Start plassering</strong>,
-                    og klikk grønne markører på brettet.
+                    Velg antall spillere og trykk <strong>Start plassering</strong>.
+                    Klikk deretter grønne markører på brettet for å plassere
+                    landsbyer i draft-rekkefølge.
                   </p>
                 </div>
               )}
@@ -311,7 +275,7 @@ function App() {
       </div>
 
       <footer className="footer">
-        <p>Grunnspill + 5–6 utvidelse · Auto-strategi (Board Game Analysis)</p>
+        <p>Grunnspill + 5–6 utvidelse · Vektede ressursverdier (Board Game Analysis)</p>
       </footer>
     </div>
   );
