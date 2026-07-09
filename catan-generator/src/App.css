@@ -245,6 +245,10 @@ body {
   padding: 0.15rem 0.5rem;
 }
 
+.harbor-icon {
+  pointer-events: none;
+}
+
 .options-list {
   max-height: 220px;
   overflow-y: auto;

@@ -1,23 +1,15 @@
 import type { Board, PlacedSettlement, SettlementScore } from '../catan/types';
 import type { BoardMapping } from '../catan/mapping';
 import { getEdgePieces } from '../catan/edgePieces';
-import { harborShortLabel } from '../catan/harbors';
 import { hexCorner, hexToPixel } from '../catan/hex';
 import { getVertices } from '../catan/settlements';
 import { PLAYER_COLORS } from '../catan/simulator';
 import { BoardHex } from './BoardHex';
 import { EdgePieceShape } from './EdgePieceShape';
+import { HarborIcon } from './HarborIcon';
 import { MappingOverlay } from './MappingOverlay';
 
 export const BOARD_HEX_SIZE = 34;
-
-const HARBOR_COLORS: Record<string, string> = {
-  generic: '#1a5276',
-  wood: '#2d6a4f',
-  brick: '#c1440e',
-  sheep: '#52b788',
-  wheat: '#f4a261',
-};
 
 interface BoardViewProps {
   board: Board;
@@ -33,6 +25,25 @@ interface BoardViewProps {
 }
 
 const HEX_SIZE = BOARD_HEX_SIZE;
+
+/** Havn plasseres i kanthex-senteret, lett ut mot sjøen – unngår å skjule tall på land */
+function harborPosition(h: Board['harbors'][0], hexSize: number): { x: number; y: number } {
+  const center = hexToPixel(h.edgeCoord, hexSize);
+  const vertices = getVertices();
+  const vA = vertices.get(h.nodeVertexIds[0]);
+  const vB = vertices.get(h.nodeVertexIds[1]);
+  if (!vA || !vB) return center;
+
+  const pA = hexCorner(vA.anchor, vA.corner, hexSize);
+  const pB = hexCorner(vB.anchor, vB.corner, hexSize);
+  const coastX = (pA.x + pB.x) / 2;
+  const coastY = (pA.y + pB.y) / 2;
+  const t = 0.35;
+  return {
+    x: center.x + (coastX - center.x) * t,
+    y: center.y + (coastY - center.y) * t,
+  };
+}
 
 function getVertexPixel(vertexId: string, size: number): { x: number; y: number } | null {
   const vertices = getVertices();
@@ -96,59 +107,19 @@ export function BoardView({
         />
       ))}
 
-      {/* Havner – roterer med kantbrikken, vendt mot midten */}
+      {/* Havner – sentrert i kanthex (blå), med ressursspesifikke ikoner */}
       {!mappingMode &&
         board.harbors.map((h) => {
-          const vertices = getVertices();
-          const vA = vertices.get(h.nodeVertexIds[0]);
-          const vB = vertices.get(h.nodeVertexIds[1]);
-          if (!vA || !vB) return null;
-
-          const pA = hexCorner(vA.anchor, vA.corner, HEX_SIZE);
-          const pB = hexCorner(vB.anchor, vB.corner, HEX_SIZE);
-          const hx = (pA.x + pB.x) / 2;
-          const hy = (pA.y + pB.y) / 2;
-          const angle = Math.atan2(-hy, -hx);
-
-          const harbor = h.definition.harbor;
-          const color =
-            harbor.kind === 'generic'
-              ? HARBOR_COLORS.generic
-              : HARBOR_COLORS[harbor.resource] ?? '#1a5276';
-
-          const label = harborShortLabel(harbor);
+          const { x: hx, y: hy } = harborPosition(h, HEX_SIZE);
+          const title = `${h.definition.name} (B${h.pieceGroup + 1}) på ${h.edgeHexLabel} → ${h.nodeLabels.join(', ')}`;
 
           return (
-            <g
-              key={h.definition.id}
-              transform={`translate(${hx}, ${hy}) rotate(${(angle * 180) / Math.PI})`}
-            >
-              <rect
-                x={-HEX_SIZE * 0.75}
-                y={-HEX_SIZE * 0.32}
-                width={HEX_SIZE * 1.5}
-                height={HEX_SIZE * 0.64}
-                rx={5}
-                fill={color}
-                stroke="#fff"
-                strokeWidth={2}
-                opacity={0.95}
+            <g key={h.definition.id} transform={`translate(${hx}, ${hy})`}>
+              <HarborIcon
+                harbor={h.definition.harbor}
+                size={HEX_SIZE * 0.72}
+                title={title}
               />
-              <text
-                x={0}
-                y={4}
-                textAnchor="middle"
-                fill="#fff"
-                fontSize={10}
-                fontWeight={700}
-                transform={`rotate(${(-angle * 180) / Math.PI})`}
-              >
-                ⚓ {label}
-              </text>
-              <title>
-                {h.definition.name} (B{h.pieceGroup + 1}) på {h.edgeHexLabel} →{' '}
-                {h.nodeLabels.join(', ')}
-              </title>
             </g>
           );
         })}
