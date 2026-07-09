@@ -1,32 +1,41 @@
-# React + TypeScript + Vite
+# Catan Brettgenerator
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+## Kom i gang
 
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Åpne **http://localhost:5173** i nettleseren.
+
+## Teste og inspisere
+
+### 1. Utviklingsserver (anbefalt)
+```bash
+npm run dev
+```
+- URL: http://localhost:5173
+- Hot reload – endringer vises med en gang
+- Bruk nettleserens DevTools (F12) for å inspisere SVG-brettet
+
+### 2. Produksjonsbygg lokalt
+```bash
+npm run build
+npm run preview
+```
+- URL: http://localhost:4173
+- Tester den ferdig bygde versjonen
+
+### 3. Automatisk logikk-test (uten nettleser)
+```bash
+npm run test:logic
+```
+Sjekker brettgenerering, havner, vertices og simulator.
+
+### 4. Manuell sjekkliste i nettleseren
+1. Klikk **Generer nytt brett**
+2. Verifiser at alle fire regler er avkrysset som standard
+3. Slå av en regel og generer på nytt
+4. Klikk **Start plassering** – grønne markører viser gode plasseringer
+5. Velg en markør og **Plasser landsby**
