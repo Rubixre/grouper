@@ -2,10 +2,18 @@ import type {
   Board,
   PlacedSettlement,
   PlayerCount,
-  ResourceWeights,
   SettlementScore,
 } from './types';
-import { rankVertices } from './settlements';
+import type { StrategyMode } from './resourceWeights';
+import { getRankedOptions } from './strategyInference';
+
+export type { StrategyAnalysis, RankedOptionsResult } from './strategyInference';
+export {
+  analyzeStrategy,
+  getSecondPlacementStep,
+  projectPlacements,
+  getRankedOptions,
+} from './strategyInference';
 
 /** Snake-draft placement order for initial settlements (2 per player) */
 export function getPlacementOrder(playerCount: PlayerCount): number[] {
@@ -54,15 +62,18 @@ export function currentPlayer(state: SimulationState): number | null {
 
 export function getOptionsForCurrentTurn(
   state: SimulationState,
-  weights?: ResourceWeights
+  focusPlayer = 0,
+  strategyMode: StrategyMode = 'auto'
 ): SettlementScore[] {
-  const player = currentPlayer(state);
-  return rankVertices(
-    state.board,
-    state.placements,
-    weights,
-    player ?? undefined
-  );
+  return getRankedOptions(state, focusPlayer, strategyMode).options;
+}
+
+export function getOptionsWithAnalysis(
+  state: SimulationState,
+  focusPlayer: number,
+  strategyMode: StrategyMode
+) {
+  return getRankedOptions(state, focusPlayer, strategyMode);
 }
 
 export function placeSettlement(

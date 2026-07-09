@@ -217,6 +217,34 @@ body {
   margin: 0 0 0.75rem;
 }
 
+.strategy-analysis {
+  background: #eef6fc;
+  border: 1px solid #bdd7ee;
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.strategy-analysis h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.9rem;
+}
+
+.profile-scores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.profile-score-chip {
+  font-size: 0.72rem;
+  background: #fff;
+  border: 1px solid #d0e3f0;
+  border-radius: 999px;
+  padding: 0.15rem 0.5rem;
+}
+
 .options-list {
   max-height: 220px;
   overflow-y: auto;

@@ -2,15 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Board, GeneratorSettings, PlayerCount } from './catan/types';
 import { DEFAULT_SETTINGS } from './catan/types';
 import {
-  type StrategyProfile,
-  getWeightsForProfile,
+  type StrategyMode,
   STRATEGY_PROFILES,
 } from './catan/resourceWeights';
 import { generateBoard } from './catan/generator';
 import { getBoardMapping } from './catan/mapping';
 import {
   createSimulation,
-  getOptionsForCurrentTurn,
+  getOptionsWithAnalysis,
   placeSettlement,
   type SimulationState,
 } from './catan/simulator';
@@ -25,7 +24,8 @@ function App() {
   const [board, setBoard] = useState<Board | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [playerCount, setPlayerCount] = useState<PlayerCount>(4);
-  const [strategyProfile, setStrategyProfile] = useState<StrategyProfile>('general');
+  const [focusPlayer, setFocusPlayer] = useState(0);
+  const [strategyMode, setStrategyMode] = useState<StrategyMode>('auto');
   const [simulation, setSimulation] = useState<SimulationState | null>(null);
   const [selectedVertex, setSelectedVertex] = useState<string | null>(null);
   const [mode, setMode] = useState<'view' | 'simulate'>('view');
@@ -63,12 +63,10 @@ function App() {
     setMode('simulate');
   };
 
-  const scoringWeights = getWeightsForProfile(strategyProfile);
-
-  const options =
+  const ranked =
     simulation && board
-      ? getOptionsForCurrentTurn(simulation, scoringWeights)
-      : [];
+      ? getOptionsWithAnalysis(simulation, focusPlayer, strategyMode)
+      : { options: [], analysis: null };
 
   const handleConfirm = () => {
     if (!simulation || !selectedVertex) return;
@@ -128,14 +126,26 @@ function App() {
           <div className="panel">
             <h2>Simulering</h2>
             <label className="field">
-              Strategiprofil
+              Min spiller
               <select
-                value={strategyProfile}
+                value={focusPlayer}
+                onChange={(e) => setFocusPlayer(Number(e.target.value))}
+              >
+                <option value={0}>Spiller 1</option>
+                <option value={1}>Spiller 2</option>
+                <option value={2}>Spiller 3</option>
+                <option value={3}>Spiller 4</option>
+              </select>
+            </label>
+            <label className="field">
+              Strategi
+              <select
+                value={strategyMode}
                 onChange={(e) =>
-                  setStrategyProfile(e.target.value as StrategyProfile)
+                  setStrategyMode(e.target.value as StrategyMode)
                 }
               >
-                {(Object.keys(STRATEGY_PROFILES) as StrategyProfile[]).map((key) => (
+                {(Object.keys(STRATEGY_PROFILES) as StrategyMode[]).map((key) => (
                   <option key={key} value={key}>
                     {STRATEGY_PROFILES[key].label}
                   </option>
@@ -143,7 +153,9 @@ function App() {
               </select>
             </label>
             <p className="muted small">
-              {STRATEGY_PROFILES[strategyProfile].description}. Vekter fra{' '}
+              {STRATEGY_PROFILES[strategyMode].description}. I auto-modus
+              analyseres tilgjengelige plasseringer og forventede motstandertrekk
+              før landsby nr. 2.{' '}
               <a
                 href="https://www.boardgameanalysis.com/what-is-the-strategic-value-of-each-catan-resources/"
                 target="_blank"
@@ -184,8 +196,10 @@ function App() {
           {!mappingMode && mode === 'simulate' && simulation && (
             <SettlementSimulator
               state={simulation}
-              options={options}
-              strategyProfile={strategyProfile}
+              options={ranked.options}
+              analysis={ranked.analysis}
+              focusPlayer={focusPlayer}
+              strategyMode={strategyMode}
               selectedVertex={selectedVertex}
               onSelectVertex={setSelectedVertex}
               onConfirm={handleConfirm}
@@ -198,7 +212,7 @@ function App() {
             <BoardView
               board={board}
               placements={simulation?.placements ?? []}
-              highlightedVertices={mode === 'simulate' ? options : []}
+              highlightedVertices={mode === 'simulate' ? ranked.options : []}
               selectedVertex={selectedVertex}
               onVertexClick={setSelectedVertex}
               interactive={mode === 'simulate'}
@@ -233,8 +247,7 @@ function App() {
 
       <footer className="footer">
         <p>
-          Fase 1: Grunnspill · Ressursvekter fra Board Game Analysis (hvete 1,35,
-          malm 1,33, tre/tegl 0,78, ull 0,76 i generell profil)
+          Fase 1: Grunnspill · Fire seiersprofiler + auto-analyse (Board Game Analysis)
         </p>
       </footer>
     </div>

@@ -1,13 +1,17 @@
 import type { SettlementScore } from '../catan/types';
 import type { SimulationState } from '../catan/simulator';
-import type { StrategyProfile } from '../catan/resourceWeights';
+import type { StrategyMode } from '../catan/resourceWeights';
 import { STRATEGY_PROFILES } from '../catan/resourceWeights';
+import type { StrategyAnalysis } from '../catan/strategyInference';
+import { getAnalysisSummary } from '../catan/strategyInference';
 import { PLAYER_COLORS, PLAYER_NAMES, currentPlayer } from '../catan/simulator';
 
 interface SettlementSimulatorProps {
   state: SimulationState;
   options: SettlementScore[];
-  strategyProfile: StrategyProfile;
+  analysis: StrategyAnalysis | null;
+  focusPlayer: number;
+  strategyMode: StrategyMode;
   selectedVertex: string | null;
   onSelectVertex: (vertexId: string) => void;
   onConfirm: () => void;
@@ -16,7 +20,9 @@ interface SettlementSimulatorProps {
 export function SettlementSimulator({
   state,
   options,
-  strategyProfile,
+  analysis,
+  focusPlayer,
+  strategyMode,
   selectedVertex,
   onSelectVertex,
   onConfirm,
@@ -24,6 +30,8 @@ export function SettlementSimulator({
   const player = currentPlayer(state);
   const step = state.currentStep;
   const total = state.placementOrder.length;
+  const isFocusTurn = player === focusPlayer;
+  const advising = strategyMode === 'auto' && isFocusTurn;
 
   return (
     <div className="panel simulator-panel">
@@ -43,6 +51,28 @@ export function SettlementSimulator({
         )}
       </div>
 
+      {advising && analysis && (
+        <div className="strategy-analysis">
+          <h3>Strategianalyse for {PLAYER_NAMES[focusPlayer]}</h3>
+          <p className="muted small">{getAnalysisSummary(analysis)}</p>
+          <div className="profile-scores">
+            {Object.entries(analysis.profileScores).map(([profile, score]) => (
+              <span key={profile} className="profile-score-chip">
+                {STRATEGY_PROFILES[profile as keyof typeof STRATEGY_PROFILES].label}:{' '}
+                {score.toFixed(2)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!isFocusTurn && strategyMode === 'auto' && (
+        <p className="muted small sim-hint">
+          Motstander plasserer – auto-råd vises når {PLAYER_NAMES[focusPlayer]} skal
+          plassere.
+        </p>
+      )}
+
       {state.finished ? (
         <p className="sim-done">Alle startlandsbyer er plassert!</p>
       ) : (
@@ -52,7 +82,9 @@ export function SettlementSimulator({
             velg fra listen.{' '}
             {options[0]?.placementKind === 'second'
               ? 'Andre landsby: startressurser fra denne plasseringen, men vurdering inkluderer vektet utfylling mot første landsby og havn på total inntekt.'
-              : `Fargen viser relativ styrke (${STRATEGY_PROFILES[strategyProfile].label}: produksjon, dekningsgrad, havn).`}
+              : advising
+                ? 'Auto: vekter basert på seiersprofil, tilgjengelige noder og forventede motstandertrekk.'
+                : `Vurdering med ${STRATEGY_PROFILES[strategyMode].label}.`}
           </p>
           <div className="options-list">
             <h3>Toppkandidater</h3>

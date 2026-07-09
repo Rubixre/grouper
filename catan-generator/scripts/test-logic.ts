@@ -135,21 +135,27 @@ if (fixedHarborBoard) {
 console.log('\nResource weights');
 import {
   WEIGHTS_GENERAL,
-  WEIGHTS_LONGEST_ROAD,
-  WEIGHTS_LARGEST_ARMY,
+  WEIGHTS_LONGEST_ROAD_ONLY,
+  WEIGHTS_LARGEST_ARMY_ONLY,
   coverageBonus,
   getWeightsForProfile,
+  blendWeightsByScores,
 } from '../src/catan/resourceWeights.ts';
 import { DEFAULT_RESOURCE_WEIGHTS } from '../src/catan/types.ts';
+import {
+  analyzeStrategy,
+  getSecondPlacementStep,
+  getRankedOptions,
+  projectPlacements,
+} from '../src/catan/strategyInference.ts';
 
-assert(DEFAULT_RESOURCE_WEIGHTS.wheat === 1.35, 'Default wheat weight from BGA top 50');
-assert(DEFAULT_RESOURCE_WEIGHTS.ore === 1.33, 'Default ore weight from BGA top 50');
+assert(Math.abs(DEFAULT_RESOURCE_WEIGHTS.wheat - WEIGHTS_GENERAL.wheat) < 0.01, 'Default matches general average');
 assert(
-  getWeightsForProfile('longestRoad').wood > WEIGHTS_GENERAL.wood,
+  getWeightsForProfile('longestRoadOnly').wood > WEIGHTS_GENERAL.wood,
   'Longest road boosts wood vs general'
 );
 assert(
-  getWeightsForProfile('largestArmy').ore > WEIGHTS_GENERAL.ore,
+  getWeightsForProfile('largestArmyOnly').ore > WEIGHTS_GENERAL.ore,
   'Largest army boosts ore vs general'
 );
 const highValueCoverage = coverageBonus(
@@ -169,6 +175,33 @@ assert(
     highValueCoverage,
   'Full resource coverage scores higher'
 );
+const blended = blendWeightsByScores({
+  both: 1,
+  largestArmyOnly: 0,
+  longestRoadOnly: 0,
+  neither: 0,
+});
+assert(blended.wheat === getWeightsForProfile('both').wheat, 'Blend single profile');
+
+console.log('\nStrategy inference');
+const order4 = getPlacementOrder(4);
+assert(getSecondPlacementStep(order4, 0) === 7, 'Player 0 second placement at step 7');
+assert(getSecondPlacementStep(order4, 3) === 4, 'Player 3 second placement at step 4');
+if (board) {
+  const sim = createSimulation(board, 4);
+  const autoRanked = getRankedOptions(sim, 0, 'auto');
+  assert(autoRanked.options.length > 0, 'Auto ranking has options');
+  assert(autoRanked.analysis !== null, 'Auto ranking provides analysis for focus player turn');
+  assert(
+    Object.keys(autoRanked.analysis!.profileScores).length === 4,
+    'Four victory profile scores'
+  );
+
+  const projected = projectPlacements(board, [], order4, 0, 7);
+  assert(projected.length === 7, 'Projects 7 placements before P0 second settlement');
+  const analysis = analyzeStrategy(board, [], order4, 0, 0);
+  assert(analysis.usedLookahead, 'First turn analysis uses lookahead');
+}
 
 console.log('\nSimulator');
 assert(
@@ -199,7 +232,7 @@ if (board) {
     assert(opts.length > 0, `Step ${i} has options`);
     state = placeSettlement(state, opts[0].vertexId);
   }
-  const p1second = getOptionsForCurrentTurn(state);
+  const p1second = getOptionsForCurrentTurn(state, 0, 'general');
   assert(p1second.length > 0, 'Player 1 second settlement has options');
   assert(
     p1second.every((o) => o.placementKind === 'second'),
@@ -215,7 +248,8 @@ if (board) {
   const direct = scoreSecondSettlement(
     ranked.vertexId,
     firstPlacement.vertexId,
-    board
+    board,
+    getWeightsForProfile('general')
   );
   assert(
     Math.abs(direct.total - ranked.total) < 1e-9,

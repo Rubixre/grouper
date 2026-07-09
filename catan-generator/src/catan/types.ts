@@ -108,13 +108,13 @@ export interface ResourceWeights {
   ore: number;
 }
 
-/** Default: generell profil (Board Game Analysis, topp 50 seire) */
+/** Default: gjennomsnitt av fire seiersprofiler (Board Game Analysis) */
 export const DEFAULT_RESOURCE_WEIGHTS: ResourceWeights = {
-  wheat: 1.35,
-  ore: 1.33,
+  wheat: 1.295,
+  ore: 1.2375,
   wood: 0.78,
   brick: 0.78,
-  sheep: 0.76,
+  sheep: 0.7625,
 };
 
 export interface SettlementScore {
