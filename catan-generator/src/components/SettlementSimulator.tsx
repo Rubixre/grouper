@@ -74,7 +74,9 @@ export function SettlementSimulator({
       )}
 
       {state.finished ? (
-        <p className="sim-done">Alle startlandsbyer er plassert!</p>
+        <p className="sim-done">
+          Alle startlandsbyer er plassert! Se statistikk under brettet.
+        </p>
       ) : (
         <>
           <p className="sim-hint">

@@ -18,6 +18,7 @@ import { BoardView } from './components/BoardView';
 import { MappingPanel } from './components/MappingPanel';
 import { SettingsPanel } from './components/SettingsPanel';
 import { SettlementSimulator } from './components/SettlementSimulator';
+import { SimulationSummaryPanel } from './components/SimulationSummary';
 import './App.css';
 
 function App() {
@@ -271,6 +272,11 @@ function App() {
             <div className="empty-board">Genererer brett…</div>
           )}
 
+          {simulation?.finished && (
+            <SimulationSummaryPanel state={simulation} />
+          )}
+
+          {!simulation?.finished && (
           <div className="legend panel">
             <h3>Kantbrikker og havner</h3>
             <p className="muted small">
@@ -292,6 +298,7 @@ function App() {
               </div>
             ))}
           </div>
+          )}
         </main>
       </div>
 

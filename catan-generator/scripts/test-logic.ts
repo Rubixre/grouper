@@ -30,6 +30,7 @@ import {
   scoreSecondSettlement,
   DEFAULT_SETTINGS,
 } from '../src/catan/index.ts';
+import { computeSimulationSummary } from '../src/catan/playerStats.ts';
 import { hexCorner, hexToPixel } from '../src/catan/hex.ts';
 
 resetVertices();
@@ -335,6 +336,32 @@ if (board) {
   assert(
     Math.abs(direct.total - ranked.total) < 1e-9,
     'Second settlement score matches scoreSecondSettlement'
+  );
+
+  console.log('\nSimulation summary');
+  const finishedSim = createSimulation(board, 4);
+  let finishedState = finishedSim;
+  for (let i = 0; i < finishedSim.placementOrder.length; i++) {
+    const opts = getOptionsForCurrentTurn(finishedState);
+    finishedState = placeSettlement(finishedState, opts[0].vertexId);
+  }
+  assert(finishedState.finished, 'Simulation completes after all placements');
+  const summary = computeSimulationSummary(finishedState);
+  assert(summary.players.length === 4, 'Summary has 4 players');
+  assert(
+    Math.abs(summary.players.reduce((s, p) => s + p.shareOfTable, 0) - 1) < 1e-9,
+    'Player shares sum to 100%'
+  );
+  assert(summary.tableTotalPerRoll > 0, 'Table has positive expected production');
+  for (const p of summary.players) {
+    assert(p.combined.totalPerRoll > 0, `${p.name} has expected production`);
+    assert(p.combined.resourceCount >= 1, `${p.name} touches at least one resource`);
+  }
+  const p0 = summary.players[0];
+  const startingSum = Object.values(p0.startingResources).reduce((a, b) => a + b, 0);
+  assert(
+    Math.abs(startingSum - (p0.secondSettlement?.totalPerRoll ?? 0)) < 1e-9,
+    'Starting hand matches second settlement production'
   );
 }
 

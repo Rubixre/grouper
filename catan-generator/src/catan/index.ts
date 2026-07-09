@@ -9,3 +9,4 @@ export * from './resourceWeights';
 export * from './strategyInference';
 export * from './mapping';
 export * from './simulator';
+export * from './playerStats';
