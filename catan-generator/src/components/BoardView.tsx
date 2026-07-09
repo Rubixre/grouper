@@ -1,9 +1,13 @@
 import type { Board, PlacedSettlement, SettlementScore } from '../catan/types';
+import type { BoardMapping } from '../catan/mapping';
 import { harborSlotsForPiece } from '../catan/boardLayout';
 import { hexCorner, hexEdgeMidpoint, hexToPixel } from '../catan/hex';
 import { getVertices } from '../catan/settlements';
 import { PLAYER_COLORS } from '../catan/simulator';
 import { BoardHex } from './BoardHex';
+import { MappingOverlay } from './MappingOverlay';
+
+export const BOARD_HEX_SIZE = 34;
 
 const HARBOR_COLORS: Record<string, string> = {
   generic: '#1a5276',
@@ -20,9 +24,13 @@ interface BoardViewProps {
   selectedVertex?: string | null;
   onVertexClick?: (vertexId: string) => void;
   interactive?: boolean;
+  mappingMode?: boolean;
+  mapping?: BoardMapping | null;
+  highlightEdge?: string | null;
+  highlightCorner?: string | null;
 }
 
-const HEX_SIZE = 34;
+const HEX_SIZE = BOARD_HEX_SIZE;
 
 function getVertexPixel(vertexId: string, size: number): { x: number; y: number } | null {
   const vertices = getVertices();
@@ -38,6 +46,10 @@ export function BoardView({
   selectedVertex,
   onVertexClick,
   interactive = false,
+  mappingMode = false,
+  mapping = null,
+  highlightEdge = null,
+  highlightCorner = null,
 }: BoardViewProps) {
   const maxScore = highlightedVertices[0]?.total ?? 1;
 
@@ -76,8 +88,9 @@ export function BoardView({
         />
       ))}
 
-      {/* Harbor pieces */}
-      {board.harbors.map((h) => {
+      {/* Harbor pieces (hidden in mapping mode) */}
+      {!mappingMode &&
+        board.harbors.map((h) => {
         const slots = harborSlotsForPiece(h.startSlot).map(
           (i) => board.coastSlots[i]
         );
@@ -128,8 +141,18 @@ export function BoardView({
         );
       })}
 
+      {mappingMode && mapping && (
+        <MappingOverlay
+          mapping={mapping}
+          hexSize={HEX_SIZE}
+          highlightEdge={highlightEdge}
+          highlightCorner={highlightCorner}
+        />
+      )}
+
       {/* Settlement markers */}
-      {placements.map((p, i) => {
+      {!mappingMode &&
+        placements.map((p, i) => {
         const pos = getVertexPixel(p.vertexId, HEX_SIZE);
         if (!pos) return null;
         return (
@@ -157,7 +180,8 @@ export function BoardView({
       })}
 
       {/* Interactive vertex highlights */}
-      {interactive &&
+      {!mappingMode &&
+        interactive &&
         highlightedVertices.map((score) => {
           const pos = getVertexPixel(score.vertexId, HEX_SIZE);
           if (!pos) return null;

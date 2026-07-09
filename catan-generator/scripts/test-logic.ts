@@ -13,6 +13,7 @@ import {
   getLandHexCoords,
   getPlacementOrder,
   getVertices,
+  getBoardMapping,
   resetVertices,
   createSimulation,
   advanceToHumanOrEnd,
@@ -54,6 +55,10 @@ const coastSlots = buildCoastSlots();
 assert(coastSlots.length === 18, `18 coast slots (got ${coastSlots.length})`);
 const vertices = getVertices();
 assert(vertices.size >= 60, `At least 60 vertices (got ${vertices.size})`);
+
+const mapping = getBoardMapping();
+assert(mapping.edgeHexes.length === 18, `18 numbered edge hexes (got ${mapping.edgeHexes.length})`);
+assert(mapping.coastCorners.length === 30, `30 coast meet corners (got ${mapping.coastCorners.length})`);
 
 console.log('\nGenerator');
 const board = generateBoard(DEFAULT_SETTINGS);

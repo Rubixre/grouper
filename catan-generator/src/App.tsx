@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Board, GeneratorSettings, PlayerCount } from './catan/types';
 import { DEFAULT_SETTINGS } from './catan/types';
 import { generateBoard } from './catan/generator';
+import { getBoardMapping } from './catan/mapping';
 import {
   advanceToHumanOrEnd,
   createSimulation,
@@ -10,6 +11,7 @@ import {
   type SimulationState,
 } from './catan/simulator';
 import { BoardView } from './components/BoardView';
+import { MappingPanel } from './components/MappingPanel';
 import { SettingsPanel } from './components/SettingsPanel';
 import { SettlementSimulator } from './components/SettlementSimulator';
 import './App.css';
@@ -23,6 +25,11 @@ function App() {
   const [simulation, setSimulation] = useState<SimulationState | null>(null);
   const [selectedVertex, setSelectedVertex] = useState<string | null>(null);
   const [mode, setMode] = useState<'view' | 'simulate'>('view');
+  const [mappingMode, setMappingMode] = useState(false);
+  const [highlightEdge, setHighlightEdge] = useState<string | null>(null);
+  const [highlightCorner, setHighlightCorner] = useState<string | null>(null);
+
+  const boardMapping = useMemo(() => getBoardMapping(), []);
 
   const handleGenerate = useCallback(() => {
     const result = generateBoard(settings);
@@ -96,6 +103,33 @@ function App() {
           <SettingsPanel settings={settings} onChange={setSettings} />
 
           <div className="panel">
+            <h2>Kartleggingsmodus</h2>
+            <label className="setting-row">
+              <input
+                type="checkbox"
+                checked={mappingMode}
+                onChange={(e) => {
+                  setMappingMode(e.target.checked);
+                  if (e.target.checked) setMode('view');
+                }}
+              />
+              <span className="setting-text">
+                <strong>Vis nummerering</strong>
+                <small>K1–K18 kanthexer, H1–H30 møtehjørner, hjørne 0–5</small>
+              </span>
+            </label>
+          </div>
+
+          {mappingMode && (
+            <MappingPanel
+              mapping={boardMapping}
+              onHighlightEdge={setHighlightEdge}
+              onHighlightCorner={setHighlightCorner}
+            />
+          )}
+
+          {!mappingMode && (
+          <div className="panel">
             <h2>Simulering</h2>
             <label className="field">
               Antall spillere
@@ -135,8 +169,9 @@ function App() {
               Start plassering
             </button>
           </div>
+          )}
 
-          {mode === 'simulate' && simulation && (
+          {!mappingMode && mode === 'simulate' && simulation && (
             <SettlementSimulator
               state={simulation}
               options={options}
@@ -157,6 +192,10 @@ function App() {
               selectedVertex={selectedVertex}
               onVertexClick={setSelectedVertex}
               interactive={mode === 'simulate'}
+              mappingMode={mappingMode}
+              mapping={boardMapping}
+              highlightEdge={highlightEdge}
+              highlightCorner={highlightCorner}
             />
           ) : (
             <div className="empty-board">Genererer brett…</div>

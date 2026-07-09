@@ -4,4 +4,5 @@ export * from './boardLayout';
 export * from './harbors';
 export * from './generator';
 export * from './settlements';
+export * from './mapping';
 export * from './simulator';
