@@ -43,10 +43,10 @@ export interface BoardMapping {
 
 const mappingCache = new Map<BoardSize, BoardMapping>();
 
-/** Forskyv K-nummerering med klokken (kun visningsnavn, ikke fysisk plassering) */
+/** Forskyv K-nummerering mot klokken (kun visningsnavn, ikke fysisk plassering) */
 const K_LABEL_ROTATION: Record<BoardSize, number> = {
   base: 0,
-  extension56: 1,
+  extension56: -1,
 };
 
 function kIndexForClockwisePosition(
