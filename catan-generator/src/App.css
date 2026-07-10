@@ -514,6 +514,22 @@ body {
   pointer-events: none;
 }
 
+.harbor-port {
+  pointer-events: none;
+}
+
+.harbor-port-gate {
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.35));
+}
+
+.harbor-port-spoke {
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.45));
+}
+
+.harbor-port-node {
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.4));
+}
+
 .options-list {
   max-height: 220px;
   overflow-y: auto;

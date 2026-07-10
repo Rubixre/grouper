@@ -17,6 +17,10 @@ function themeFor(harbor: HarborType) {
   return HARBOR_THEME[harbor.resource] ?? HARBOR_THEME.generic;
 }
 
+export function getHarborTheme(harbor: HarborType) {
+  return themeFor(harbor);
+}
+
 function GenericHarborGlyph({ accent }: { accent: string }) {
   return (
     <>

@@ -6,8 +6,9 @@ import { getVertices } from '../catan/settlements';
 import { PLAYER_COLORS } from '../catan/simulator';
 import { BoardHex } from './BoardHex';
 import { EdgePieceShape } from './EdgePieceShape';
-import { HarborIcon } from './HarborIcon';
+import { HarborIcon, getHarborTheme } from './HarborIcon';
 import { MappingOverlay } from './MappingOverlay';
+import type { PlacedHarbor } from '../catan/types';
 
 export const BOARD_HEX_SIZE = 34;
 
@@ -50,6 +51,79 @@ function getVertexPixel(vertexId: string, size: number): { x: number; y: number 
   const v = vertices.get(vertexId);
   if (!v) return null;
   return hexCorner(v.anchor, v.corner, size);
+}
+
+function HarborPortLinks({
+  harbor,
+  hexSize,
+}: {
+  harbor: PlacedHarbor;
+  hexSize: number;
+}) {
+  const harborPos = harborPosition(harbor, hexSize);
+  const nodeA = getVertexPixel(harbor.nodeVertexIds[0], hexSize);
+  const nodeB = getVertexPixel(harbor.nodeVertexIds[1], hexSize);
+  if (!nodeA || !nodeB) return null;
+
+  const theme = getHarborTheme(harbor.definition.harbor);
+
+  return (
+    <g className="harbor-port" aria-hidden>
+      <line
+        className="harbor-port-gate"
+        x1={nodeA.x}
+        y1={nodeA.y}
+        x2={nodeB.x}
+        y2={nodeB.y}
+        stroke={theme.accent}
+        strokeWidth={3.5}
+        strokeLinecap="round"
+        opacity={0.9}
+      />
+      <line
+        className="harbor-port-spoke"
+        x1={harborPos.x}
+        y1={harborPos.y}
+        x2={nodeA.x}
+        y2={nodeA.y}
+        stroke="#fff"
+        strokeWidth={1.6}
+        strokeDasharray="5 4"
+        strokeLinecap="round"
+        opacity={0.75}
+      />
+      <line
+        className="harbor-port-spoke"
+        x1={harborPos.x}
+        y1={harborPos.y}
+        x2={nodeB.x}
+        y2={nodeB.y}
+        stroke="#fff"
+        strokeWidth={1.6}
+        strokeDasharray="5 4"
+        strokeLinecap="round"
+        opacity={0.75}
+      />
+      <circle
+        className="harbor-port-node"
+        cx={nodeA.x}
+        cy={nodeA.y}
+        r={3.5}
+        fill={theme.accent}
+        stroke="#fff"
+        strokeWidth={1.2}
+      />
+      <circle
+        className="harbor-port-node"
+        cx={nodeB.x}
+        cy={nodeB.y}
+        r={3.5}
+        fill={theme.accent}
+        stroke="#fff"
+        strokeWidth={1.2}
+      />
+    </g>
+  );
 }
 
 export function BoardView({
@@ -123,6 +197,12 @@ export function BoardView({
           size={HEX_SIZE}
         />
       ))}
+
+      {/* Havnporter – linjer til tilkoblede H-noder */}
+      {!mappingMode &&
+        board.harbors.map((h) => (
+          <HarborPortLinks key={`port-${h.definition.id}`} harbor={h} hexSize={HEX_SIZE} />
+        ))}
 
       {/* Havner – sentrert i kanthex (blå), med ressursspesifikke ikoner */}
       {!mappingMode &&
