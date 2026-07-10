@@ -1,5 +1,10 @@
 import type { HexCoord } from '../catan/types';
-import { coordKey, hexCorner, hexNeighbor, hexToPixel } from '../catan/hex';
+import { hexToPixel } from '../catan/hex';
+import {
+  buildEdgePieceOutline,
+  outlineToPath,
+  outlineToPolygonPoints,
+} from '../catan/edgePieceGeometry';
 
 const EDGE_FILL = '#2e86c1';
 const EDGE_FILL_LIGHT = '#5dade2';
@@ -14,33 +19,15 @@ interface EdgePieceShapeProps {
 
 function pieceId(coords: HexCoord[], pieceLabel?: string): string {
   if (pieceLabel) return pieceLabel.replace(/[^a-zA-Z0-9]/g, '');
-  return coords.map(coordKey).join('-');
+  return coords.map((c) => `${c.q},${c.r}`).join('-');
 }
 
-/** Render kanthexer som én fysisk brikke (B1–B10) */
+/** Render kanthexer som én fysisk brikke med rette ytterkanter mot sjø */
 export function EdgePieceShape({ coords, size, pieceLabel }: EdgePieceShapeProps) {
-  const groupSet = new Set(coords.map(coordKey));
   const id = pieceId(coords, pieceLabel);
-  const isSingle = coords.length === 1;
-
-  const outerSegments: { x1: number; y1: number; x2: number; y2: number; key: string }[] =
-    [];
-
-  for (const coord of coords) {
-    for (let edge = 0; edge < 6; edge++) {
-      const neighbor = hexNeighbor(coord, edge);
-      if (groupSet.has(coordKey(neighbor))) continue;
-      const p1 = hexCorner(coord, edge, size);
-      const p2 = hexCorner(coord, (edge + 1) % 6, size);
-      outerSegments.push({
-        x1: p1.x,
-        y1: p1.y,
-        x2: p2.x,
-        y2: p2.y,
-        key: `${coordKey(coord)}-${edge}`,
-      });
-    }
-  }
+  const outline = buildEdgePieceOutline(coords, size);
+  const polygonPoints = outlineToPolygonPoints(outline);
+  const pathD = outlineToPath(outline);
 
   const center = coords.reduce(
     (acc, coord) => {
@@ -52,9 +39,12 @@ export function EdgePieceShape({ coords, size, pieceLabel }: EdgePieceShapeProps
   const cx = center.x / coords.length;
   const cy = center.y / coords.length;
 
+  const isSingle = coords.length === 1;
   const badgeW = size * (isSingle ? 0.55 : 0.72);
   const badgeH = size * 0.34;
   const fontSize = size * (isSingle ? 0.22 : 0.26);
+
+  if (!polygonPoints) return null;
 
   return (
     <g className="edge-piece" filter={`url(#edge-piece-shadow-${id})`}>
@@ -66,7 +56,13 @@ export function EdgePieceShape({ coords, size, pieceLabel }: EdgePieceShapeProps
           width="140%"
           height="140%"
         >
-          <feDropShadow dx="0" dy="2" stdDeviation="2.5" floodColor="#0a2a40" floodOpacity="0.55" />
+          <feDropShadow
+            dx="0"
+            dy="2"
+            stdDeviation="2.5"
+            floodColor="#0a2a40"
+            floodOpacity="0.55"
+          />
         </filter>
         <linearGradient
           id={`edge-piece-grad-${id}`}
@@ -81,47 +77,28 @@ export function EdgePieceShape({ coords, size, pieceLabel }: EdgePieceShapeProps
         </linearGradient>
       </defs>
 
-      {coords.map((coord) => {
-        const points = Array.from({ length: 6 }, (_, i) => {
-          const { x, y } = hexCorner(coord, i, size);
-          return `${x},${y}`;
-        }).join(' ');
-        return (
-          <polygon
-            key={coordKey(coord)}
-            points={points}
-            fill={`url(#edge-piece-grad-${id})`}
-            stroke="none"
-          />
-        );
-      })}
+      <polygon
+        points={polygonPoints}
+        fill={`url(#edge-piece-grad-${id})`}
+        stroke="none"
+      />
 
-      {outerSegments.map((seg) => (
-        <line
-          key={`rim-${seg.key}`}
-          x1={seg.x1}
-          y1={seg.y1}
-          x2={seg.x2}
-          y2={seg.y2}
-          stroke={PIECE_RIM}
-          strokeWidth={5}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      ))}
-      {outerSegments.map((seg) => (
-        <line
-          key={seg.key}
-          x1={seg.x1}
-          y1={seg.y1}
-          x2={seg.x2}
-          y2={seg.y2}
-          stroke={EDGE_STROKE}
-          strokeWidth={2.5}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      ))}
+      <path
+        d={pathD}
+        fill="none"
+        stroke={PIECE_RIM}
+        strokeWidth={5}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+      <path
+        d={pathD}
+        fill="none"
+        stroke={EDGE_STROKE}
+        strokeWidth={2.5}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
 
       {pieceLabel && (
         <g className="edge-piece-badge" pointerEvents="none">

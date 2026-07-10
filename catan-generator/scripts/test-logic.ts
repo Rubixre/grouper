@@ -31,6 +31,7 @@ import {
   DEFAULT_SETTINGS,
   verifyExtensionSingleHarborNodes,
 } from '../src/catan/index.ts';
+import { buildEdgePieceOutline } from '../src/catan/edgePieceGeometry.ts';
 import { computeSimulationSummary } from '../src/catan/playerStats.ts';
 import { hexCorner, hexToPixel } from '../src/catan/hex.ts';
 
@@ -97,6 +98,10 @@ for (const h of atZero) {
 const pieces = getEdgePieces(0, 'base');
 assert(pieces.length === 6, '6 edge pieces');
 assert(pieces[0].kLabels.join(',') === 'K18,K1,K2', `B1 default ${pieces[0].kLabels}`);
+assert(
+  buildEdgePieceOutline([...pieces[0].coords], 1).length >= 3,
+  'Edge piece outline is a closed polygon'
+);
 assert(kLabelForGroupSlot(0, 0, 1, 'base') === 'K3', 'rotation 1 moves B1 start to K3');
 
 const rotated = placeHarbors(2, 1, 'base');
