@@ -133,13 +133,13 @@ assert(
 );
 const b5Harbor = extHarbors.find((h) => h.edgeHexLabel === 'K11');
 assert(
-  b5Harbor?.nodeLabels.join(',') === 'H16,H17',
-  `B5 wool at H16,H17 (got ${b5Harbor?.nodeLabels.join(',')})`
+  b5Harbor?.nodeLabels.join(',') === 'H18,H19',
+  `B5 wool at H18,H19 (got ${b5Harbor?.nodeLabels.join(',')})`
 );
 const b8Harbor = extHarbors.find((h) => h.edgeHexLabel === 'K18');
 assert(
-  b8Harbor?.nodeLabels.join(',') === 'H28,H29',
-  `B8 3:1 at H28,H29 (got ${b8Harbor?.nodeLabels.join(',')})`
+  b8Harbor?.nodeLabels.join(',') === 'H30,H31',
+  `B8 3:1 at H30,H31 (got ${b8Harbor?.nodeLabels.join(',')})`
 );
 assert(
   !extHarbors.some((h) => h.edgeHexLabel === 'K7' || h.edgeHexLabel === 'K22'),

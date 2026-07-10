@@ -30,6 +30,14 @@ export const EXTENSION_TRIPLE_SLOTS: [string, string, string][] = [
 /** Faste K-posisjoner for 1-hex brikker */
 export const EXTENSION_SINGLE_SLOTS = ['K7', 'K11', 'K18', 'K22'] as const;
 
+/** Faste H-nodepar for havner på enkelt-hex K-plasseringer */
+export const EXTENSION_SINGLE_HARBOR_NODES: Partial<
+  Record<(typeof EXTENSION_SINGLE_SLOTS)[number], [string, string]>
+> = {
+  K11: ['H18', 'H19'],
+  K18: ['H30', 'H31'],
+};
+
 interface HarborOnPiece {
   name: string;
   harbor: HarborType;
@@ -148,6 +156,16 @@ function hNodesForSingleEdgeHex(
   kLabel: string,
   mapping: ReturnType<typeof getBoardMapping>
 ) {
+  const fixed = EXTENSION_SINGLE_HARBOR_NODES[kLabel as (typeof EXTENSION_SINGLE_SLOTS)[number]];
+  if (fixed) {
+    const nodeA = mapping.cornerByLabel.get(fixed[0]);
+    const nodeB = mapping.cornerByLabel.get(fixed[1]);
+    if (!nodeA || !nodeB) {
+      throw new Error(`Missing coast nodes ${fixed.join(',')} for ${kLabel}`);
+    }
+    return [nodeA, nodeB] as const;
+  }
+
   const sorted = hNodesOnEdgeHex(kLabel, mapping);
   if (sorted.length < 2) {
     throw new Error(`Expected at least 2 H-nodes for single ${kLabel}, got ${sorted.length}`);
