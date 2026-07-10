@@ -207,7 +207,6 @@ export function BoardView({
           key={piece.label}
           coords={[...piece.coords]}
           size={HEX_SIZE}
-          pieceLabel={piece.label}
         />
       ))}
 
@@ -216,7 +215,6 @@ export function BoardView({
           key={piece.label}
           coords={[piece.coord]}
           size={HEX_SIZE}
-          pieceLabel={piece.label}
         />
       ))}
 
