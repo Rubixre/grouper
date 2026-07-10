@@ -207,7 +207,7 @@ export function BoardView({
           key={piece.label}
           coords={[...piece.coords]}
           size={HEX_SIZE}
-          pieceLabel={mappingMode ? piece.label : undefined}
+          pieceLabel={piece.label}
         />
       ))}
 
@@ -216,7 +216,7 @@ export function BoardView({
           key={piece.label}
           coords={[piece.coord]}
           size={HEX_SIZE}
-          pieceLabel={mappingMode ? piece.label : undefined}
+          pieceLabel={piece.label}
         />
       ))}
 
