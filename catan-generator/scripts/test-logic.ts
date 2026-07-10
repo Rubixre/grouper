@@ -112,8 +112,39 @@ assert(getEdgeHexSet('extension56').size === 22, '22 edge hexes in extension');
 assert(getSingleEdgePieces('extension56').length === 4, '4 single edge pieces B7–B10');
 const extMapping = getBoardMapping('extension56');
 assert(extMapping.edgeHexes.length === 22, '22 numbered edge hexes');
-assert(extMapping.edgeHexes[0].label === 'K2', 'Extension K labels shifted 1 step counter-clockwise');
-assert(extMapping.edgeHexes[1].label === 'K3', 'Extension second K position labeled K3');
+assert(extMapping.edgeHexes[0].label === 'K1', 'Extension ring starts at K1');
+assert(
+  getEdgePieces(0, 'extension56')[0].kLabels.join(',') === 'K1,K2,K3',
+  'B1 default is K1–K3'
+);
+assert(
+  getSingleEdgePieces('extension56').find((p) => p.label === 'B3')?.kLabel === 'K7',
+  'B3 default on K7'
+);
+assert(
+  getSingleEdgePieces('extension56').find((p) => p.label === 'B5')?.kLabel === 'K11',
+  'B5 default on K11'
+);
+const extHarbors = placeHarbors(0, 1, 'extension56');
+assert(extHarbors.length === 11, '11 harbors in extension default layout');
+assert(
+  extHarbors.some((h) => h.edgeHexLabel === 'K11' && h.definition.name === 'Ullhavn'),
+  'B5 wool harbor on K11'
+);
+const b5Harbor = extHarbors.find((h) => h.edgeHexLabel === 'K11');
+assert(
+  b5Harbor?.nodeLabels.join(',') === 'H18,H19',
+  `B5 wool at H18,H19 (got ${b5Harbor?.nodeLabels.join(',')})`
+);
+const b8Harbor = extHarbors.find((h) => h.edgeHexLabel === 'K18');
+assert(
+  b8Harbor?.nodeLabels.join(',') === 'H30,H31',
+  `B8 3:1 at H30,H31 (got ${b8Harbor?.nodeLabels.join(',')})`
+);
+assert(
+  !extHarbors.some((h) => h.edgeHexLabel === 'K7' || h.edgeHexLabel === 'K22'),
+  'Blank pieces K7 and K22 have no harbors'
+);
 assert(extMapping.coastCorners.length > 30, 'More than 30 coast nodes on extension');
 
 console.log('\nGenerator');

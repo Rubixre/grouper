@@ -1,5 +1,11 @@
 import type { HarborDefinition, PlacedHarbor } from './types';
 import type { BoardSize } from './boardLayout';
+import type { ExtensionEdgeOrder } from './extensionLayout';
+import {
+  EXTENSION_IDENTITY_ORDER,
+  isExtensionSize,
+  placeExtensionHarbors,
+} from './extensionLayout';
 import type { CoastMeetCorner } from './mapping';
 import { kLabelForGroupSlot } from './edgePieces';
 import { getBoardMapping } from './mapping';
@@ -111,8 +117,13 @@ function hNodesForEdgeHex(
 export function placeHarbors(
   rotation: number,
   hexSize = 1,
-  size: BoardSize = 'base'
+  size: BoardSize = 'base',
+  extensionOrder: ExtensionEdgeOrder = EXTENSION_IDENTITY_ORDER
 ): PlacedHarbor[] {
+  if (isExtensionSize(size)) {
+    return placeExtensionHarbors(extensionOrder, hexSize);
+  }
+
   const mapping = getBoardMapping(size);
 
   return HARBOR_LAYOUT.map((definition) => {

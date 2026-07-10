@@ -1,14 +1,21 @@
 import type { HexCoord } from './types';
 import type { BoardSize } from './boardLayout';
+import type { ExtensionEdgeOrder } from './extensionLayout';
+import {
+  EXTENSION_IDENTITY_ORDER,
+  extensionEdgePieceGroupMap,
+  getExtensionSinglePieces,
+  getExtensionTriplePieces,
+  isExtensionSize,
+} from './extensionLayout';
+import { getBoardMapping } from './mapping';
+import { coordKey } from './hex';
 import {
   getEdgeHexCount,
   getHarborTriplePieceCount,
   getSingleEdgeHexSet,
   getSingleEdgePieceCount,
-  SINGLE_EDGE_PIECE_COORDS,
 } from './boardLayout';
-import { getBoardMapping } from './mapping';
-import { coordKey } from './hex';
 
 export const HEXES_PER_PIECE = 3;
 
@@ -81,7 +88,15 @@ export interface SingleEdgePiece {
   coord: HexCoord;
 }
 
-export function getEdgePieces(rotation: number, size: BoardSize = 'base'): EdgePiece[] {
+export function getEdgePieces(
+  rotation: number,
+  size: BoardSize = 'base',
+  extensionOrder: ExtensionEdgeOrder = EXTENSION_IDENTITY_ORDER
+): EdgePiece[] {
+  if (isExtensionSize(size)) {
+    return getExtensionTriplePieces(extensionOrder);
+  }
+
   const mapping = getBoardMapping(size);
   const pieceCount = getHarborTriplePieceCount(size);
 
@@ -105,23 +120,14 @@ export function getEdgePieces(rotation: number, size: BoardSize = 'base'): EdgeP
   });
 }
 
-export function getSingleEdgePieces(size: BoardSize = 'base'): SingleEdgePiece[] {
-  if (size === 'base') return [];
-
-  const mapping = getBoardMapping(size);
-  const tripleCount = getHarborTriplePieceCount(size);
-
-  return SINGLE_EDGE_PIECE_COORDS.map((coord, i) => {
-    const key = coordKey(coord);
-    const edge = mapping.edgeByCoord.get(key);
-    if (!edge) throw new Error(`Missing single edge hex at ${key}`);
-    return {
-      groupIndex: tripleCount + i,
-      label: `B${tripleCount + i + 1}`,
-      kLabel: edge.label,
-      coord,
-    };
-  });
+export function getSingleEdgePieces(
+  size: BoardSize = 'base',
+  extensionOrder: ExtensionEdgeOrder = EXTENSION_IDENTITY_ORDER
+): SingleEdgePiece[] {
+  if (isExtensionSize(size)) {
+    return getExtensionSinglePieces(extensionOrder);
+  }
+  return [];
 }
 
 export function randomEdgeRotation(size: BoardSize = 'base'): number {
@@ -130,8 +136,13 @@ export function randomEdgeRotation(size: BoardSize = 'base'): number {
 
 export function edgePieceGroupMap(
   rotation: number,
-  size: BoardSize = 'base'
+  size: BoardSize = 'base',
+  extensionOrder: ExtensionEdgeOrder = EXTENSION_IDENTITY_ORDER
 ): Map<string, number> {
+  if (isExtensionSize(size)) {
+    return extensionEdgePieceGroupMap(extensionOrder);
+  }
+
   const map = new Map<string, number>();
   for (const piece of getEdgePieces(rotation, size)) {
     for (const coord of piece.coords) {

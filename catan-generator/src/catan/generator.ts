@@ -18,6 +18,10 @@ import {
   setBoardSize,
 } from './boardLayout';
 import { randomEdgeRotation } from './edgePieces';
+import {
+  EXTENSION_IDENTITY_ORDER,
+  randomExtensionEdgeOrder,
+} from './extensionLayout';
 import { placeHarbors } from './harbors';
 import { resetBoardMapping } from './mapping';
 import { resetVertices } from './settlements';
@@ -225,8 +229,24 @@ export function generateBoard(
     if (!landHexes) continue;
     if (!tryPlaceNumbers(landHexes, numbers, settings, landSet)) continue;
 
-    const edgeRotation = settings.randomHarbors ? randomEdgeRotation(boardSize) : 0;
-    const harbors = placeHarbors(edgeRotation, 1, boardSize);
+    const extensionEdgeOrder =
+      boardSize === 'extension56'
+        ? settings.randomHarbors
+          ? randomExtensionEdgeOrder()
+          : EXTENSION_IDENTITY_ORDER
+        : undefined;
+    const edgeRotation =
+      boardSize === 'extension56'
+        ? 0
+        : settings.randomHarbors
+          ? randomEdgeRotation(boardSize)
+          : 0;
+    const harbors = placeHarbors(
+      edgeRotation,
+      1,
+      boardSize,
+      extensionEdgeOrder ?? EXTENSION_IDENTITY_ORDER
+    );
 
     const hexes: HexTile[] = hexCoords.map((coord) => {
       if (isEdgeHex(coord, boardSize)) {
@@ -241,6 +261,7 @@ export function generateBoard(
       harbors,
       coastSlots,
       edgeRotation,
+      extensionEdgeOrder,
     };
   }
 

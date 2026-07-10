@@ -65,8 +65,15 @@ export function BoardView({
   highlightCorner = null,
 }: BoardViewProps) {
   const maxScore = highlightedVertices[0]?.total ?? 1;
-  const edgePieces = getEdgePieces(board.edgeRotation, board.boardSize);
-  const singleEdgePieces = getSingleEdgePieces(board.boardSize);
+  const edgePieces = getEdgePieces(
+    board.edgeRotation,
+    board.boardSize,
+    board.extensionEdgeOrder
+  );
+  const singleEdgePieces = getSingleEdgePieces(
+    board.boardSize,
+    board.extensionEdgeOrder
+  );
   const landHexes = board.hexes.filter((h) => h.kind === 'land');
 
   const bounds = board.hexes.map((h) => hexToPixel(h.coord, HEX_SIZE));

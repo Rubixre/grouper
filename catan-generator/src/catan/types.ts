@@ -1,4 +1,5 @@
 import type { BoardSize } from './boardLayout';
+import type { ExtensionEdgeOrder } from './extensionLayout';
 
 export type { BoardSize };
 export type ResourceType = 'wood' | 'brick' | 'sheep' | 'wheat' | 'ore' | 'desert';
@@ -89,8 +90,10 @@ export interface Board {
   hexes: HexTile[];
   harbors: PlacedHarbor[];
   coastSlots: CoastSlot[];
-  /** Edge piece rotation 0–5 (each step = 1/6 turn clockwise) */
+  /** Edge piece rotation 0–5 (grunnspill) */
   edgeRotation: number;
+  /** Permutasjon av kantbrikker i 5–6 utvidelse */
+  extensionEdgeOrder?: ExtensionEdgeOrder;
 }
 
 export interface Vertex {

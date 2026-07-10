@@ -6,6 +6,7 @@ export * from './harbors';
 export * from './generator';
 export * from './settlements';
 export * from './resourceWeights';
+export * from './extensionLayout';
 export * from './mapping';
 export * from './simulator';
 export * from './playerStats';
