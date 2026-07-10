@@ -112,6 +112,8 @@ assert(getEdgeHexSet('extension56').size === 22, '22 edge hexes in extension');
 assert(getSingleEdgePieces('extension56').length === 4, '4 single edge pieces B7–B10');
 const extMapping = getBoardMapping('extension56');
 assert(extMapping.edgeHexes.length === 22, '22 numbered edge hexes');
+assert(extMapping.edgeHexes[0].label === 'K22', 'Extension K labels shifted 1 step clockwise');
+assert(extMapping.edgeHexes[1].label === 'K1', 'Extension K2 position labeled K1');
 assert(extMapping.coastCorners.length > 30, 'More than 30 coast nodes on extension');
 
 console.log('\nGenerator');

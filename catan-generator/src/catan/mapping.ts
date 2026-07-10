@@ -43,6 +43,20 @@ export interface BoardMapping {
 
 const mappingCache = new Map<BoardSize, BoardMapping>();
 
+/** Forskyv K-nummerering med klokken (kun visningsnavn, ikke fysisk plassering) */
+const K_LABEL_ROTATION: Record<BoardSize, number> = {
+  base: 0,
+  extension56: 1,
+};
+
+function kIndexForClockwisePosition(
+  position: number,
+  count: number,
+  rotation: number
+): number {
+  return ((position - rotation + count) % count) + 1;
+}
+
 function vertexAngle(anchor: HexCoord, corner: number): number {
   const { x, y } = hexCorner(anchor, corner, 1);
   return Math.atan2(y, x);
@@ -78,7 +92,11 @@ export function buildBoardMapping(size: BoardSize = 'base'): BoardMapping {
   );
 
   const edgeHexes: NumberedEdgeHex[] = edgeCoords.map((coord, i) => {
-    const index = i + 1;
+    const index = kIndexForClockwisePosition(
+      i,
+      edgeCoords.length,
+      K_LABEL_ROTATION[size]
+    );
     const { landCorners, waterCorners } = landCornersForEdgeHex(coord, landSet);
     return {
       label: `K${index}`,
