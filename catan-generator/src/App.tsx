@@ -169,7 +169,9 @@ function App() {
                       )
                     )}
                   </div>
-                  <span className="placement-legend-hint">#1 = best · klikk markør på brettet</span>
+                  <span className="placement-legend-hint">
+                    #1 = best · lyse punkter = også gyldige
+                  </span>
                 </div>
               )}
             </div>
@@ -285,7 +287,7 @@ function App() {
                   <p className="muted small">
                     Velg antall spillere og trykk <strong>Start plassering</strong>.
                     De 8 beste plasseringene vises som nummererte markører på brettet
-                    (gull = #1). Klikk en markør eller velg i listen til høyre.
+                    (gull = #1). Du kan også klikke andre lyse punkter for fri plassering.
                   </p>
                 </div>
               )}

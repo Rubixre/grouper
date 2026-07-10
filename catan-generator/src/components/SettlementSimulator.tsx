@@ -22,6 +22,13 @@ export function SettlementSimulator({
   const total = state.placementOrder.length;
   const progress = state.finished ? 100 : (step / total) * 100;
   const isSecond = options[0]?.placementKind === 'second';
+  const topOptions = options.slice(0, 8);
+  const selectedOption = selectedVertex
+    ? options.find((opt) => opt.vertexId === selectedVertex)
+    : undefined;
+  const selectedRank = selectedVertex
+    ? options.findIndex((opt) => opt.vertexId === selectedVertex) + 1
+    : 0;
 
   return (
     <div className="panel simulator-panel">
@@ -53,10 +60,11 @@ export function SettlementSimulator({
               ? 'Andre landsby: poengsum vektlegger startressurser og utfylling mot din første landsby.'
               : 'Første landsby: poengsum basert på vektet produksjon og ressursdekning.'}{' '}
             <strong>Nummererte markører på brettet</strong> viser de 8 beste plasseringene (#1 er gull).
+            Du kan også klikke <strong>andre lyse punkter</strong> for fri plassering.
           </p>
           <div className="options-list">
             <h3>Topp {Math.min(8, options.length)} plasseringer</h3>
-            {options.slice(0, 8).map((opt, i) => (
+            {topOptions.map((opt, i) => (
               <button
                 key={opt.vertexId}
                 type="button"
@@ -79,6 +87,13 @@ export function SettlementSimulator({
                 </span>
               </button>
             ))}
+            {selectedOption && selectedRank > 8 && (
+              <div className="option-row selected custom-placement">
+                <span className="option-rank">#{selectedRank}</span>
+                <span className="option-score">{selectedOption.total.toFixed(2)}</span>
+                <span className="option-detail">Valgt på brettet (utenfor topp 8)</span>
+              </div>
+            )}
           </div>
           <button
             type="button"

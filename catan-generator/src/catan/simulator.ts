@@ -5,7 +5,7 @@ import type {
   SettlementScore,
 } from './types';
 import { DEFAULT_RESOURCE_WEIGHTS } from './types';
-import { rankVertices } from './settlements';
+import { getValidVertices, rankVertices } from './settlements';
 
 /** Snake-draft placement order for initial settlements (2 per player) */
 export function getPlacementOrder(playerCount: PlayerCount): number[] {
@@ -90,6 +90,9 @@ export function placeSettlement(
 ): SimulationState {
   const player = currentPlayer(state);
   if (player === null) return state;
+
+  const valid = getValidVertices(state.placements);
+  if (!valid.includes(vertexId)) return state;
 
   const placements: PlacedSettlement[] = [
     ...state.placements,

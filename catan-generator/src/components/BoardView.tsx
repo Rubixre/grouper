@@ -171,6 +171,7 @@ export function BoardView({
   highlightCorner = null,
 }: BoardViewProps) {
   const topPlacements = highlightedVertices.slice(0, TOP_PLACEMENT_MARKERS);
+  const otherPlacements = highlightedVertices.slice(TOP_PLACEMENT_MARKERS);
   const edgePieces = getEdgePieces(
     board.edgeRotation,
     board.boardSize,
@@ -290,6 +291,39 @@ export function BoardView({
           </g>
         );
       })}
+
+      {/* Øvrige gyldige plasseringer – klikkbare, uten rang */}
+      {!mappingMode &&
+        interactive &&
+        otherPlacements.map((score) => {
+          const pos = getVertexPixel(score.vertexId, HEX_SIZE);
+          if (!pos) return null;
+
+          const isSelected = selectedVertex === score.vertexId;
+          const rank =
+            highlightedVertices.findIndex((s) => s.vertexId === score.vertexId) + 1;
+
+          return (
+            <g
+              key={`other-${score.vertexId}`}
+              className={`placement-marker placement-marker-other ${isSelected ? 'selected' : ''}`}
+              style={{ cursor: 'pointer' }}
+              onClick={() => onVertexClick?.(score.vertexId)}
+            >
+              <circle
+                cx={pos.x}
+                cy={pos.y}
+                r={isSelected ? 10 : 7}
+                fill="rgba(255,255,255,0.28)"
+                stroke={isSelected ? '#fff' : 'rgba(255,255,255,0.55)'}
+                strokeWidth={isSelected ? 2.5 : 1.5}
+              />
+              <title>
+                {placementScoreTitle(score, rank)} (rang #{rank})
+              </title>
+            </g>
+          );
+        })}
 
       {/* Anbefalte plasseringer under simulering */}
       {!mappingMode &&
