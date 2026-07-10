@@ -26,6 +26,38 @@ interface BoardViewProps {
 }
 
 const HEX_SIZE = BOARD_HEX_SIZE;
+const TOP_PLACEMENT_MARKERS = 8;
+
+const PLACEMENT_RANK_COLORS = [
+  '#f1c40f',
+  '#2ecc71',
+  '#58d68d',
+  '#7dcea0',
+  '#a9dfbf',
+  '#abebc6',
+  '#d5f5e3',
+  '#eafaf1',
+] as const;
+
+function placementRankColor(rank: number): string {
+  return PLACEMENT_RANK_COLORS[Math.min(rank - 1, PLACEMENT_RANK_COLORS.length - 1)];
+}
+
+function placementScoreTitle(score: SettlementScore, rank: number): string {
+  const lines = [
+    `#${rank} · Score ${score.total.toFixed(2)}`,
+    `Produksjon ${score.production.toFixed(2)}`,
+    `Dekning ${score.diversity.toFixed(2)}`,
+  ];
+  if (score.placementKind === 'second') {
+    lines.push(
+      `Utfylling ${((score.portfolio ?? 0) - (score.overlap ?? 0)).toFixed(2)}`,
+      `Overlapp −${(score.overlap ?? 0).toFixed(2)}`
+    );
+  }
+  if (score.harbor > 0) lines.push(`Havn +${score.harbor.toFixed(3)}`);
+  return lines.join('\n');
+}
 
 /** Havn plasseres i kanthex-senteret, lett ut mot sjøen – unngår å skjule tall på land */
 function harborPosition(h: Board['harbors'][0], hexSize: number): { x: number; y: number } {
@@ -138,7 +170,7 @@ export function BoardView({
   highlightEdge = null,
   highlightCorner = null,
 }: BoardViewProps) {
-  const maxScore = highlightedVertices[0]?.total ?? 1;
+  const topPlacements = highlightedVertices.slice(0, TOP_PLACEMENT_MARKERS);
   const edgePieces = getEdgePieces(
     board.edgeRotation,
     board.boardSize,
@@ -259,31 +291,63 @@ export function BoardView({
         );
       })}
 
-      {/* Interactive vertex highlights */}
+      {/* Anbefalte plasseringer under simulering */}
       {!mappingMode &&
         interactive &&
-        highlightedVertices.map((score) => {
+        topPlacements.map((score, index) => {
           const pos = getVertexPixel(score.vertexId, HEX_SIZE);
           if (!pos) return null;
-          const intensity = 0.3 + 0.7 * (score.total / maxScore);
+
+          const rank = index + 1;
           const isSelected = selectedVertex === score.vertexId;
+          const fill = placementRankColor(rank);
+          const radius = rank === 1 ? 16 : rank <= 3 ? 14 : 12;
+          const labelFill = rank <= 2 ? '#1a252f' : '#145a32';
+
           return (
-            <circle
+            <g
               key={score.vertexId}
-              cx={pos.x}
-              cy={pos.y}
-              r={isSelected ? 14 : 11}
-              fill={`rgba(46, 204, 113, ${intensity * 0.6})`}
-              stroke={isSelected ? '#fff' : `rgba(46, 204, 113, ${intensity})`}
-              strokeWidth={isSelected ? 3 : 2}
+              className={`placement-marker ${isSelected ? 'selected' : ''}`}
               style={{ cursor: 'pointer' }}
               onClick={() => onVertexClick?.(score.vertexId)}
             >
-              <title>
-                Score: {score.total.toFixed(3)} (prod: {score.production.toFixed(3)},
-                variasjon: {score.diversity.toFixed(3)}, havn: {score.harbor.toFixed(3)})
-              </title>
-            </circle>
+              {rank === 1 && (
+                <circle
+                  cx={pos.x}
+                  cy={pos.y}
+                  r={radius + 5}
+                  fill="none"
+                  stroke="#f1c40f"
+                  strokeWidth={2}
+                  opacity={0.55}
+                  className="placement-marker-pulse"
+                />
+              )}
+              <circle
+                cx={pos.x}
+                cy={pos.y}
+                r={radius}
+                fill={fill}
+                fillOpacity={0.92}
+                stroke={isSelected ? '#fff' : 'rgba(255,255,255,0.85)'}
+                strokeWidth={isSelected ? 3 : 2}
+              />
+              <text
+                x={pos.x}
+                y={pos.y + 1}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill={labelFill}
+                fontSize={rank === 1 ? 11 : 10}
+                fontWeight={800}
+                stroke="#fff"
+                strokeWidth={0.5}
+                paintOrder="stroke"
+              >
+                {rank}
+              </text>
+              <title>{placementScoreTitle(score, rank)}</title>
+            </g>
           );
         })}
     </svg>

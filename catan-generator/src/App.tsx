@@ -141,18 +141,38 @@ function App() {
       <div className="layout layout-two-col">
         <main className="board-area">
           {board ? (
-            <BoardView
-              board={board}
-              placements={simulation?.placements ?? []}
-              highlightedVertices={simActive ? rankedOptions : []}
-              selectedVertex={selectedVertex}
-              onVertexClick={setSelectedVertex}
-              interactive={simActive && !simulation?.finished}
-              mappingMode={mappingMode}
-              mapping={boardMapping}
-              highlightEdge={highlightEdge}
-              highlightCorner={highlightCorner}
-            />
+            <div className="board-wrap">
+              <BoardView
+                board={board}
+                placements={simulation?.placements ?? []}
+                highlightedVertices={simActive ? rankedOptions : []}
+                selectedVertex={selectedVertex}
+                onVertexClick={setSelectedVertex}
+                interactive={simActive && !simulation?.finished}
+                mappingMode={mappingMode}
+                mapping={boardMapping}
+                highlightEdge={highlightEdge}
+                highlightCorner={highlightCorner}
+              />
+              {simActive && !simulation?.finished && (
+                <div className="placement-heatmap-legend" aria-hidden>
+                  <strong>Anbefalte plasseringer</strong>
+                  <div className="placement-legend-scale">
+                    {['#f1c40f', '#2ecc71', '#58d68d', '#a9dfbf', '#d5f5e3'].map(
+                      (color, i) => (
+                        <span
+                          key={color}
+                          className="placement-legend-swatch"
+                          style={{ background: color }}
+                          title={`#${i + 1}`}
+                        />
+                      )
+                    )}
+                  </div>
+                  <span className="placement-legend-hint">#1 = best · klikk markør på brettet</span>
+                </div>
+              )}
+            </div>
           ) : (
             <div className="empty-board">Genererer brett…</div>
           )}
@@ -264,8 +284,8 @@ function App() {
                 <div className="panel sim-placeholder">
                   <p className="muted small">
                     Velg antall spillere og trykk <strong>Start plassering</strong>.
-                    Klikk deretter grønne markører på brettet for å plassere
-                    landsbyer i draft-rekkefølge.
+                    De 8 beste plasseringene vises som nummererte markører på brettet
+                    (gull = #1). Klikk en markør eller velg i listen til høyre.
                   </p>
                 </div>
               )}

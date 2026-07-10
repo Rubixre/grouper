@@ -51,7 +51,8 @@ export function SettlementSimulator({
           <p className="sim-hint">
             {isSecond
               ? 'Andre landsby: poengsum vektlegger startressurser og utfylling mot din første landsby.'
-              : 'Første landsby: poengsum basert på vektet produksjon og ressursdekning.'}
+              : 'Første landsby: poengsum basert på vektet produksjon og ressursdekning.'}{' '}
+            <strong>Nummererte markører på brettet</strong> viser de 8 beste plasseringene (#1 er gull).
           </p>
           <div className="options-list">
             <h3>Topp {Math.min(8, options.length)} plasseringer</h3>
