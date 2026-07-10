@@ -31,7 +31,6 @@ import {
   DEFAULT_SETTINGS,
   verifyExtensionSingleHarborNodes,
 } from '../src/catan/index.ts';
-import { buildOuterFrameWedges } from '../src/catan/boardOuterFrame.ts';
 import { computeSimulationSummary } from '../src/catan/playerStats.ts';
 import { hexCorner, hexToPixel } from '../src/catan/hex.ts';
 
@@ -168,8 +167,6 @@ assert(
   `3:1 on K7 uses K7 port (got ${genericOnK7?.nodeLabels.join(',')})`
 );
 assert(extMapping.coastCorners.length > 30, 'More than 30 coast nodes on extension');
-assert(buildOuterFrameWedges(34, 'base').length === 6, 'Base outer frame has 6 sides');
-assert(buildOuterFrameWedges(34, 'extension56').length === 8, 'Extension outer frame has 8 sides');
 
 console.log('\nGenerator');
 setBoardSize('base');

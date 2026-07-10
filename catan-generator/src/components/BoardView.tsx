@@ -6,10 +6,9 @@ import { getVertices } from '../catan/settlements';
 import { PLAYER_COLORS } from '../catan/simulator';
 import { BoardHex } from './BoardHex';
 import { EdgePieceShape } from './EdgePieceShape';
-import { BoardOuterFrame } from './BoardOuterFrame';
 import { HarborIcon, getHarborTheme } from './HarborIcon';
 import { MappingOverlay } from './MappingOverlay';
-import { BOARD_WATER_COLOR } from '../catan/boardOuterFrame';
+import type { PlacedHarbor } from '../catan/types';
 
 export const BOARD_HEX_SIZE = 34;
 
@@ -218,10 +217,6 @@ export function BoardView({
           size={HEX_SIZE}
         />
       ))}
-
-      {!mappingMode && (
-        <BoardOuterFrame boardSize={board.boardSize} hexSize={HEX_SIZE} />
-      )}
 
       {landHexes.map((tile) => (
         <BoardHex
