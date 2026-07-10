@@ -149,8 +149,8 @@ function hNodesForSingleEdgeHex(
   mapping: ReturnType<typeof getBoardMapping>
 ) {
   const sorted = hNodesOnEdgeHex(kLabel, mapping);
-  if (sorted.length !== 2) {
-    throw new Error(`Expected 2 H-nodes for single ${kLabel}, got ${sorted.length}`);
+  if (sorted.length < 2) {
+    throw new Error(`Expected at least 2 H-nodes for single ${kLabel}, got ${sorted.length}`);
   }
   const first = sorted[0];
   const coastCount = mapping.coastCorners.length;
