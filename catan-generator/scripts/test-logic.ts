@@ -29,6 +29,7 @@ import {
   getOptionsForCurrentTurn,
   scoreSecondSettlement,
   DEFAULT_SETTINGS,
+  verifyExtensionSingleHarborNodes,
 } from '../src/catan/index.ts';
 import { computeSimulationSummary } from '../src/catan/playerStats.ts';
 import { hexCorner, hexToPixel } from '../src/catan/hex.ts';
@@ -144,6 +145,26 @@ assert(
 assert(
   !extHarbors.some((h) => h.edgeHexLabel === 'K7' || h.edgeHexLabel === 'K22'),
   'Blank pieces K7 and K22 have no harbors'
+);
+assert(verifyExtensionSingleHarborNodes(extMapping), 'Single K slots have land-facing ports');
+const shuffledSingles = {
+  triple: [0, 1, 2, 3, 4, 5],
+  single: [2, 0, 1, 3],
+} as const;
+const shuffledHarbors = placeHarbors(0, 1, 'extension56', shuffledSingles);
+const woolOnK18 = shuffledHarbors.find((h) => h.pieceGroup === 4);
+const genericOnK7 = shuffledHarbors.find(
+  (h) => h.pieceGroup === 7 && h.definition.harbor.kind === 'generic'
+);
+assert(woolOnK18?.edgeHexLabel === 'K18', 'Shuffled B5 wool sits on K18 slot');
+assert(
+  woolOnK18?.nodeLabels.join(',') === 'H30,H31',
+  `Wool on K18 uses K18 port (got ${woolOnK18?.nodeLabels.join(',')})`
+);
+assert(genericOnK7?.edgeHexLabel === 'K7', 'Shuffled B8 3:1 sits on K7 slot');
+assert(
+  genericOnK7?.nodeLabels.join(',') === 'H11,H12',
+  `3:1 on K7 uses K7 port (got ${genericOnK7?.nodeLabels.join(',')})`
 );
 assert(extMapping.coastCorners.length > 30, 'More than 30 coast nodes on extension');
 

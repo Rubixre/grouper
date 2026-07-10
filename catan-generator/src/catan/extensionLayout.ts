@@ -3,6 +3,7 @@ import type { HarborDefinition, HarborType, HexCoord, PlacedHarbor } from './typ
 import { coordKey } from './hex';
 import { getBoardMapping } from './mapping';
 import { hexCorner, hexToPixel } from './hex';
+import { harborPortNodeLabels, harborPortNodes } from './harborPorts';
 
 /** Permutasjon av fysiske plasseringer for utvidelsens kantbrikker */
 export interface ExtensionEdgeOrder {
@@ -30,12 +31,15 @@ export const EXTENSION_TRIPLE_SLOTS: [string, string, string][] = [
 /** Faste K-posisjoner for 1-hex brikker */
 export const EXTENSION_SINGLE_SLOTS = ['K7', 'K11', 'K18', 'K22'] as const;
 
-/** Faste H-nodepar for havner på enkelt-hex K-plasseringer */
-export const EXTENSION_SINGLE_HARBOR_NODES: Partial<
-  Record<(typeof EXTENSION_SINGLE_SLOTS)[number], [string, string]>
+/** Forventede havnporter per enkelt-hex K-plassering (landvendt side) */
+export const EXTENSION_SINGLE_HARBOR_NODES: Record<
+  (typeof EXTENSION_SINGLE_SLOTS)[number],
+  [string, string]
 > = {
+  K7: ['H11', 'H12'],
   K11: ['H18', 'H19'],
   K18: ['H30', 'H31'],
+  K22: ['H37', 'H38'],
 };
 
 interface HarborOnPiece {
@@ -131,52 +135,6 @@ function shuffle<T>(items: T[]): T[] {
   return copy;
 }
 
-function hNodesOnEdgeHex(kLabel: string, mapping: ReturnType<typeof getBoardMapping>) {
-  return mapping.coastCorners
-    .filter((c) => c.edgeHexLabels.includes(kLabel))
-    .sort((a, b) => a.index - b.index);
-}
-
-function hNodesForEdgeHex(
-  kLabel: string,
-  hexOffset: number,
-  mapping: ReturnType<typeof getBoardMapping>
-) {
-  const sorted = hNodesOnEdgeHex(kLabel, mapping);
-  if (sorted.length === 2) return [sorted[0], sorted[1]] as const;
-  if (sorted.length !== 3) {
-    throw new Error(`Expected 2 or 3 H-nodes for ${kLabel}, got ${sorted.length}`);
-  }
-  if (hexOffset === 1) return [sorted[1], sorted[2]] as const;
-  return [sorted[0], sorted[1]] as const;
-}
-
-/** Havn på 1-hex brikke: noden rett før første H på hexen + den første H-noden */
-function hNodesForSingleEdgeHex(
-  kLabel: string,
-  mapping: ReturnType<typeof getBoardMapping>
-) {
-  const fixed = EXTENSION_SINGLE_HARBOR_NODES[kLabel as (typeof EXTENSION_SINGLE_SLOTS)[number]];
-  if (fixed) {
-    const nodeA = mapping.cornerByLabel.get(fixed[0]);
-    const nodeB = mapping.cornerByLabel.get(fixed[1]);
-    if (!nodeA || !nodeB) {
-      throw new Error(`Missing coast nodes ${fixed.join(',')} for ${kLabel}`);
-    }
-    return [nodeA, nodeB] as const;
-  }
-
-  const sorted = hNodesOnEdgeHex(kLabel, mapping);
-  if (sorted.length < 2) {
-    throw new Error(`Expected at least 2 H-nodes for single ${kLabel}, got ${sorted.length}`);
-  }
-  const first = sorted[0];
-  const coastCount = mapping.coastCorners.length;
-  const prevIndex = first.index === 1 ? coastCount : first.index - 1;
-  const prev = mapping.coastCorners[prevIndex - 1];
-  return [prev, first] as const;
-}
-
 function harborDefinition(
   template: TriplePieceTemplate | SinglePieceTemplate,
   harbor: HarborOnPiece
@@ -216,7 +174,11 @@ export function placeExtensionHarbors(
     for (const harbor of template.harbors) {
       const kLabel = kLabels[harbor.hexOffset];
       const edge = mapping.edgeByLabel.get(kLabel)!;
-      const [nodeA, nodeB] = hNodesForEdgeHex(kLabel, harbor.hexOffset, mapping);
+      const [nodeA, nodeB] = harborPortNodes(
+        kLabel,
+        { kind: 'triple', offset: harbor.hexOffset as 0 | 1 | 2 },
+        mapping
+      );
       const pA = hexCorner(nodeA.anchor, nodeA.corner, hexSize);
       const pB = hexCorner(nodeB.anchor, nodeB.corner, hexSize);
       const midX = (pA.x + pB.x) / 2;
@@ -243,7 +205,7 @@ export function placeExtensionHarbors(
 
     for (const harbor of template.harbors) {
       const edge = mapping.edgeByLabel.get(kLabel)!;
-      const [nodeA, nodeB] = hNodesForSingleEdgeHex(kLabel, mapping);
+      const [nodeA, nodeB] = harborPortNodes(kLabel, { kind: 'single' }, mapping);
       const pA = hexCorner(nodeA.anchor, nodeA.corner, hexSize);
       const pB = hexCorner(nodeB.anchor, nodeB.corner, hexSize);
       const midX = (pA.x + pB.x) / 2;
@@ -341,4 +303,15 @@ export function extensionEdgePieceGroupMap(order: ExtensionEdgeOrder): Map<strin
 
 export function isExtensionSize(size: BoardSize): boolean {
   return size === 'extension56';
+}
+
+/** Verifiser at enkelt-hex K-plasseringer har forventede landporter */
+export function verifyExtensionSingleHarborNodes(
+  mapping = getBoardMapping('extension56')
+): boolean {
+  return EXTENSION_SINGLE_SLOTS.every((kLabel) => {
+    const expected = EXTENSION_SINGLE_HARBOR_NODES[kLabel];
+    const actual = harborPortNodeLabels(kLabel, { kind: 'single' }, mapping);
+    return expected[0] === actual[0] && expected[1] === actual[1];
+  });
 }

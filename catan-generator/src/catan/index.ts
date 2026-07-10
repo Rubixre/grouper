@@ -2,6 +2,7 @@ export * from './types';
 export * from './hex';
 export * from './boardLayout';
 export * from './edgePieces';
+export * from './harborPorts';
 export * from './harbors';
 export * from './generator';
 export * from './settlements';

@@ -6,7 +6,7 @@ import {
   isExtensionSize,
   placeExtensionHarbors,
 } from './extensionLayout';
-import type { CoastMeetCorner } from './mapping';
+import { harborPortNodes } from './harborPorts';
 import { kLabelForGroupSlot } from './edgePieces';
 import { getBoardMapping } from './mapping';
 import { hexCorner, hexToPixel } from './hex';
@@ -82,37 +82,6 @@ export const HARBOR_LAYOUT: HarborDefinition[] = [
   },
 ];
 
-/** H-noder på en kanthex, sortert H1→H30 langs kysten */
-function hNodesOnEdgeHex(
-  kLabel: string,
-  mapping: ReturnType<typeof getBoardMapping>
-): CoastMeetCorner[] {
-  return mapping.coastCorners
-    .filter((c) => c.edgeHexLabels.includes(kLabel))
-    .sort((a, b) => a.index - b.index);
-}
-
-/**
- * Velg to påfølgende H-noder på kanthexen for havnens plassering.
- * - 2 noder: begge
- * - 3 noder: offset 0/2 = første par, offset 1 = siste par langs kysten
- */
-function hNodesForEdgeHex(
-  kLabel: string,
-  hexOffset: number,
-  mapping: ReturnType<typeof getBoardMapping>
-): [CoastMeetCorner, CoastMeetCorner] {
-  const sorted = hNodesOnEdgeHex(kLabel, mapping);
-
-  if (sorted.length === 2) return [sorted[0], sorted[1]];
-  if (sorted.length !== 3) {
-    throw new Error(`Expected 2 or 3 H-nodes for ${kLabel}, got ${sorted.length}`);
-  }
-
-  if (hexOffset === 1) return [sorted[1], sorted[2]];
-  return [sorted[0], sorted[1]];
-}
-
 /** Place harbors after edge-piece rotation (0–5 = 1/6 turn each) */
 export function placeHarbors(
   rotation: number,
@@ -134,7 +103,11 @@ export function placeHarbors(
       size
     );
     const edge = mapping.edgeByLabel.get(kLabel)!;
-    const [nodeA, nodeB] = hNodesForEdgeHex(kLabel, definition.hexOffset, mapping);
+    const [nodeA, nodeB] = harborPortNodes(
+      kLabel,
+      { kind: 'triple', offset: definition.hexOffset as 0 | 1 | 2 },
+      mapping
+    );
 
     const pA = hexCorner(nodeA.anchor, nodeA.corner, hexSize);
     const pB = hexCorner(nodeB.anchor, nodeB.corner, hexSize);
