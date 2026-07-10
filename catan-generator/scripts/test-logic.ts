@@ -112,7 +112,7 @@ assert(getEdgeHexSet('extension56').size === 22, '22 edge hexes in extension');
 assert(getSingleEdgePieces('extension56').length === 4, '4 single edge pieces B7–B10');
 const extMapping = getBoardMapping('extension56');
 assert(extMapping.edgeHexes.length === 22, '22 numbered edge hexes');
-assert(extMapping.edgeHexes[0].label === 'K22', 'Extension ring starts at K22 after K rotation');
+assert(extMapping.edgeHexes[0].label === 'K2', 'Extension ring starts at K2 after K rotation');
 assert(
   getEdgePieces(0, 'extension56')[0].kLabels.join(',') === 'K1,K2,K3',
   'B1 default is K1–K3'
@@ -133,13 +133,13 @@ assert(
 );
 const b5Harbor = extHarbors.find((h) => h.edgeHexLabel === 'K11');
 assert(
-  b5Harbor?.nodeLabels.join(',') === 'H19,H20',
-  `B5 wool at H19,H20 (got ${b5Harbor?.nodeLabels.join(',')})`
+  b5Harbor?.nodeLabels.join(',') === 'H16,H17',
+  `B5 wool at H16,H17 (got ${b5Harbor?.nodeLabels.join(',')})`
 );
 const b8Harbor = extHarbors.find((h) => h.edgeHexLabel === 'K18');
 assert(
-  b8Harbor?.nodeLabels.join(',') === 'H31,H32',
-  `B8 3:1 at H31,H32 (got ${b8Harbor?.nodeLabels.join(',')})`
+  b8Harbor?.nodeLabels.join(',') === 'H28,H29',
+  `B8 3:1 at H28,H29 (got ${b8Harbor?.nodeLabels.join(',')})`
 );
 assert(
   !extHarbors.some((h) => h.edgeHexLabel === 'K7' || h.edgeHexLabel === 'K22'),

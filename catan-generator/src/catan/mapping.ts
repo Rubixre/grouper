@@ -43,10 +43,10 @@ export interface BoardMapping {
 
 const mappingCache = new Map<BoardSize, BoardMapping>();
 
-/** K-nummerering – positiv rotation flytter K-etiketter ett hakk med klokken */
+/** K-nummerering – positiv rotation = med klokken, negativ = mot klokken */
 const K_LABEL_ROTATION: Record<BoardSize, number> = {
   base: 0,
-  extension56: 1,
+  extension56: -1,
 };
 
 function kIndexForClockwisePosition(
