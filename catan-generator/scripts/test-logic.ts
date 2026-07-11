@@ -223,6 +223,15 @@ if (extBoard) {
   assert(wood.length === 6, '6 wood tiles in extension');
   assert(desert.length === 2, '2 desert tiles in extension');
   assert(extLand.filter((h) => h.number !== null).length === 28, '28 numbered land hexes');
+  const extNumberCounts = extLand.reduce<Record<number, number>>((acc, h) => {
+    if (h.number !== null) acc[h.number] = (acc[h.number] ?? 0) + 1;
+    return acc;
+  }, {});
+  assert(extNumberCounts[2] === 2, 'Extension has two 2-tiles');
+  assert(extNumberCounts[12] === 2, 'Extension has two 12-tiles');
+  for (const n of [3, 4, 5, 6, 8, 9, 10, 11]) {
+    assert(extNumberCounts[n] === 3, `Extension has three ${n}-tiles`);
+  }
 }
 
 console.log('\nResource weights');

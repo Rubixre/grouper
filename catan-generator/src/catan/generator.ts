@@ -67,8 +67,11 @@ const RESOURCES_EXTENSION: ResourceType[] = [
 
 const NUMBERS_BASE = [2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12];
 
-/** 10 nye tallbrikker for utvidelsens ressurshexer */
-const NUMBERS_EXTENSION = [2, 3, 4, 4, 5, 6, 8, 9, 10, 11];
+/** 10 ekstra tallbrikker – utvidelse har 2×2/12 og 3×(3–6, 8–11) totalt */
+const NUMBERS_EXTENSION = [2, 3, 4, 5, 6, 8, 9, 10, 11, 12];
+
+/** Full tallbrikk-pool for 5–6 spillere (28 nummererte landhexer) */
+export const NUMBERS_EXTENSION_56 = [...NUMBERS_BASE, ...NUMBERS_EXTENSION];
 
 function resourcesForSize(size: BoardSize): ResourceType[] {
   return size === 'base'
@@ -77,9 +80,7 @@ function resourcesForSize(size: BoardSize): ResourceType[] {
 }
 
 function numbersForSize(size: BoardSize): number[] {
-  return size === 'base'
-    ? NUMBERS_BASE
-    : [...NUMBERS_BASE, ...NUMBERS_EXTENSION];
+  return size === 'base' ? NUMBERS_BASE : NUMBERS_EXTENSION_56;
 }
 
 function shuffle<T>(arr: T[]): T[] {
