@@ -26,7 +26,7 @@ const EDGE_STROKE = '#2471a3';
 /** Roterer flate brikke-PNG-er til pointy-top hex på brettet */
 const TILE_IMAGE_ROTATION = 30;
 /** Visuell størrelse for komplette PNG-brikker (ingen klipping) */
-const TILE_IMAGE_SCALE = 1.75;
+const TILE_IMAGE_SCALE = 2.0;
 
 interface BoardHexProps {
   coord: HexCoord;
