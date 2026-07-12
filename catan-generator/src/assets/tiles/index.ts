@@ -1,21 +1,47 @@
 import type { ResourceType } from '../../catan/types';
 
-const tileModules = import.meta.glob('./*.png', {
+const tileModules = import.meta.glob(['./*.{png,jpeg,jpg,webp}'], {
   eager: true,
   import: 'default',
 }) as Record<string, string>;
 
-const TILE_FILES: Partial<Record<ResourceType, string>> = {
-  wood: './wood.png',
-  brick: './brick.png',
-  sheep: './sheep.png',
-  wheat: './wheat.png',
-  ore: './ore.png',
-  desert: './desert.png',
-};
+/** Nøkkelord i filnavn → ressurs */
+const NAME_TO_RESOURCE: [string, ResourceType][] = [
+  ['skog', 'wood'],
+  ['tømmer', 'wood'],
+  ['tommer', 'wood'],
+  ['wood', 'wood'],
+  ['leirgrunn', 'brick'],
+  ['tegl', 'brick'],
+  ['brick', 'brick'],
+  ['eng', 'sheep'],
+  ['ull', 'sheep'],
+  ['sheep', 'sheep'],
+  ['åker', 'wheat'],
+  ['aker', 'wheat'],
+  ['korn', 'wheat'],
+  ['wheat', 'wheat'],
+  ['fjell', 'ore'],
+  ['malm', 'ore'],
+  ['ore', 'ore'],
+  ['ørken', 'desert'],
+  ['orken', 'desert'],
+  ['desert', 'desert'],
+];
 
-export const RESOURCE_TILE_IMAGES: Partial<Record<ResourceType, string>> = Object.fromEntries(
-  Object.entries(TILE_FILES)
-    .filter(([_, path]) => tileModules[path])
-    .map(([resource, path]) => [resource, tileModules[path!]])
-) as Partial<Record<ResourceType, string>>;
+function resourceForFile(path: string): ResourceType | null {
+  const base = path.replace(/^.*\//, '').replace(/\.[^.]+$/, '').toLowerCase();
+  for (const [key, resource] of NAME_TO_RESOURCE) {
+    if (base.includes(key)) return resource;
+  }
+  return null;
+}
+
+const images: Partial<Record<ResourceType, string>> = {};
+
+for (const [path, url] of Object.entries(tileModules)) {
+  const resource = resourceForFile(path);
+  if (resource) images[resource] = url;
+}
+
+export const RESOURCE_TILE_IMAGES = images;
