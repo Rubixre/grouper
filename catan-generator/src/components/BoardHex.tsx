@@ -25,13 +25,8 @@ const EDGE_STROKE = '#2471a3';
 
 /** Roterer flate brikke-PNG-er til pointy-top hex på brettet */
 const TILE_IMAGE_ROTATION = 30;
-/**
- * Bildekvadrat må dekke hele hex etter rotasjon (min ~2.0 for pointy-top).
- * Mindre verdi → blå hav synlig i hjørnene.
- */
-const TILE_IMAGE_SCALE = 2.05;
-/** Visuell størrelse – klipper litt innover så brikkene ikke fyller hele cellen */
-const TILE_CLIP_SCALE = 0.88;
+/** Visuell størrelse for komplette PNG-brikker (ingen klipping) */
+const TILE_IMAGE_SCALE = 1.75;
 
 interface BoardHexProps {
   coord: HexCoord;
@@ -41,19 +36,16 @@ interface BoardHexProps {
   size: number;
 }
 
-function hexPoints(coord: HexCoord, size: number, scale = 1): string {
-  const { x: cx, y: cy } = hexToPixel(coord, size);
+function hexPoints(coord: HexCoord, size: number): string {
   return Array.from({ length: 6 }, (_, i) => {
     const { x, y } = hexCorner(coord, i, size);
-    return `${cx + (x - cx) * scale},${cy + (y - cy) * scale}`;
+    return `${x},${y}`;
   }).join(' ');
 }
 
 export function BoardHex({ coord, kind, resource, number, size }: BoardHexProps) {
   const points = hexPoints(coord, size);
-  const clipPoints = hexPoints(coord, size, TILE_CLIP_SCALE);
   const { x: cx, y: cy } = hexToPixel(coord, size);
-  const clipId = `hex-clip-${coord.q}-${coord.r}`;
 
   if (kind === 'edge') {
     return (
@@ -70,24 +62,15 @@ export function BoardHex({ coord, kind, resource, number, size }: BoardHexProps)
   return (
     <g className="hex-tile hex-land" aria-label={RESOURCE_LABELS[resource ?? ''] ?? resource ?? ''}>
       {tileImage ? (
-        <>
-          <defs>
-            <clipPath id={clipId}>
-              <polygon points={clipPoints} />
-            </clipPath>
-          </defs>
-          <g clipPath={`url(#${clipId})`}>
-            <image
-              href={tileImage}
-              x={cx - (size * TILE_IMAGE_SCALE) / 2}
-              y={cy - (size * TILE_IMAGE_SCALE) / 2}
-              width={size * TILE_IMAGE_SCALE}
-              height={size * TILE_IMAGE_SCALE}
-              preserveAspectRatio="xMidYMid slice"
-              transform={`rotate(${TILE_IMAGE_ROTATION} ${cx} ${cy})`}
-            />
-          </g>
-        </>
+        <image
+          href={tileImage}
+          x={cx - (size * TILE_IMAGE_SCALE) / 2}
+          y={cy - (size * TILE_IMAGE_SCALE) / 2}
+          width={size * TILE_IMAGE_SCALE}
+          height={size * TILE_IMAGE_SCALE}
+          preserveAspectRatio="xMidYMid meet"
+          transform={`rotate(${TILE_IMAGE_ROTATION} ${cx} ${cy})`}
+        />
       ) : (
         <polygon points={points} fill={fill} stroke="#2b2b2b" strokeWidth={2} />
       )}
