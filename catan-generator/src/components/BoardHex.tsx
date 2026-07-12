@@ -1,6 +1,6 @@
 import type { HexCoord, HexKind, ResourceType } from '../catan/types';
 import { hexCorner } from '../catan/hex';
-import oreTile from '../assets/tiles/ore.png';
+import { RESOURCE_TILE_IMAGES } from '../assets/tiles';
 
 const RESOURCE_COLORS: Record<string, string> = {
   wood: '#2d6a4f',
@@ -18,10 +18,6 @@ const RESOURCE_LABELS: Record<string, string> = {
   wheat: 'Korn',
   ore: 'Malm',
   desert: 'Ørken',
-};
-
-const RESOURCE_IMAGES: Partial<Record<ResourceType, string>> = {
-  ore: oreTile,
 };
 
 const EDGE_FILL = '#3498db';
@@ -79,7 +75,7 @@ export function BoardHex({ coord, kind, resource, number, size }: BoardHexProps)
     );
   }
 
-  const tileImage = resource ? RESOURCE_IMAGES[resource] : undefined;
+  const tileImage = resource ? RESOURCE_TILE_IMAGES[resource] : undefined;
   const fill = RESOURCE_COLORS[resource ?? ''] ?? '#ccc';
   const isDesert = resource === 'desert';
 
@@ -150,7 +146,7 @@ export function BoardHex({ coord, kind, resource, number, size }: BoardHexProps)
         </>
       )}
 
-      {isDesert && (
+      {isDesert && !tileImage && (
         <text x={cx} y={cy + 12} textAnchor="middle" fontSize={18}>
           🌵
         </text>

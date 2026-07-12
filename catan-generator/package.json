@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test:logic": "tsx scripts/test-logic.ts"
+    "test:logic": "tsx scripts/test-logic.ts",
+    "copy:tiles": "tsx scripts/copy-tile-images.ts"
   },
   "dependencies": {
     "react": "^19.2.7",
