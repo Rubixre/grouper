@@ -41,11 +41,10 @@ function hexPoints(coord: HexCoord, size: number): string {
 function hexImageRect(coord: HexCoord, size: number) {
   const cx = Math.sqrt(3) * size * (coord.q + coord.r / 2);
   const cy = size * (3 / 2) * coord.r;
-  const tileScale = 1.08;
-  const r = size * tileScale;
+  const r = size;
   const w = Math.sqrt(3) * r;
   const h = 2 * r;
-  return { x: cx - w / 2, y: cy - h / 2, width: w, height: h, cx, cy };
+  return { x: cx - w / 2, y: cy - h / 2, width: w, height: h };
 }
 
 export function BoardHex({ coord, kind, resource, number, size }: BoardHexProps) {
@@ -78,7 +77,7 @@ export function BoardHex({ coord, kind, resource, number, size }: BoardHexProps)
                 y={rect.y}
                 width={rect.width}
                 height={rect.height}
-                preserveAspectRatio="none"
+                preserveAspectRatio="xMidYMid meet"
               />
             );
           })()}
