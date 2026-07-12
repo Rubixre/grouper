@@ -1,5 +1,5 @@
 /**
- * Fjerner grønn bakgrunn fra brikkefoto og klipper til hex-form (pointy-top).
+ * Fjerner grønn bakgrunn fra brikkefoto og eksporterer pointy-top hex-PNG.
  * Kjør: npm run process:tiles
  */
 import { mkdirSync, readdirSync } from 'node:fs';
@@ -10,12 +10,13 @@ const ROOT = resolve(import.meta.dirname, '..');
 const SOURCE_DIR = join(ROOT, 'src/assets/tiles');
 const OUTPUT_DIR = join(SOURCE_DIR, 'hex');
 
-const BG_DISTANCE = 55;
-const BG_SOFT = 25;
-const HEX_INSET = 0.04;
-const MAX_OUTPUT_PX = 480;
-/** Roterer foto slik at fysiske brikker matcher pointy-top hex på brettet */
-const TILE_ROTATION = 45;
+/** 45° + noen grader til for riktig retning på brettet */
+const TILE_ROTATION = 57;
+/** Litt større brikke innenfor hex */
+const HEX_OUTSET = 1.1;
+const MAX_OUTPUT_PX = 520;
+const BG_THRESHOLD = 42;
+const RADIUS_PERCENTILE = 0.88;
 
 function insidePointyHex(px: number, py: number, cx: number, cy: number, size: number): boolean {
   const x = px - cx;
@@ -27,48 +28,100 @@ function insidePointyHex(px: number, py: number, cx: number, cy: number, size: n
   return Math.abs(uq) <= 1 && Math.abs(ur) <= 1 && Math.abs(uq + ur) <= 1;
 }
 
-function bgAlpha(r: number, g: number, b: number, br: number, bg: number, bb: number): number {
+function colorDist(r: number, g: number, b: number, br: number, bg: number, bb: number): number {
   const dr = r - br;
   const dg = g - bg;
   const db = b - bb;
-  const dist = Math.sqrt(dr * dr + dg * dg + db * db);
-  const greenish = g > r + 12 && g > b + 12;
-  const score = dist + (greenish ? -18 : 0);
-  if (score <= BG_DISTANCE) return 0;
-  if (score >= BG_DISTANCE + BG_SOFT) return 255;
-  return Math.round(((score - BG_DISTANCE) / BG_SOFT) * 255);
+  return Math.sqrt(dr * dr + dg * dg + db * db);
 }
 
-async function processImage(inputPath: string, outputPath: string): Promise<void> {
-  const rotated = await sharp(inputPath)
-    .rotate(TILE_ROTATION, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
-    .ensureAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-  const { data, info } = rotated;
-  const { width, height, channels } = info;
-  if (channels !== 4) throw new Error(`Expected RGBA: ${inputPath}`);
-
-  const corners: [number, number][] = [
-    [0, 0],
-    [width - 1, 0],
-    [0, height - 1],
-    [width - 1, height - 1],
-  ];
-  let br = 0;
-  let bg = 0;
-  let bb = 0;
-  for (const [x, y] of corners) {
-    const i = (y * width + x) * 4;
-    br += data[i];
-    bg += data[i + 1];
-    bb += data[i + 2];
-  }
-  br = Math.round(br / corners.length);
-  bg = Math.round(bg / corners.length);
-  bb = Math.round(bb / corners.length);
-
+function floodRemoveBackground(
+  data: Buffer,
+  width: number,
+  height: number,
+  br: number,
+  bg: number,
+  bb: number
+): Buffer {
   const out = Buffer.from(data);
+  const visited = new Uint8Array(width * height);
+  const queue: number[] = [];
+
+  const tryPush = (x: number, y: number) => {
+    if (x < 0 || y < 0 || x >= width || y >= height) return;
+    const idx = y * width + x;
+    if (visited[idx]) return;
+    const i = idx * 4;
+    if (colorDist(data[i], data[i + 1], data[i + 2], br, bg, bb) > BG_THRESHOLD) return;
+    visited[idx] = 1;
+    queue.push(idx);
+  };
+
+  for (let x = 0; x < width; x++) {
+    tryPush(x, 0);
+    tryPush(x, height - 1);
+  }
+  for (let y = 0; y < height; y++) {
+    tryPush(0, y);
+    tryPush(width - 1, y);
+  }
+
+  while (queue.length > 0) {
+    const idx = queue.pop()!;
+    const x = idx % width;
+    const y = (idx - x) / width;
+    const i = idx * 4;
+    out[i + 3] = 0;
+    tryPush(x - 1, y);
+    tryPush(x + 1, y);
+    tryPush(x, y - 1);
+    tryPush(x, y + 1);
+  }
+
+  return out;
+}
+
+function purgeBackgroundColor(
+  data: Buffer,
+  width: number,
+  height: number,
+  br: number,
+  bg: number,
+  bb: number
+): Buffer {
+  const out = Buffer.from(data);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      if (out[i + 3] < 12) continue;
+      if (colorDist(out[i], out[i + 1], out[i + 2], br, bg, bb) <= BG_THRESHOLD) {
+        out[i + 3] = 0;
+      }
+    }
+  }
+  return out;
+}
+
+function applyHexMask(
+  data: Buffer,
+  width: number,
+  height: number,
+  cx: number,
+  cy: number,
+  radius: number
+): Buffer {
+  const out = Buffer.from(data);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      if (out[i + 3] === 0) continue;
+      if (!insidePointyHex(x, y, cx, cy, radius)) out[i + 3] = 0;
+    }
+  }
+  return out;
+}
+
+function opaqueBounds(data: Buffer, width: number, height: number) {
   let minX = width;
   let minY = height;
   let maxX = 0;
@@ -80,77 +133,119 @@ async function processImage(inputPath: string, outputPath: string): Promise<void
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const i = (y * width + x) * 4;
-      const alpha = bgAlpha(data[i], data[i + 1], data[i + 2], br, bg, bb);
-      out[i + 3] = alpha;
-      if (alpha > 40) {
-        minX = Math.min(minX, x);
-        minY = Math.min(minY, y);
-        maxX = Math.max(maxX, x);
-        maxY = Math.max(maxY, y);
-        sumX += x * alpha;
-        sumY += y * alpha;
-        sumA += alpha;
-      }
-    }
-  }
-
-  if (sumA === 0) throw new Error(`Ingen brikke funnet i ${inputPath}`);
-
-  const cx = sumX / sumA;
-  const cy = sumY / sumA;
-  let radius = 0;
-  for (let y = minY; y <= maxY; y++) {
-    for (let x = minX; x <= maxX; x++) {
-      const i = (y * width + x) * 4;
-      if (out[i + 3] < 40) continue;
-      const dx = x - cx;
-      const dy = y - cy;
-      radius = Math.max(radius, Math.sqrt(dx * dx + dy * dy));
-    }
-  }
-  radius *= 1 - HEX_INSET;
-
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const i = (y * width + x) * 4;
-      if (out[i + 3] === 0) continue;
-      if (!insidePointyHex(x, y, cx, cy, radius)) out[i + 3] = 0;
-    }
-  }
-
-  minX = width;
-  minY = height;
-  maxX = 0;
-  maxY = 0;
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const i = (y * width + x) * 4;
-      if (out[i + 3] < 40) continue;
+      if (data[i + 3] < 40) continue;
       minX = Math.min(minX, x);
       minY = Math.min(minY, y);
       maxX = Math.max(maxX, x);
       maxY = Math.max(maxY, y);
+      sumX += x * data[i + 3];
+      sumY += y * data[i + 3];
+      sumA += data[i + 3];
     }
   }
 
-  const cropW = maxX - minX + 1;
-  const cropH = maxY - minY + 1;
-  const cropped = Buffer.alloc(cropW * cropH * 4);
-  for (let y = 0; y < cropH; y++) {
-    for (let x = 0; x < cropW; x++) {
-      const src = ((y + minY) * width + (x + minX)) * 4;
-      const dst = (y * cropW + x) * 4;
-      cropped[dst] = out[src];
-      cropped[dst + 1] = out[src + 1];
-      cropped[dst + 2] = out[src + 2];
-      cropped[dst + 3] = out[src + 3];
+  return { minX, minY, maxX, maxY, cx: sumX / sumA, cy: sumY / sumA, sumA };
+}
+
+function percentileRadius(data: Buffer, width: number, height: number, cx: number, cy: number): number {
+  const distances: number[] = [];
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      if (data[i + 3] < 40) continue;
+      const dx = x - cx;
+      const dy = y - cy;
+      distances.push(Math.sqrt(dx * dx + dy * dy));
+    }
+  }
+  distances.sort((a, b) => a - b);
+  return distances[Math.floor(distances.length * RADIUS_PERCENTILE)] ?? distances.at(-1) ?? 1;
+}
+
+function toHexCanvas(
+  data: Buffer,
+  width: number,
+  height: number,
+  cx: number,
+  cy: number,
+  radius: number
+): { data: Buffer; width: number; height: number } {
+  const outR = radius * HEX_OUTSET;
+  const outW = Math.ceil(Math.sqrt(3) * outR);
+  const outH = Math.ceil(2 * outR);
+  const ocx = outW / 2;
+  const ocy = outH / 2;
+  const out = Buffer.alloc(outW * outH * 4);
+
+  for (let oy = 0; oy < outH; oy++) {
+    for (let ox = 0; ox < outW; ox++) {
+      if (!insidePointyHex(ox, oy, ocx, ocy, outR)) continue;
+
+      const sx = Math.round(cx + ((ox - ocx) * radius) / outR);
+      const sy = Math.round(cy + ((oy - ocy) * radius) / outR);
+      if (sx < 0 || sy < 0 || sx >= width || sy >= height) continue;
+
+      const si = (sy * width + sx) * 4;
+      if (data[si + 3] < 12) continue;
+
+      const oi = (oy * outW + ox) * 4;
+      out[oi] = data[si];
+      out[oi + 1] = data[si + 1];
+      out[oi + 2] = data[si + 2];
+      out[oi + 3] = data[si + 3];
     }
   }
 
-  await sharp(cropped, { raw: { width: cropW, height: cropH, channels: 4 } })
+  return { data: out, width: outW, height: outH };
+}
+
+async function processImage(inputPath: string, outputPath: string): Promise<void> {
+  const { data, info } = await sharp(inputPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { width, height, channels } = info;
+  if (channels !== 4) throw new Error(`Expected RGBA: ${inputPath}`);
+
+  const edgeSamples: [number, number][] = [];
+  for (let x = 0; x < width; x += Math.max(1, Math.floor(width / 30))) {
+    edgeSamples.push([x, 0], [x, height - 1]);
+  }
+  for (let y = 0; y < height; y += Math.max(1, Math.floor(height / 30))) {
+    edgeSamples.push([0, y], [width - 1, y]);
+  }
+
+  let br = 0;
+  let bg = 0;
+  let bb = 0;
+  for (const [x, y] of edgeSamples) {
+    const i = (y * width + x) * 4;
+    br += data[i];
+    bg += data[i + 1];
+    bb += data[i + 2];
+  }
+  br = Math.round(br / edgeSamples.length);
+  bg = Math.round(bg / edgeSamples.length);
+  bb = Math.round(bb / edgeSamples.length);
+
+  const cleaned = floodRemoveBackground(data, width, height, br, bg, bb);
+
+  const rotated = await sharp(cleaned, { raw: { width, height, channels: 4 } })
+    .rotate(TILE_ROTATION, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .trim()
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const { cx, cy, sumA } = opaqueBounds(rotated.data, rotated.info.width, rotated.info.height);
+  if (sumA === 0) throw new Error(`Ingen brikke funnet i ${inputPath}`);
+
+  const radius = percentileRadius(rotated.data, rotated.info.width, rotated.info.height, cx, cy);
+  const purged = purgeBackgroundColor(rotated.data, rotated.info.width, rotated.info.height, br, bg, bb);
+  const masked = applyHexMask(purged, rotated.info.width, rotated.info.height, cx, cy, radius);
+  const hex = toHexCanvas(masked, rotated.info.width, rotated.info.height, cx, cy, radius);
+
+  await sharp(hex.data, { raw: { width: hex.width, height: hex.height, channels: 4 } })
     .resize({
-      width: cropW >= cropH ? MAX_OUTPUT_PX : undefined,
-      height: cropH > cropW ? MAX_OUTPUT_PX : undefined,
+      width: hex.width >= hex.height ? MAX_OUTPUT_PX : undefined,
+      height: hex.height > hex.width ? MAX_OUTPUT_PX : undefined,
       fit: 'inside',
       withoutEnlargement: true,
     })

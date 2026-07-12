@@ -41,18 +41,17 @@ function hexPoints(coord: HexCoord, size: number): string {
 function hexImageRect(coord: HexCoord, size: number) {
   const cx = Math.sqrt(3) * size * (coord.q + coord.r / 2);
   const cy = size * (3 / 2) * coord.r;
-  const tileScale = 0.96;
+  const tileScale = 1.08;
   const r = size * tileScale;
   const w = Math.sqrt(3) * r;
   const h = 2 * r;
-  return { x: cx - w / 2, y: cy - h / 2, width: w, height: h };
+  return { x: cx - w / 2, y: cy - h / 2, width: w, height: h, cx, cy };
 }
 
 export function BoardHex({ coord, kind, resource, number, size }: BoardHexProps) {
   const points = hexPoints(coord, size);
   const cx = Math.sqrt(3) * size * (coord.q + coord.r / 2);
   const cy = size * (3 / 2) * coord.r;
-  const clipId = `hex-clip-${coord.q}-${coord.r}`;
 
   if (kind === 'edge') {
     return (
@@ -70,11 +69,6 @@ export function BoardHex({ coord, kind, resource, number, size }: BoardHexProps)
     <g className="hex-tile hex-land" aria-label={RESOURCE_LABELS[resource ?? ''] ?? resource ?? ''}>
       {tileImage ? (
         <>
-          <defs>
-            <clipPath id={clipId}>
-              <polygon points={points} />
-            </clipPath>
-          </defs>
           {(() => {
             const rect = hexImageRect(coord, size);
             return (
@@ -84,8 +78,7 @@ export function BoardHex({ coord, kind, resource, number, size }: BoardHexProps)
                 y={rect.y}
                 width={rect.width}
                 height={rect.height}
-                clipPath={`url(#${clipId})`}
-                preserveAspectRatio="xMidYMid meet"
+                preserveAspectRatio="none"
               />
             );
           })()}
