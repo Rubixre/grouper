@@ -14,6 +14,8 @@ const BG_DISTANCE = 55;
 const BG_SOFT = 25;
 const HEX_INSET = 0.04;
 const MAX_OUTPUT_PX = 480;
+/** Roterer foto slik at fysiske brikker matcher pointy-top hex på brettet */
+const TILE_ROTATION = 45;
 
 function insidePointyHex(px: number, py: number, cx: number, cy: number, size: number): boolean {
   const x = px - cx;
@@ -38,7 +40,12 @@ function bgAlpha(r: number, g: number, b: number, br: number, bg: number, bb: nu
 }
 
 async function processImage(inputPath: string, outputPath: string): Promise<void> {
-  const { data, info } = await sharp(inputPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const rotated = await sharp(inputPath)
+    .rotate(TILE_ROTATION, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const { data, info } = rotated;
   const { width, height, channels } = info;
   if (channels !== 4) throw new Error(`Expected RGBA: ${inputPath}`);
 
