@@ -7,9 +7,9 @@ import { PLAYER_COLORS } from '../catan/simulator';
 import { BoardHex } from './BoardHex';
 import { EdgePieceShape } from './EdgePieceShape';
 import { BoardEdgeMasks } from './BoardEdgeMasks';
-import { HarborIcon, getHarborTheme } from './HarborIcon';
+import { HarborIcon } from './HarborIcon';
+import { HarborDock, harborPosition } from './HarborDock';
 import { MappingOverlay } from './MappingOverlay';
-import type { PlacedHarbor } from '../catan/types';
 
 export const BOARD_HEX_SIZE = 34;
 
@@ -60,103 +60,11 @@ function placementScoreTitle(score: SettlementScore, rank: number): string {
   return lines.join('\n');
 }
 
-/** Havn plasseres i kanthex-senteret, lett ut mot sjøen – unngår å skjule tall på land */
-function harborPosition(h: Board['harbors'][0], hexSize: number): { x: number; y: number } {
-  const center = hexToPixel(h.edgeCoord, hexSize);
-  const vertices = getVertices();
-  const vA = vertices.get(h.nodeVertexIds[0]);
-  const vB = vertices.get(h.nodeVertexIds[1]);
-  if (!vA || !vB) return center;
-
-  const pA = hexCorner(vA.anchor, vA.corner, hexSize);
-  const pB = hexCorner(vB.anchor, vB.corner, hexSize);
-  const coastX = (pA.x + pB.x) / 2;
-  const coastY = (pA.y + pB.y) / 2;
-  const t = 0.35;
-  return {
-    x: center.x + (coastX - center.x) * t,
-    y: center.y + (coastY - center.y) * t,
-  };
-}
-
 function getVertexPixel(vertexId: string, size: number): { x: number; y: number } | null {
   const vertices = getVertices();
   const v = vertices.get(vertexId);
   if (!v) return null;
   return hexCorner(v.anchor, v.corner, size);
-}
-
-function HarborPortLinks({
-  harbor,
-  hexSize,
-}: {
-  harbor: PlacedHarbor;
-  hexSize: number;
-}) {
-  const harborPos = harborPosition(harbor, hexSize);
-  const nodeA = getVertexPixel(harbor.nodeVertexIds[0], hexSize);
-  const nodeB = getVertexPixel(harbor.nodeVertexIds[1], hexSize);
-  if (!nodeA || !nodeB) return null;
-
-  const theme = getHarborTheme(harbor.definition.harbor);
-
-  return (
-    <g className="harbor-port" aria-hidden>
-      <line
-        className="harbor-port-gate"
-        x1={nodeA.x}
-        y1={nodeA.y}
-        x2={nodeB.x}
-        y2={nodeB.y}
-        stroke={theme.accent}
-        strokeWidth={3.5}
-        strokeLinecap="round"
-        opacity={0.9}
-      />
-      <line
-        className="harbor-port-spoke"
-        x1={harborPos.x}
-        y1={harborPos.y}
-        x2={nodeA.x}
-        y2={nodeA.y}
-        stroke="#fff"
-        strokeWidth={1.6}
-        strokeDasharray="5 4"
-        strokeLinecap="round"
-        opacity={0.75}
-      />
-      <line
-        className="harbor-port-spoke"
-        x1={harborPos.x}
-        y1={harborPos.y}
-        x2={nodeB.x}
-        y2={nodeB.y}
-        stroke="#fff"
-        strokeWidth={1.6}
-        strokeDasharray="5 4"
-        strokeLinecap="round"
-        opacity={0.75}
-      />
-      <circle
-        className="harbor-port-node"
-        cx={nodeA.x}
-        cy={nodeA.y}
-        r={3.5}
-        fill={theme.accent}
-        stroke="#fff"
-        strokeWidth={1.2}
-      />
-      <circle
-        className="harbor-port-node"
-        cx={nodeB.x}
-        cy={nodeB.y}
-        r={3.5}
-        fill={theme.accent}
-        stroke="#fff"
-        strokeWidth={1.2}
-      />
-    </g>
-  );
 }
 
 export function BoardView({
@@ -240,7 +148,12 @@ export function BoardView({
       {/* Havnporter – linjer til tilkoblede H-noder */}
       {!mappingMode &&
         board.harbors.map((h) => (
-          <HarborPortLinks key={`port-${h.definition.id}`} harbor={h} hexSize={HEX_SIZE} />
+          <HarborDock
+            key={`dock-${h.definition.id}`}
+            harbor={h}
+            hexSize={HEX_SIZE}
+            harborPos={harborPosition(h, HEX_SIZE)}
+          />
         ))}
 
       {/* Havner – sentrert i kanthex (blå), med ressursspesifikke ikoner */}
