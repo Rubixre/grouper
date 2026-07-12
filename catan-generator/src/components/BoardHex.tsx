@@ -54,6 +54,17 @@ function hexBounds(coord: HexCoord, size: number) {
   };
 }
 
+function hexImageRect(coord: HexCoord, size: number) {
+  const { minX, maxX, minY, maxY } = hexBounds(coord, size);
+  const pad = size * 0.06;
+  return {
+    x: minX - pad,
+    y: minY - pad,
+    width: maxX - minX + pad * 2,
+    height: maxY - minY + pad * 2,
+  };
+}
+
 export function BoardHex({ coord, kind, resource, number, size }: BoardHexProps) {
   const points = hexPoints(coord, size);
   const cx = Math.sqrt(3) * size * (coord.q + coord.r / 2);
@@ -82,14 +93,14 @@ export function BoardHex({ coord, kind, resource, number, size }: BoardHexProps)
             </clipPath>
           </defs>
           {(() => {
-            const { minX, maxX, minY, maxY } = hexBounds(coord, size);
+            const rect = hexImageRect(coord, size);
             return (
               <image
                 href={tileImage}
-                x={minX}
-                y={minY}
-                width={maxX - minX}
-                height={maxY - minY}
+                x={rect.x}
+                y={rect.y}
+                width={rect.width}
+                height={rect.height}
                 clipPath={`url(#${clipId})`}
                 preserveAspectRatio="xMidYMid slice"
               />
@@ -100,7 +111,7 @@ export function BoardHex({ coord, kind, resource, number, size }: BoardHexProps)
         <polygon points={points} fill={fill} stroke="#2b2b2b" strokeWidth={2} />
       )}
 
-      <polygon points={points} fill="none" stroke="#2b2b2b" strokeWidth={2} />
+      {!tileImage && <polygon points={points} fill="none" stroke="#2b2b2b" strokeWidth={2} />}
 
       {!tileImage && (
         <text
