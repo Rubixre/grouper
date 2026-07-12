@@ -1258,6 +1258,81 @@ body {
   margin: 0 0 0.75rem;
 }
 
+.score-breakdown {
+  background: #f4f8fb;
+  border: 1px solid #d0e3f0;
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.score-breakdown h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.85rem;
+  color: #1a5276;
+}
+
+.score-breakdown-formula {
+  margin: 0 0 0.5rem;
+}
+
+.score-hex-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.score-hex-table th,
+.score-hex-table td {
+  padding: 0.25rem 0.35rem;
+  text-align: left;
+  border-bottom: 1px solid #e0e8ef;
+}
+
+.score-hex-table th {
+  color: #666;
+  font-weight: 600;
+}
+
+.score-hex-table td:last-child,
+.score-hex-table th:last-child {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.score-hex-table tfoot td {
+  font-weight: 700;
+  color: #1a5276;
+  border-bottom: none;
+}
+
+.score-breakdown-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.78rem;
+}
+
+.score-breakdown-lines li {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.2rem 0;
+  border-bottom: 1px dashed #e0e8ef;
+}
+
+.score-breakdown-lines li:last-child {
+  border-bottom: none;
+}
+
+.score-breakdown-total {
+  margin-top: 0.25rem;
+  padding-top: 0.35rem;
+  border-top: 2px solid #bdd7ee;
+  font-weight: 700;
+  color: #1a5276;
+}
+
 .mapping-tabs {
   display: flex;
   gap: 0.35rem;

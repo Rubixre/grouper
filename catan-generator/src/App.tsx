@@ -272,9 +272,10 @@ function App() {
                 )}
               </div>
 
-              {simActive && simulation && (
+              {simActive && simulation && board && (
                 <SettlementSimulator
                   state={simulation}
+                  board={board}
                   options={rankedOptions}
                   selectedVertex={selectedVertex}
                   onSelectVertex={setSelectedVertex}

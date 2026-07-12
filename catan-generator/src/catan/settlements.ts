@@ -14,7 +14,7 @@ import { coordKey, hexNeighbor } from './hex';
 import { getBoardSet, getLandSet } from './boardLayout';
 
 /** Dice roll probability for each number token */
-const NUMBER_PROB: Record<number, number> = {
+export const NUMBER_PROB: Record<number, number> = {
   2: 1 / 36,
   3: 2 / 36,
   4: 3 / 36,
@@ -341,4 +341,91 @@ export function rankVertices(
   return getValidVertices(placed)
     .map((id) => scoreVertex(id, board, w))
     .sort((a, b) => b.total - a.total);
+}
+
+export interface HexContribution {
+  resource: ResourceType;
+  number: number;
+  probability: number;
+  resourceWeight: number;
+  value: number;
+}
+
+export interface ScoreExplanation {
+  kind: 'first' | 'second';
+  hexContributions: HexContribution[];
+  production: number;
+  diversity: number;
+  harbor: number;
+  portfolio?: number;
+  overlap?: number;
+  netPortfolio?: number;
+  total: number;
+  coveredResources: string[];
+}
+
+function hexContributionsFor(
+  vertexId: string,
+  board: Board,
+  weights: ResourceWeights
+): HexContribution[] {
+  const vertices = getVertices();
+  const vertex = vertices.get(vertexId);
+  if (!vertex) return [];
+
+  const rows: HexContribution[] = [];
+  for (const hex of vertex.hexes) {
+    const tile = board.hexes.find((h) => h.coord.q === hex.q && h.coord.r === hex.r);
+    if (!tile || tile.kind !== 'land' || !tile.resource || tile.resource === 'desert' || !tile.number) {
+      continue;
+    }
+    const probability = NUMBER_PROB[tile.number] ?? 0;
+    const resourceWeight = weights[tile.resource as keyof ResourceWeights];
+    rows.push({
+      resource: tile.resource,
+      number: tile.number,
+      probability,
+      resourceWeight,
+      value: probability * resourceWeight,
+    });
+  }
+  return rows;
+}
+
+/** Detaljert forklaring av poengberegning for UI og dokumentasjon */
+export function explainPlacementScore(
+  score: SettlementScore,
+  board: Board,
+  firstVertexId?: string,
+  weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS
+): ScoreExplanation {
+  const hexContributions = hexContributionsFor(score.vertexId, board, weights);
+  const profile = buildProductionProfile(score.vertexId, board, weights);
+
+  if (score.placementKind === 'second' && firstVertexId) {
+    const first = buildProductionProfile(firstVertexId, board, weights);
+    const combined = new Set([...first.resources, ...profile.resources]);
+    return {
+      kind: 'second',
+      hexContributions,
+      production: score.production,
+      diversity: score.diversity,
+      harbor: score.harbor,
+      portfolio: score.portfolio,
+      overlap: score.overlap,
+      netPortfolio: (score.portfolio ?? 0) - (score.overlap ?? 0),
+      total: score.total,
+      coveredResources: [...combined],
+    };
+  }
+
+  return {
+    kind: 'first',
+    hexContributions,
+    production: score.production,
+    diversity: score.diversity,
+    harbor: score.harbor,
+    total: score.total,
+    coveredResources: [...profile.resources],
+  };
 }

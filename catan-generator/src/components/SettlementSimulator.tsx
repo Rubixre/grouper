@@ -1,9 +1,12 @@
 import type { SettlementScore } from '../catan/types';
+import type { Board } from '../catan/types';
 import type { SimulationState } from '../catan/simulator';
 import { PLAYER_COLORS, PLAYER_NAMES, currentPlayer } from '../catan/simulator';
+import { PlacementScoreBreakdown } from './PlacementScoreBreakdown';
 
 interface SettlementSimulatorProps {
   state: SimulationState;
+  board: Board;
   options: SettlementScore[];
   selectedVertex: string | null;
   onSelectVertex: (vertexId: string) => void;
@@ -12,6 +15,7 @@ interface SettlementSimulatorProps {
 
 export function SettlementSimulator({
   state,
+  board,
   options,
   selectedVertex,
   onSelectVertex,
@@ -29,6 +33,10 @@ export function SettlementSimulator({
   const selectedRank = selectedVertex
     ? options.findIndex((opt) => opt.vertexId === selectedVertex) + 1
     : 0;
+  const playerFirstVertex =
+    player !== null
+      ? state.placements.find((p) => p.player === player)?.vertexId
+      : undefined;
 
   return (
     <div className="panel simulator-panel">
@@ -95,6 +103,18 @@ export function SettlementSimulator({
               </div>
             )}
           </div>
+          {selectedOption && (
+            <PlacementScoreBreakdown
+              score={selectedOption}
+              board={board}
+              rank={selectedRank}
+              firstVertexId={
+                selectedOption.placementKind === 'second'
+                  ? playerFirstVertex
+                  : undefined
+              }
+            />
+          )}
           <button
             type="button"
             className="btn primary btn-block"
