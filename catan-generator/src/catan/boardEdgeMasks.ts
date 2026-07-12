@@ -127,6 +127,7 @@ function buildMaskForSideHexes(
   sideA: NumberedEdgeHex,
   sideB: NumberedEdgeHex,
   mapping: ReturnType<typeof getBoardMapping>,
+  boardSize: BoardSize,
   hexSize: number,
   center: Point
 ): EdgeMaskRect {
@@ -138,7 +139,7 @@ function buildMaskForSideHexes(
   const ux = dx / len;
   const uy = dy / len;
 
-  const extend = hexSize * 3.15;
+  const extend = hexSize * (boardSize === 'extension56' ? 4.4 : 3.15);
   const innerStart = { x: p1.x - ux * extend, y: p1.y - uy * extend };
   const innerEnd = { x: p2.x + ux * extend, y: p2.y + uy * extend };
 
@@ -179,6 +180,7 @@ export function buildBoardEdgeMasks(
       sideA,
       sideB,
       mapping,
+      boardSize,
       hexSize,
       center
     );
