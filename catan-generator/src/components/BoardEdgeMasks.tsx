@@ -14,8 +14,6 @@ interface BoardEdgeMasksProps {
   extensionEdgeOrder?: ExtensionEdgeOrder;
 }
 
-const MASK_STROKE = '#154360';
-
 /** Rette havfargede rektangler over taggete ytterkanter på kantbrikker */
 export function BoardEdgeMasks({
   edgeRotation,
@@ -38,7 +36,7 @@ export function BoardEdgeMasks({
           key={rect.label}
           points={edgeMaskToPolygonPoints(rect)}
           fill={OCEAN_FILL}
-          stroke={MASK_STROKE}
+          stroke={OCEAN_FILL}
           strokeWidth={strokeWidth}
           strokeLinejoin="miter"
         />
