@@ -1,11 +1,13 @@
-Legg ressursbrikke-bildene her (PNG/JPG/WebP):
+Legg de 6 ferdig klippede brikke-bildene her som **PNG med transparent bakgrunn**:
 
-- Tømmer → kopieres til `wood.png`
-- Tegl → `brick.png`
-- Ull → `sheep.png`
-- Korn → `wheat.png`
-- Malm → `ore.png`
-- Ørken → `desert.png`
+| Ressurs | Filnavn (eksempel) |
+|---------|-------------------|
+| Tømmer / skog | `skog.png` |
+| Tegl / leirgrunn | `leirgrunn.png` |
+| Ull / eng | `eng.png` |
+| Korn / åker | `åker.png` |
+| Malm / fjell | `Fjell.png` |
+| Ørken | `ørken.png` |
 
 Kjør deretter fra `catan-generator/`:
 
@@ -13,4 +15,4 @@ Kjør deretter fra `catan-generator/`:
 npm run copy:tiles
 ```
 
-Mappen kan også ligge i prosjektroten (`../Catan brikker`).
+Bildene kopieres til `src/assets/tiles/hex/` og brukes direkte i brettet – ingen ekstra klipping eller fargefjerning.

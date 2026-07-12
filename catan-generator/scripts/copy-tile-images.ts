@@ -1,12 +1,13 @@
 /**
- * Kopierer ressursbrikke-bilder fra mappen "Catan brikker" til src/assets/tiles/.
- * Kjør: npx tsx scripts/copy-tile-images.ts
+ * Kopierer ferdig klippede PNG-brikker fra "Catan brikker" til src/assets/tiles/hex/.
+ * Forutsetter at bakgrunn allerede er fjernet – ingen bildeprosessering.
+ * Kjør: npm run copy:tiles
  */
 import { copyFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const ROOT = resolve(import.meta.dirname, '..');
-const TARGET = join(ROOT, 'src/assets/tiles');
+const TARGET_DIR = join(ROOT, 'src/assets/tiles/hex');
 
 const SOURCE_CANDIDATES = [
   join(ROOT, 'Catan brikker'),
@@ -15,23 +16,29 @@ const SOURCE_CANDIDATES = [
   '/workspace/Catan brikker',
 ];
 
-/** Nøkkelord i filnavn → ressursfil i assets/tiles */
-const NAME_MAP: Record<string, string> = {
-  tømmer: 'wood.png',
-  tommer: 'wood.png',
-  wood: 'wood.png',
-  tegl: 'brick.png',
-  brick: 'brick.png',
-  ull: 'sheep.png',
-  sheep: 'sheep.png',
-  korn: 'wheat.png',
-  wheat: 'wheat.png',
-  malm: 'ore.png',
-  ore: 'ore.png',
-  ørken: 'desert.png',
-  orken: 'desert.png',
-  desert: 'desert.png',
-};
+/** Nøkkelord i filnavn → målfil i hex/ */
+const NAME_TO_HEX: [string, string][] = [
+  ['skog', 'skog.png'],
+  ['tømmer', 'skog.png'],
+  ['tommer', 'skog.png'],
+  ['wood', 'skog.png'],
+  ['leirgrunn', 'leirgrunn.png'],
+  ['tegl', 'leirgrunn.png'],
+  ['brick', 'leirgrunn.png'],
+  ['eng', 'eng.png'],
+  ['ull', 'eng.png'],
+  ['sheep', 'eng.png'],
+  ['åker', 'åker.png'],
+  ['aker', 'åker.png'],
+  ['korn', 'åker.png'],
+  ['wheat', 'åker.png'],
+  ['fjell', 'Fjell.png'],
+  ['malm', 'Fjell.png'],
+  ['ore', 'Fjell.png'],
+  ['ørken', 'ørken.png'],
+  ['orken', 'ørken.png'],
+  ['desert', 'ørken.png'],
+];
 
 function findSourceDir(): string | null {
   for (const dir of SOURCE_CANDIDATES) {
@@ -40,40 +47,55 @@ function findSourceDir(): string | null {
   return null;
 }
 
-function matchTarget(filename: string): string | null {
+function matchHexName(filename: string): string | null {
   const base = filename.replace(/\.[^.]+$/, '').toLowerCase();
-  for (const [key, target] of Object.entries(NAME_MAP)) {
-    if (base.includes(key)) return target;
+  for (const [key, hexName] of NAME_TO_HEX) {
+    if (base.includes(key)) return hexName;
   }
   return null;
 }
 
-const source = findSourceDir();
-if (!source) {
-  console.error('Fant ikke mappen "Catan brikker". Sjekk at den ligger i:');
-  for (const dir of SOURCE_CANDIDATES) console.error('  -', dir);
-  process.exit(1);
-}
-
-mkdirSync(TARGET, { recursive: true });
-
-const files = readdirSync(source).filter((f) => /\.(png|jpe?g|webp)$/i.test(f));
-let copied = 0;
-
-for (const file of files) {
-  const target = matchTarget(file);
-  if (!target) {
-    console.warn('Hopper over ukjent fil:', file);
-    continue;
+function main(): void {
+  const source = findSourceDir();
+  if (!source) {
+    console.error('Fant ikke mappen "Catan brikker". Forventet én av:');
+    for (const dir of SOURCE_CANDIDATES) console.error('  -', dir);
+    process.exit(1);
   }
-  copyFileSync(join(source, file), join(TARGET, target));
-  console.log(`${file} → tiles/${target}`);
-  copied++;
+
+  const pngFiles = readdirSync(source).filter((f) => /\.png$/i.test(f));
+  if (pngFiles.length === 0) {
+    console.error(`Ingen PNG-filer funnet i ${source}`);
+    console.error('Last opp 6 brikker med transparent bakgrunn (PNG) i den mappen.');
+    process.exit(1);
+  }
+
+  mkdirSync(TARGET_DIR, { recursive: true });
+
+  const chosen = new Map<string, string>();
+  for (const file of pngFiles) {
+    const hexName = matchHexName(file);
+    if (!hexName) {
+      console.warn('Hopper over ukjent fil:', file);
+      continue;
+    }
+    if (!chosen.has(hexName)) {
+      chosen.set(hexName, join(source, file));
+    }
+  }
+
+  if (chosen.size === 0) {
+    console.error('Ingen gjenkjente brikker i', source);
+    process.exit(1);
+  }
+
+  for (const [hexName, sourcePath] of chosen) {
+    const targetPath = join(TARGET_DIR, hexName);
+    copyFileSync(sourcePath, targetPath);
+    console.log(`${sourcePath} → hex/${hexName}`);
+  }
+
+  console.log(`\nKopierte ${chosen.size} brikker til ${TARGET_DIR}`);
 }
 
-if (copied === 0) {
-  console.error('Ingen bilder kopiert fra', source);
-  process.exit(1);
-}
-
-console.log(`\nKopierte ${copied} brikke-bilder til src/assets/tiles/`);
+main();
