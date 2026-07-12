@@ -23,13 +23,15 @@ const RESOURCE_LABELS: Record<string, string> = {
 const EDGE_FILL = '#3498db';
 const EDGE_STROKE = '#2471a3';
 
-/** Underlag under PNG – skjuler transparente hjørner mot hav/bakgrunn */
-const TILE_UNDERLAY_FILL = '#ebe4d5';
-
 /** Roterer flate brikke-PNG-er til pointy-top hex på brettet */
 const TILE_IMAGE_ROTATION = 30;
-/** Kvadrat stort nok til å fylle hex etter rotasjon (preserveAspectRatio slice) */
-const TILE_IMAGE_SCALE = 1.85;
+/**
+ * Bildekvadrat må dekke hele hex etter rotasjon (min ~2.0 for pointy-top).
+ * Mindre verdi → blå hav synlig i hjørnene.
+ */
+const TILE_IMAGE_SCALE = 2.05;
+/** Visuell størrelse – klipper litt innover så brikkene ikke fyller hele cellen */
+const TILE_CLIP_SCALE = 0.88;
 
 interface BoardHexProps {
   coord: HexCoord;
@@ -39,15 +41,17 @@ interface BoardHexProps {
   size: number;
 }
 
-function hexPoints(coord: HexCoord, size: number): string {
+function hexPoints(coord: HexCoord, size: number, scale = 1): string {
+  const { x: cx, y: cy } = hexToPixel(coord, size);
   return Array.from({ length: 6 }, (_, i) => {
     const { x, y } = hexCorner(coord, i, size);
-    return `${x},${y}`;
+    return `${cx + (x - cx) * scale},${cy + (y - cy) * scale}`;
   }).join(' ');
 }
 
 export function BoardHex({ coord, kind, resource, number, size }: BoardHexProps) {
   const points = hexPoints(coord, size);
+  const clipPoints = hexPoints(coord, size, TILE_CLIP_SCALE);
   const { x: cx, y: cy } = hexToPixel(coord, size);
   const clipId = `hex-clip-${coord.q}-${coord.r}`;
 
@@ -69,11 +73,10 @@ export function BoardHex({ coord, kind, resource, number, size }: BoardHexProps)
         <>
           <defs>
             <clipPath id={clipId}>
-              <polygon points={points} />
+              <polygon points={clipPoints} />
             </clipPath>
           </defs>
           <g clipPath={`url(#${clipId})`}>
-            <polygon points={points} fill={TILE_UNDERLAY_FILL} />
             <image
               href={tileImage}
               x={cx - (size * TILE_IMAGE_SCALE) / 2}
