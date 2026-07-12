@@ -80,7 +80,6 @@ export function BoardHex({ coord, kind, resource, number, size }: BoardHexProps)
               transform={`rotate(${TILE_IMAGE_ROTATION} ${cx} ${cy})`}
             />
           </g>
-          <polygon points={points} fill="none" stroke="#2b2b2b" strokeWidth={1.5} />
         </>
       ) : (
         <polygon points={points} fill={fill} stroke="#2b2b2b" strokeWidth={2} />
