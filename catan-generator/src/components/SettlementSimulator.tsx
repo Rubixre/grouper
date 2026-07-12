@@ -65,7 +65,7 @@ export function SettlementSimulator({
         <>
           <p className="sim-hint">
             {isSecond
-              ? 'Andre landsby: poengsum vektlegger startressurser og utfylling mot din første landsby.'
+              ? 'Andre landsby: poengsum vurderer hele paret (1.+2. landsby), utfylling og havntilgang.'
               : 'Første landsby: poengsum basert på vektet produksjon og ressursdekning.'}{' '}
             <strong>Nummererte markører på brettet</strong> viser de 8 beste plasseringene (#1 er gull).
             Du kan også klikke <strong>andre lyse punkter</strong> for fri plassering.
@@ -84,7 +84,7 @@ export function SettlementSimulator({
                 <span className="option-detail">
                   {opt.placementKind === 'second' ? (
                     <>
-                      Start {opt.production.toFixed(2)} · Utfylling{' '}
+                      Par {opt.production.toFixed(2)} · Utfylling{' '}
                       {((opt.portfolio ?? 0) - (opt.overlap ?? 0)).toFixed(2)}
                     </>
                   ) : (

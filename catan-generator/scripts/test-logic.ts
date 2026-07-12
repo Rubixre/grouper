@@ -294,14 +294,31 @@ if (board) {
     secondOpts.every((o) => o.portfolio !== undefined && o.overlap !== undefined),
     'Second settlement exposes portfolio and overlap'
   );
+  assert(
+    secondOpts.every(
+      (o) =>
+        o.firstProduction !== undefined &&
+        o.secondProduction !== undefined &&
+        Math.abs(o.production - (o.firstProduction + o.secondProduction)) < 1e-9
+    ),
+    'Second settlement uses combined pair production'
+  );
+  assert(
+    secondOpts.every((o) => {
+      const recomposed =
+        o.production + o.diversity + (o.portfolio ?? 0) - (o.overlap ?? 0) + o.harbor;
+      return Math.abs(recomposed - o.total) < 1e-9;
+    }),
+    'Second settlement score components sum to total (no double diversity)'
+  );
 
   const harborOpts = secondOpts.filter(
     (o) => getHarborsForVertex(o.vertexId, board.harbors).length > 0
   );
   if (harborOpts[0]) {
     assert(
-      harborOpts[0].harbor <= harborOpts[0].production * 0.05,
-      'Harbor bonus capped to minimal share of production'
+      harborOpts[0].harbor <= harborOpts[0].production * 0.08,
+      'Harbor bonus capped relative to pair production'
     );
   }
 

@@ -1,5 +1,6 @@
 import type {
   Board,
+  HarborType,
   HexCoord,
   PlacedSettlement,
   ResourceType,
@@ -40,6 +41,9 @@ type ProdResource = Exclude<ResourceType, 'desert'>;
 interface ProductionProfile {
   byResource: Partial<Record<ProdResource, number>>;
   byNumber: Partial<Record<number, number>>;
+  /** Uvektet terningssannsynlighet per ressurs (brukes i synergiberegning) */
+  rawByResource: Partial<Record<ProdResource, number>>;
+  rawByNumber: Partial<Record<number, number>>;
   total: number;
   resources: Set<ProdResource>;
   breakdown: { resource: ResourceType; value: number }[];
@@ -178,6 +182,8 @@ function buildProductionProfile(
   const breakdown: { resource: ResourceType; value: number }[] = [];
   const byResource: Partial<Record<ProdResource, number>> = {};
   const byNumber: Partial<Record<number, number>> = {};
+  const rawByResource: Partial<Record<ProdResource, number>> = {};
+  const rawByNumber: Partial<Record<number, number>> = {};
   const resources = new Set<ProdResource>();
   let total = 0;
 
@@ -188,27 +194,60 @@ function buildProductionProfile(
     }
 
     const resource = tile.resource;
-    const value =
-      (NUMBER_PROB[tile.number] ?? 0) *
-      weights[resource as keyof ResourceWeights];
+    const probability = NUMBER_PROB[tile.number] ?? 0;
+    const value = probability * weights[resource as keyof ResourceWeights];
 
     resources.add(resource);
     byResource[resource] = (byResource[resource] ?? 0) + value;
     byNumber[tile.number] = (byNumber[tile.number] ?? 0) + value;
+    rawByResource[resource] = (rawByResource[resource] ?? 0) + probability;
+    rawByNumber[tile.number] = (rawByNumber[tile.number] ?? 0) + probability;
     total += value;
     breakdown.push({ resource, value });
   }
 
-  return { byResource, byNumber, total, resources, breakdown };
+  return { byResource, byNumber, rawByResource, rawByNumber, total, resources, breakdown };
 }
 
 /** Havner har minimal vekt i plasseringsvurdering */
 const HARBOR_MAX_SHARE_OF_PRODUCTION = 0.03;
 
+/** Andel av produksjon som havnbonus – avhenger av havntype og ressursmatch */
+const HARBOR_RATE_GENERIC = 0.024;
+const HARBOR_RATE_RESOURCE_MATCH = 0.04;
+const HARBOR_RATE_RESOURCE_OTHER = 0.028;
+
+/** Dekning for hele paret ved 2. plassering */
+const PAIR_DIVERSITY_SCALE = 0.25;
+
 function capHarborBonus(harbor: number, production: number): number {
   if (harbor <= 0) return 0;
   const cap = Math.max(production * HARBOR_MAX_SHARE_OF_PRODUCTION, 0.002);
   return Math.min(harbor, cap);
+}
+
+function harborRate(harbor: HarborType, profile: ProductionProfile): number {
+  if (harbor.kind === 'generic') return HARBOR_RATE_GENERIC;
+  const produces =
+    profile.resources.has(harbor.resource) &&
+    (profile.rawByResource[harbor.resource] ?? 0) > 0;
+  return produces ? HARBOR_RATE_RESOURCE_MATCH : HARBOR_RATE_RESOURCE_OTHER;
+}
+
+function harborBonusForVertex(
+  vertexId: string,
+  board: Board,
+  profile: ProductionProfile
+): number {
+  const harbors = getHarborsForVertex(vertexId, board.harbors);
+  if (harbors.length === 0) return 0;
+
+  let best = 0;
+  for (const placed of harbors) {
+    const rate = harborRate(placed.definition.harbor, profile);
+    best = Math.max(best, capHarborBonus(profile.total * rate, profile.total));
+  }
+  return best;
 }
 
 function portfolioSynergy(
@@ -223,8 +262,8 @@ function portfolioSynergy(
   let resourceOverlap = 0;
 
   for (const resource of PROD_RESOURCES) {
-    const v1 = first.byResource[resource] ?? 0;
-    const v2 = second.byResource[resource] ?? 0;
+    const v1 = first.rawByResource[resource] ?? 0;
+    const v2 = second.rawByResource[resource] ?? 0;
     const resourceWeight = weights[resource];
 
     if (v1 === 0 && v2 > 0) {
@@ -236,16 +275,14 @@ function portfolioSynergy(
 
   let numberOverlap = 0;
   for (const number of Object.keys(NUMBER_PROB).map(Number)) {
-    const v1 = first.byNumber[number] ?? 0;
-    const v2 = second.byNumber[number] ?? 0;
+    const v1 = first.rawByNumber[number] ?? 0;
+    const v2 = second.rawByNumber[number] ?? 0;
     if (v1 > 0 && v2 > 0) {
       numberOverlap += Math.min(v1, v2) * 0.2;
     }
   }
 
-  const combinedResources = new Set([...first.resources, ...second.resources]);
-  const portfolioCoverage = coverageBonus(combinedResources, weights, 0.2);
-  const portfolio = gapFill + portfolioCoverage;
+  const portfolio = gapFill;
   const overlap = resourceOverlap + numberOverlap;
 
   return { portfolio, overlap };
@@ -258,10 +295,7 @@ export function scoreVertex(
 ): SettlementScore {
   const profile = buildProductionProfile(vertexId, board, weights);
   const diversity = coverageBonus(profile.resources, weights);
-  const hasHarbor = getHarborsForVertex(vertexId, board.harbors).length > 0;
-  const harbor = hasHarbor
-    ? capHarborBonus(profile.total * 0.02, profile.total)
-    : 0;
+  const harbor = harborBonusForVertex(vertexId, board, profile);
 
   return {
     vertexId,
@@ -274,7 +308,7 @@ export function scoreVertex(
   };
 }
 
-/** Vurdering av 2. landsby ut fra produksjon + utfylling mot 1. landsby */
+/** Vurdering av 2. landsby ut fra hele paret (1.+2. landsby) */
 export function scoreSecondSettlement(
   secondVertexId: string,
   firstVertexId: string,
@@ -284,22 +318,21 @@ export function scoreSecondSettlement(
   const first = buildProductionProfile(firstVertexId, board, weights);
   const second = buildProductionProfile(secondVertexId, board, weights);
   const { portfolio, overlap } = portfolioSynergy(first, second, weights);
-  const diversity = coverageBonus(
-    new Set([...first.resources, ...second.resources]),
-    weights,
-    0.2
-  );
-  const hasHarbor = getHarborsForVertex(secondVertexId, board.harbors).length > 0;
-  const harbor = hasHarbor
-    ? capHarborBonus(second.total * 0.02, second.total)
-    : 0;
+  const combinedResources = new Set([...first.resources, ...second.resources]);
+  const diversity = coverageBonus(combinedResources, weights, PAIR_DIVERSITY_SCALE);
+  const harbor =
+    harborBonusForVertex(firstVertexId, board, first) +
+    harborBonusForVertex(secondVertexId, board, second);
+  const pairProduction = first.total + second.total;
 
-  const total = second.total + portfolio - overlap + diversity + harbor;
+  const total = pairProduction + diversity + portfolio - overlap + harbor;
 
   return {
     vertexId: secondVertexId,
     total,
-    production: second.total,
+    production: pairProduction,
+    firstProduction: first.total,
+    secondProduction: second.total,
     diversity,
     harbor,
     portfolio,
@@ -355,6 +388,8 @@ export interface ScoreExplanation {
   kind: 'first' | 'second';
   hexContributions: HexContribution[];
   production: number;
+  firstProduction?: number;
+  secondProduction?: number;
   diversity: number;
   harbor: number;
   portfolio?: number;
@@ -409,6 +444,8 @@ export function explainPlacementScore(
       kind: 'second',
       hexContributions,
       production: score.production,
+      firstProduction: score.firstProduction ?? first.total,
+      secondProduction: score.secondProduction ?? profile.total,
       diversity: score.diversity,
       harbor: score.harbor,
       portfolio: score.portfolio,

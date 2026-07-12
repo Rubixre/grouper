@@ -37,7 +37,7 @@ export function PlacementScoreBreakdown({
           </>
         ) : (
           <>
-            Total = 2. landsby prod. + utfylling − overlapp + dekning + havn
+            Total = par prod. + utfylling − overlapp + dekning + havn
           </>
         )}
       </p>
@@ -64,8 +64,22 @@ export function PlacementScoreBreakdown({
           ))}
         </tbody>
         <tfoot>
+          {explanation.kind === 'second' && explanation.firstProduction !== undefined && (
+            <tr>
+              <td colSpan={3}>1. landsby (vektet prod.)</td>
+              <td>{fmt(explanation.firstProduction)}</td>
+            </tr>
+          )}
+          {explanation.kind === 'second' && explanation.secondProduction !== undefined && (
+            <tr>
+              <td colSpan={3}>2. landsby (vektet prod.)</td>
+              <td>{fmt(explanation.secondProduction)}</td>
+            </tr>
+          )}
           <tr>
-            <td colSpan={3}>Produksjon (sum)</td>
+            <td colSpan={3}>
+              {explanation.kind === 'second' ? 'Parproduksjon (sum)' : 'Produksjon (sum)'}
+            </td>
             <td>{fmt(explanation.production)}</td>
           </tr>
         </tfoot>
@@ -90,7 +104,7 @@ export function PlacementScoreBreakdown({
         )}
         {explanation.harbor > 0 && (
           <li>
-            <span>Havn (maks 3% av prod.)</span>
+            <span>Havn (3:1 / 2:1, maks 3% per landsby)</span>
             <strong>+{fmt(explanation.harbor)}</strong>
           </li>
         )}

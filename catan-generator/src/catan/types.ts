@@ -128,6 +128,10 @@ export interface SettlementScore {
   vertexId: string;
   total: number;
   production: number;
+  /** Kun 2. plassering: vektet produksjon fra 1. landsby */
+  firstProduction?: number;
+  /** Kun 2. plassering: vektet produksjon fra 2. landsby */
+  secondProduction?: number;
   diversity: number;
   harbor: number;
   /** Utfylling mellom 1. og 2. landsby (kun andre plassering) */
