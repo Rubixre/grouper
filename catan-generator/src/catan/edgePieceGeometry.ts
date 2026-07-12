@@ -1,6 +1,12 @@
 import type { HexCoord } from './types';
 import { getLandSet } from './boardLayout';
 import { coordKey, hexCorner, hexNeighbor } from './hex';
+import {
+  apexPointsOnEndCorner as apexPointsOnEndCornerOuter,
+  isEndCornerHex as isEndCornerHexOuter,
+  offsetWaterLine,
+  pointsEqual as pointsEqualOuter,
+} from './boardOuterFrame';
 
 interface Point {
   x: number;
@@ -14,14 +20,12 @@ interface BoundarySegment {
   key: string;
 }
 
-const POINT_EPS = 0.75;
-
 function dist(a: Point, b: Point): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
 function pointsEqual(a: Point, b: Point): boolean {
-  return dist(a, b) < POINT_EPS;
+  return pointsEqualOuter(a, b);
 }
 
 function waterCornersForHex(coord: HexCoord, landSet: Set<string>): Set<number> {
@@ -36,13 +40,7 @@ function waterCornersForHex(coord: HexCoord, landSet: Set<string>): Set<number> 
 
 /** Hjørnehex – 2 hjørner mot land (typisk ytterste hex på en 3-hex brikke) */
 function isEndCornerHex(coord: HexCoord, landSet: Set<string>): boolean {
-  let landCornerCount = 0;
-  for (let corner = 0; corner < 6; corner++) {
-    const touchesLand = [coord, hexNeighbor(coord, (corner + 5) % 6), hexNeighbor(coord, corner)]
-      .some((h) => landSet.has(coordKey(h)));
-    if (touchesLand) landCornerCount++;
-  }
-  return landCornerCount === 2;
+  return isEndCornerHexOuter(coord, landSet);
 }
 
 function collectBoundarySegments(
@@ -187,7 +185,8 @@ function buildWaterPath(
   // Enkelt-hex hjørnebrikke (2 land/sjø-knutepunkter): klipp vannkile til korde
   if (coords.length === 1 && junctions.length >= 2) {
     const [a, b] = junctions;
-    return [a, b];
+    const offset = offsetWaterLine(a, b, coords, size);
+    return [offset.start, offset.end];
   }
 
   // 3-hex sidebrikke: rett linje mellom hjørnehex og motsatt land/sjø-knutepunkt
@@ -208,6 +207,53 @@ function buildWaterPath(
       : junctions.find((j) => !pointsEqual(j, boardCorner));
 
   if (!far) return [];
+
+  if (coords.length >= 2) {
+    const offset = offsetWaterLine(boardCorner, far, coords, size);
+    return [offset.start, offset.end];
+  }
+
+  return [boardCorner, far];
+}
+
+/** Rå land/sjø-knutepunkter for sjø-siden – brukes til å koble landkjede */
+export function rawWaterJunctions(
+  coords: HexCoord[],
+  size: number
+): [Point, Point] | null {
+  const landSet = getLandSet();
+  const segments = collectBoundarySegments(coords, size, landSet);
+  const junctions = landWaterJunctions(segments);
+  if (junctions.length < 2) return null;
+
+  const endCorner = coords.find((c) => isEndCornerHex(c, landSet));
+  const apexPoints =
+    endCorner && coords.length > 1
+      ? apexPointsOnEndCorner(endCorner, coords, segments, size, landSet)
+      : [];
+  const isApex = (p: Point) => apexPoints.some((a) => pointsEqual(a, p));
+
+  if (coords.length === 1) {
+    return [junctions[0], junctions[1]];
+  }
+
+  const boardCorner = endCorner
+    ? junctions.find((j) =>
+        boardCornerPointsOnHex(endCorner, coords, size, landSet).some((b) =>
+          pointsEqual(b, j)
+        )
+      ) ?? junctions[0]
+    : junctions[0];
+
+  const farCandidates = junctions.filter((j) => !pointsEqual(j, boardCorner) && !isApex(j));
+  const far =
+    farCandidates.length > 0
+      ? farCandidates.reduce((best, j) =>
+          dist(j, boardCorner) > dist(best, boardCorner) ? j : best
+        )
+      : junctions.find((j) => !pointsEqual(j, boardCorner));
+
+  if (!far) return null;
   return [boardCorner, far];
 }
 
@@ -244,14 +290,10 @@ function boardCornerPointsOnHex(
   return corners;
 }
 
-function combineOutline(waterPath: Point[], landChain: Point[]): Point[] {
-  const outline = [...waterPath];
-  for (let i = 1; i < landChain.length; i++) {
-    const next = landChain[i];
-    const prev = outline[outline.length - 1];
-    if (!pointsEqual(next, prev)) outline.push(next);
-  }
-  return outline;
+function filterApexDetour(chain: Point[], endCorner: HexCoord, size: number): Point[] {
+  const apex = apexPointsOnEndCornerOuter(endCorner, size);
+  if (apex.length === 0) return chain;
+  return chain.filter((p) => !apex.some((a) => pointsEqual(a, p)));
 }
 
 /** Ytre omriss – rette kanter, egne regler for hjørnehex (2 landhjørner) */
@@ -260,8 +302,10 @@ export function buildEdgePieceOutline(coords: HexCoord[], size: number): Point[]
   const segments = collectBoundarySegments(coords, size, landSet);
   const landSegments = segments.filter((s) => !s.water);
   const waterPath = buildWaterPath(coords, segments, size, landSet);
+  const rawJunctions = rawWaterJunctions(coords, size);
 
-  if (waterPath.length >= 2) {
+  if (waterPath.length >= 2 && rawJunctions) {
+    const [rawStart, rawEnd] = rawJunctions;
     const endCorner = coords.find((c) => isEndCornerHex(c, landSet));
     const endKey = endCorner ? coordKey(endCorner) : null;
 
@@ -270,29 +314,45 @@ export function buildEdgePieceOutline(coords: HexCoord[], size: number): Point[]
       : landSegments;
 
     if (coords.length === 1) {
-      filteredLand = landSegments;
+      filteredLand = endKey
+        ? landSegments.filter((s) => !s.key.startsWith(`${endKey}-`))
+        : landSegments.filter((s) => !s.water);
     }
 
-    let landChain = chainSegmentsBetween(
-      filteredLand,
-      waterPath[waterPath.length - 1],
-      waterPath[0]
-    );
-
-    if (
-      landChain.length >= 2 &&
-      !pointsEqual(landChain[landChain.length - 1], waterPath[0])
-    ) {
-      landChain.push(waterPath[0]);
+    let landChain = chainSegmentsBetween(filteredLand, rawEnd, rawStart);
+    if (endCorner) {
+      landChain = filterApexDetour(landChain, endCorner, size);
     }
 
     if (landChain.length >= 2) {
-      const outline = combineOutline(waterPath, landChain);
+      const outline: Point[] = [waterPath[0], waterPath[1]];
+      if (!pointsEqual(waterPath[1], rawEnd)) outline.push(rawEnd);
+      for (let i = 1; i < landChain.length; i++) {
+        const next = landChain[i];
+        if (!pointsEqual(next, outline[outline.length - 1])) outline.push(next);
+      }
+      if (
+        !pointsEqual(outline[outline.length - 1], waterPath[0]) &&
+        !pointsEqual(rawStart, outline[outline.length - 1])
+      ) {
+        outline.push(rawStart);
+      }
       if (outline.length >= 3) return outline;
     }
   }
 
   return orderBoundaryLoop(segments);
+}
+
+/** Offset sjø-linje for én kantbrikke – brukes bl.a. til hjørne-kiler */
+export function getWaterLineForPiece(coords: HexCoord[], size: number): [Point, Point] | null {
+  const landSet = getLandSet();
+  const segments = collectBoundarySegments(coords, size, landSet);
+  const waterPath = buildWaterPath(coords, segments, size, landSet);
+  if (waterPath.length >= 2) {
+    return [waterPath[0], waterPath[waterPath.length - 1]];
+  }
+  return null;
 }
 
 export function outlineToPolygonPoints(outline: Point[]): string {
