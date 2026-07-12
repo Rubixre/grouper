@@ -23,10 +23,13 @@ const RESOURCE_LABELS: Record<string, string> = {
 const EDGE_FILL = '#3498db';
 const EDGE_STROKE = '#2471a3';
 
+/** Underlag under PNG – skjuler transparente hjørner mot hav/bakgrunn */
+const TILE_UNDERLAY_FILL = '#ebe4d5';
+
 /** Roterer flate brikke-PNG-er til pointy-top hex på brettet */
 const TILE_IMAGE_ROTATION = 30;
 /** Kvadrat stort nok til å fylle hex etter rotasjon (preserveAspectRatio slice) */
-const TILE_IMAGE_SCALE = 1.75;
+const TILE_IMAGE_SCALE = 1.85;
 
 interface BoardHexProps {
   coord: HexCoord;
@@ -70,6 +73,7 @@ export function BoardHex({ coord, kind, resource, number, size }: BoardHexProps)
             </clipPath>
           </defs>
           <g clipPath={`url(#${clipId})`}>
+            <polygon points={points} fill={TILE_UNDERLAY_FILL} />
             <image
               href={tileImage}
               x={cx - (size * TILE_IMAGE_SCALE) / 2}
