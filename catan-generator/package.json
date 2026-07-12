@@ -9,7 +9,8 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test:logic": "tsx scripts/test-logic.ts",
-    "copy:tiles": "tsx scripts/copy-tile-images.ts"
+    "copy:tiles": "tsx scripts/copy-tile-images.ts",
+    "process:tiles": "tsx scripts/process-tile-images.ts"
   },
   "dependencies": {
     "react": "^19.2.7",
@@ -19,8 +20,10 @@
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "@types/sharp": "^0.31.1",
     "@vitejs/plugin-react": "^6.0.3",
     "oxlint": "^1.71.0",
+    "sharp": "^0.35.3",
     "tsx": "^4.23.0",
     "typescript": "~6.0.2",
     "vite": "^8.1.1"

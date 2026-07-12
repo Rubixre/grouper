@@ -1,6 +1,6 @@
 import type { ResourceType } from '../../catan/types';
 
-const tileModules = import.meta.glob(['./*.{png,jpeg,jpg,webp}'], {
+const hexModules = import.meta.glob('./hex/*.png', {
   eager: true,
   import: 'default',
 }) as Record<string, string>;
@@ -39,7 +39,7 @@ function resourceForFile(path: string): ResourceType | null {
 
 const images: Partial<Record<ResourceType, string>> = {};
 
-for (const [path, url] of Object.entries(tileModules)) {
+for (const [path, url] of Object.entries(hexModules)) {
   const resource = resourceForFile(path);
   if (resource) images[resource] = url;
 }

@@ -38,27 +38,14 @@ function hexPoints(coord: HexCoord, size: number): string {
   }).join(' ');
 }
 
-function hexBounds(coord: HexCoord, size: number) {
-  const corners = Array.from({ length: 6 }, (_, i) => hexCorner(coord, i, size));
-  const xs = corners.map((c) => c.x);
-  const ys = corners.map((c) => c.y);
-  return {
-    minX: Math.min(...xs),
-    maxX: Math.max(...xs),
-    minY: Math.min(...ys),
-    maxY: Math.max(...ys),
-  };
-}
-
 function hexImageRect(coord: HexCoord, size: number) {
-  const { minX, maxX, minY, maxY } = hexBounds(coord, size);
-  const pad = size * 0.06;
-  return {
-    x: minX - pad,
-    y: minY - pad,
-    width: maxX - minX + pad * 2,
-    height: maxY - minY + pad * 2,
-  };
+  const cx = Math.sqrt(3) * size * (coord.q + coord.r / 2);
+  const cy = size * (3 / 2) * coord.r;
+  const tileScale = 0.96;
+  const r = size * tileScale;
+  const w = Math.sqrt(3) * r;
+  const h = 2 * r;
+  return { x: cx - w / 2, y: cy - h / 2, width: w, height: h };
 }
 
 export function BoardHex({ coord, kind, resource, number, size }: BoardHexProps) {
@@ -98,10 +85,11 @@ export function BoardHex({ coord, kind, resource, number, size }: BoardHexProps)
                 width={rect.width}
                 height={rect.height}
                 clipPath={`url(#${clipId})`}
-                preserveAspectRatio="xMidYMid slice"
+                preserveAspectRatio="xMidYMid meet"
               />
             );
           })()}
+          <polygon points={points} fill="none" stroke="#2b2b2b" strokeWidth={1.5} />
         </>
       ) : (
         <polygon points={points} fill={fill} stroke="#2b2b2b" strokeWidth={2} />
