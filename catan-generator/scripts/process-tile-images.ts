@@ -12,11 +12,12 @@ const OUTPUT_DIR = join(SOURCE_DIR, 'hex');
 
 /** Ingen ekstra rotasjon – bruker fotoets naturlige retning */
 const TILE_ROTATION = 0;
-/** Litt større brikke innenfor hex */
-const HEX_OUTSET = 1.1;
+/** Litt større brikke innenfor hex – hold lav for å unngå grønn filt */
+const HEX_OUTSET = 1.02;
 const MAX_OUTPUT_PX = 520;
-const BG_THRESHOLD = 42;
-const RADIUS_PERCENTILE = 0.88;
+const BG_THRESHOLD = 50;
+const RADIUS_PERCENTILE = 0.82;
+const EDGE_ERODE_PASSES = 3;
 
 function insidePointyHex(px: number, py: number, cx: number, cy: number, size: number): boolean {
   const x = px - cx;
@@ -33,6 +34,50 @@ function colorDist(r: number, g: number, b: number, br: number, bg: number, bb: 
   const dg = g - bg;
   const db = b - bb;
   return Math.sqrt(dr * dr + dg * dg + db * db);
+}
+
+/** Grønn filt / matte – kun lys grønn, ikke mørk skog */
+function isFeltGreen(r: number, g: number, b: number, br: number, bg: number, bb: number): boolean {
+  if (colorDist(r, g, b, br, bg, bb) <= BG_THRESHOLD) return true;
+
+  const sum = r + g + b;
+  if (sum < 210) return false;
+
+  const greenDominant = g > r + 14 && g > b + 10;
+  if (!greenDominant) return false;
+
+  // Typisk filt-grønn: ganske lys, lite rød
+  if (g >= 75 && r < 115 && sum < 380) return true;
+  if (sum > 280 && r < 105) return true;
+
+  return false;
+}
+
+function isCreamBorder(r: number, g: number, b: number): boolean {
+  const sum = r + g + b;
+  if (sum < 480) return false;
+  const spread = Math.max(r, g, b) - Math.min(r, g, b);
+  return spread < 65 && r > 175 && g > 170 && b > 140;
+}
+
+/** Lys grønn/gul halo mellom filt og brikkekant */
+function isHaloGreen(r: number, g: number, b: number): boolean {
+  const sum = r + g + b;
+  if (sum < 120 || sum > 450) return false;
+  return g >= 65 && g > r && g > b - 8 && r > 30;
+}
+
+function shouldPeel(r: number, g: number, b: number, br: number, bg: number, bb: number): boolean {
+  return isFeltGreen(r, g, b, br, bg, bb) || isHaloGreen(r, g, b);
+}
+
+function isBackgroundPixel(r: number, g: number, b: number, br: number, bg: number, bb: number): boolean {
+  if (isFeltGreen(r, g, b, br, bg, bb)) return true;
+  if (colorDist(r, g, b, br, bg, bb) <= BG_THRESHOLD + 28) return true;
+  const sum = r + g + b;
+  // Mørkere grønn matte (skygge / siden av filt)
+  if (g > r + 5 && g > b + 3 && g >= 40 && r < 100 && sum < 260) return true;
+  return false;
 }
 
 function floodRemoveBackground(
@@ -52,7 +97,7 @@ function floodRemoveBackground(
     const idx = y * width + x;
     if (visited[idx]) return;
     const i = idx * 4;
-    if (colorDist(data[i], data[i + 1], data[i + 2], br, bg, bb) > BG_THRESHOLD) return;
+    if (!isBackgroundPixel(data[i], data[i + 1], data[i + 2], br, bg, bb)) return;
     visited[idx] = 1;
     queue.push(idx);
   };
@@ -94,12 +139,113 @@ function purgeBackgroundColor(
     for (let x = 0; x < width; x++) {
       const i = (y * width + x) * 4;
       if (out[i + 3] < 12) continue;
-      if (colorDist(out[i], out[i + 1], out[i + 2], br, bg, bb) <= BG_THRESHOLD) {
+      if (isFeltGreen(out[i], out[i + 1], out[i + 2], br, bg, bb)) {
         out[i + 3] = 0;
       }
     }
   }
   return out;
+}
+
+/** Fjerner grønn filt som har sneket seg inn langs kantene */
+function erodeGreenEdges(
+  data: Buffer,
+  width: number,
+  height: number,
+  br: number,
+  bg: number,
+  bb: number,
+  passes: number
+): Buffer {
+  let current = Buffer.from(data);
+
+  for (let pass = 0; pass < passes; pass++) {
+    const next = Buffer.from(current);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        if (current[i + 3] < 12) continue;
+        if (
+          !isFeltGreen(current[i], current[i + 1], current[i + 2], br, bg, bb) &&
+          !isBackgroundPixel(current[i], current[i + 1], current[i + 2], br, bg, bb)
+        ) {
+          continue;
+        }
+
+        let touchesTransparent = false;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= width || ny >= height) {
+              touchesTransparent = true;
+              break;
+            }
+            const ni = (ny * width + nx) * 4;
+            if (current[ni + 3] < 40) {
+              touchesTransparent = true;
+              break;
+            }
+          }
+          if (touchesTransparent) break;
+        }
+
+        if (touchesTransparent) next[i + 3] = 0;
+      }
+    }
+    current = next;
+  }
+
+  return current;
+}
+
+/** Fjerner grønn filt rett utenfor den hvite/krem brikkekanten */
+function peelFeltFromBorder(
+  data: Buffer,
+  width: number,
+  height: number,
+  br: number,
+  bg: number,
+  bb: number,
+  passes: number
+): Buffer {
+  let current = Buffer.from(data);
+  const maxDepth = Math.max(2, passes);
+
+  for (let depth = 1; depth <= maxDepth; depth++) {
+    const next = Buffer.from(current);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        if (current[i + 3] < 40) continue;
+        if (!shouldPeel(current[i], current[i + 1], current[i + 2], br, bg, bb)) continue;
+
+        let nearCream = false;
+        for (let dy = -depth; dy <= depth; dy++) {
+          for (let dx = -depth; dx <= depth; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            if (Math.abs(dx) + Math.abs(dy) > depth) continue;
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+            const ni = (ny * width + nx) * 4;
+            if (current[ni + 3] < 40) continue;
+            if (isCreamBorder(current[ni], current[ni + 1], current[ni + 2])) {
+              nearCream = true;
+              break;
+            }
+          }
+          if (nearCream) break;
+        }
+
+        if (nearCream) next[i + 3] = 0;
+      }
+    }
+    current = next;
+  }
+
+  return current;
 }
 
 function applyHexMask(
@@ -215,19 +361,37 @@ async function processImage(inputPath: string, outputPath: string): Promise<void
   let br = 0;
   let bg = 0;
   let bb = 0;
+  let bgCount = 0;
   for (const [x, y] of edgeSamples) {
     const i = (y * width + x) * 4;
-    br += data[i];
-    bg += data[i + 1];
-    bb += data[i + 2];
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    if (g > r + 10 && g > b + 5 && g > 60) {
+      br += r;
+      bg += g;
+      bb += b;
+      bgCount++;
+    }
   }
-  br = Math.round(br / edgeSamples.length);
-  bg = Math.round(bg / edgeSamples.length);
-  bb = Math.round(bb / edgeSamples.length);
+  if (bgCount === 0) {
+    for (const [x, y] of edgeSamples) {
+      const i = (y * width + x) * 4;
+      br += data[i];
+      bg += data[i + 1];
+      bb += data[i + 2];
+      bgCount++;
+    }
+  }
+  br = Math.round(br / bgCount);
+  bg = Math.round(bg / bgCount);
+  bb = Math.round(bb / bgCount);
 
   const cleaned = floodRemoveBackground(data, width, height, br, bg, bb);
+  let processed = purgeBackgroundColor(cleaned, width, height, br, bg, bb);
+  processed = peelFeltFromBorder(processed, width, height, br, bg, bb, 8);
+  processed = erodeGreenEdges(processed, width, height, br, bg, bb, EDGE_ERODE_PASSES);
 
-  let processed = cleaned;
   let procW = width;
   let procH = height;
   if (TILE_ROTATION !== 0) {
@@ -246,9 +410,14 @@ async function processImage(inputPath: string, outputPath: string): Promise<void
   if (sumA === 0) throw new Error(`Ingen brikke funnet i ${inputPath}`);
 
   const radius = percentileRadius(processed, procW, procH, cx, cy);
-  const purged = purgeBackgroundColor(processed, procW, procH, br, bg, bb);
+  let purged = purgeBackgroundColor(processed, procW, procH, br, bg, bb);
+  purged = peelFeltFromBorder(purged, procW, procH, br, bg, bb, 3);
+  purged = erodeGreenEdges(purged, procW, procH, br, bg, bb, EDGE_ERODE_PASSES);
   const masked = applyHexMask(purged, procW, procH, cx, cy, radius);
-  const hex = toHexCanvas(masked, procW, procH, cx, cy, radius);
+  let hex = toHexCanvas(masked, procW, procH, cx, cy, radius);
+  hex.data = purgeBackgroundColor(hex.data, hex.width, hex.height, br, bg, bb);
+  hex.data = peelFeltFromBorder(hex.data, hex.width, hex.height, br, bg, bb, 2);
+  hex.data = erodeGreenEdges(hex.data, hex.width, hex.height, br, bg, bb, 1);
 
   await sharp(hex.data, { raw: { width: hex.width, height: hex.height, channels: 4 } })
     .resize({
