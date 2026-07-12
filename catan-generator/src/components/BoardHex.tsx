@@ -24,7 +24,7 @@ const EDGE_FILL = '#3498db';
 const EDGE_STROKE = '#2471a3';
 
 /** Roterer flate brikke-PNG-er til pointy-top hex på brettet */
-const TILE_IMAGE_ROTATION = 45;
+const TILE_IMAGE_ROTATION = 42;
 /** Kvadrat stort nok til å fylle hex etter rotasjon (preserveAspectRatio slice) */
 const TILE_IMAGE_SCALE = 1.75;
 
