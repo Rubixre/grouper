@@ -1,5 +1,5 @@
 import type { HexCoord, HexKind, ResourceType } from '../catan/types';
-import { hexCorner } from '../catan/hex';
+import { hexCorner, hexToPixel } from '../catan/hex';
 import { RESOURCE_TILE_IMAGES } from '../assets/tiles';
 
 const RESOURCE_COLORS: Record<string, string> = {
@@ -23,6 +23,11 @@ const RESOURCE_LABELS: Record<string, string> = {
 const EDGE_FILL = '#3498db';
 const EDGE_STROKE = '#2471a3';
 
+/** Roterer flate brikke-PNG-er til pointy-top hex på brettet */
+const TILE_IMAGE_ROTATION = 45;
+/** Kvadrat stort nok til å fylle hex etter rotasjon (preserveAspectRatio slice) */
+const TILE_IMAGE_SCALE = 2.8;
+
 interface BoardHexProps {
   coord: HexCoord;
   kind: HexKind;
@@ -38,19 +43,10 @@ function hexPoints(coord: HexCoord, size: number): string {
   }).join(' ');
 }
 
-function hexImageRect(coord: HexCoord, size: number) {
-  const cx = Math.sqrt(3) * size * (coord.q + coord.r / 2);
-  const cy = size * (3 / 2) * coord.r;
-  const r = size;
-  const w = Math.sqrt(3) * r;
-  const h = 2 * r;
-  return { x: cx - w / 2, y: cy - h / 2, width: w, height: h };
-}
-
 export function BoardHex({ coord, kind, resource, number, size }: BoardHexProps) {
   const points = hexPoints(coord, size);
-  const cx = Math.sqrt(3) * size * (coord.q + coord.r / 2);
-  const cy = size * (3 / 2) * coord.r;
+  const { x: cx, y: cy } = hexToPixel(coord, size);
+  const clipId = `hex-clip-${coord.q}-${coord.r}`;
 
   if (kind === 'edge') {
     return (
@@ -68,19 +64,22 @@ export function BoardHex({ coord, kind, resource, number, size }: BoardHexProps)
     <g className="hex-tile hex-land" aria-label={RESOURCE_LABELS[resource ?? ''] ?? resource ?? ''}>
       {tileImage ? (
         <>
-          {(() => {
-            const rect = hexImageRect(coord, size);
-            return (
-              <image
-                href={tileImage}
-                x={rect.x}
-                y={rect.y}
-                width={rect.width}
-                height={rect.height}
-                preserveAspectRatio="xMidYMid meet"
-              />
-            );
-          })()}
+          <defs>
+            <clipPath id={clipId}>
+              <polygon points={points} />
+            </clipPath>
+          </defs>
+          <g clipPath={`url(#${clipId})`}>
+            <image
+              href={tileImage}
+              x={cx - (size * TILE_IMAGE_SCALE) / 2}
+              y={cy - (size * TILE_IMAGE_SCALE) / 2}
+              width={size * TILE_IMAGE_SCALE}
+              height={size * TILE_IMAGE_SCALE}
+              preserveAspectRatio="xMidYMid slice"
+              transform={`rotate(${TILE_IMAGE_ROTATION} ${cx} ${cy})`}
+            />
+          </g>
           <polygon points={points} fill="none" stroke="#2b2b2b" strokeWidth={1.5} />
         </>
       ) : (
