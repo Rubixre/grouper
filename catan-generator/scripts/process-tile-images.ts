@@ -35,6 +35,166 @@ function isMatColor(r: number, g: number, b: number, br: number, bg: number, bb:
   return colorDist(r, g, b, br, bg, bb) <= MAT_THRESHOLD;
 }
 
+function isCreamBorder(r: number, g: number, b: number): boolean {
+  const sum = r + g + b;
+  if (sum < 460) return false;
+  const spread = Math.max(r, g, b) - Math.min(r, g, b);
+  return spread < 70 && r > 168 && g > 163 && b > 130;
+}
+
+/** Lys filt-grønn ved kant – ikke mørk skog */
+function isMatFringe(r: number, g: number, b: number, br: number, bg: number, bb: number): boolean {
+  if (colorDist(r, g, b, br, bg, bb) <= MAT_THRESHOLD + 12) return true;
+  const sum = r + g + b;
+  if (sum < 200 || sum > 420) return false;
+  return g > r + 16 && g > b + 10 && r < 100;
+}
+
+function peelMatNearCream(
+  data: Buffer,
+  width: number,
+  height: number,
+  br: number,
+  bg: number,
+  bb: number,
+  depth: number
+): Buffer {
+  const out = Buffer.from(data);
+  const cream = new Uint8Array(width * height);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      if (out[i + 3] < 40) continue;
+      if (isCreamBorder(out[i], out[i + 1], out[i + 2])) cream[y * width + x] = 1;
+    }
+  }
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      if (out[i + 3] < 40) continue;
+      if (!isMatFringe(out[i], out[i + 1], out[i + 2], br, bg, bb)) continue;
+
+      let nearCream = false;
+      for (let dy = -depth; dy <= depth; dy++) {
+        for (let dx = -depth; dx <= depth; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          if (Math.abs(dx) + Math.abs(dy) > depth) continue;
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+          if (cream[ny * width + nx]) {
+            nearCream = true;
+            break;
+          }
+        }
+        if (nearCream) break;
+      }
+
+      if (nearCream) out[i + 3] = 0;
+    }
+  }
+
+  return out;
+}
+
+function isBrightMat(r: number, g: number, b: number, br: number, bg: number, bb: number): boolean {
+  if (colorDist(r, g, b, br, bg, bb) <= 72) return true;
+  return g >= 115 && g > r + 18 && r < 90 && b < 135;
+}
+
+function hexEdgeDepth(px: number, py: number, cx: number, cy: number, R: number): number {
+  const x = px - cx;
+  const y = py - cy;
+  const q = (Math.sqrt(3) / 3) * x - (1 / 3) * y;
+  const r = (2 / 3) * y;
+  const s = -q - r;
+  const maxC = Math.max(Math.abs(q), Math.abs(r), Math.abs(s));
+  const norm = maxC / ((R * 2) / 3);
+  return Math.max(0, (1 - norm) * R);
+}
+
+function peelBrightMatPerimeter(
+  data: Buffer,
+  width: number,
+  height: number,
+  br: number,
+  bg: number,
+  bb: number,
+  bandPx: number
+): Buffer {
+  const out = Buffer.from(data);
+  const ocx = width / 2;
+  const ocy = height / 2;
+  const R = height / 2;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      if (out[i + 3] < 40) continue;
+      if (!insidePointyHex(x, y, ocx, ocy, R)) continue;
+
+      const edgeDepth = hexEdgeDepth(x, y, ocx, ocy, R);
+      if (edgeDepth > bandPx) continue;
+      const r = out[i];
+      const g = out[i + 1];
+      const b = out[i + 2];
+      if (!isBrightMat(r, g, b, br, bg, bb) && colorDist(r, g, b, br, bg, bb) > 62) continue;
+      out[i + 3] = 0;
+    }
+  }
+
+  return out;
+}
+
+function peelMatAtEdge(
+  data: Buffer,
+  width: number,
+  height: number,
+  br: number,
+  bg: number,
+  bb: number,
+  passes: number
+): Buffer {
+  let current = Buffer.from(data);
+
+  for (let pass = 0; pass < passes; pass++) {
+    const next = Buffer.from(current);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        if (current[i + 3] < 40) continue;
+        if (!isMatFringe(current[i], current[i + 1], current[i + 2], br, bg, bb)) continue;
+
+        let touchesClear = false;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= width || ny >= height) {
+              touchesClear = true;
+              break;
+            }
+            const ni = (ny * width + nx) * 4;
+            if (current[ni + 3] < 40) {
+              touchesClear = true;
+              break;
+            }
+          }
+          if (touchesClear) break;
+        }
+
+        if (touchesClear) next[i + 3] = 0;
+      }
+    }
+    current = next;
+  }
+
+  return current;
+}
+
 function floodRemoveMat(
   data: Buffer,
   width: number,
@@ -134,7 +294,7 @@ function percentileRadius(data: Buffer, width: number, height: number, cx: numbe
     }
   }
   distances.sort((a, b) => a - b);
-  return distances[Math.floor(distances.length * 0.92)] ?? distances.at(-1) ?? 1;
+  return distances[Math.floor(distances.length * 0.88)] ?? distances.at(-1) ?? 1;
 }
 
 function toHexCanvas(
@@ -255,11 +415,29 @@ async function processImage(inputPath: string, outputPath: string): Promise<void
         .toBuffer({ resolveWithObject: true })
     : trimmed;
 
-  const { cx, cy, sumA } = opaqueBounds(aligned.data, aligned.info.width, aligned.info.height);
+  const { sumA } = opaqueBounds(aligned.data, aligned.info.width, aligned.info.height);
   if (sumA === 0) throw new Error(`Ingen brikke funnet i ${inputPath}`);
 
-  const radius = percentileRadius(aligned.data, aligned.info.width, aligned.info.height, cx, cy);
-  const hex = toHexCanvas(aligned.data, aligned.info.width, aligned.info.height, cx, cy, radius);
+  const stem = basename(inputPath).replace(/\.[^.]+$/, '').toLowerCase();
+  const isForest = stem.includes('skog');
+
+  let working = aligned.data;
+  let workW = aligned.info.width;
+  let workH = aligned.info.height;
+
+  working = peelMatNearCream(working, workW, workH, br, bg, bb, isForest ? 8 : 5);
+  working = peelMatAtEdge(working, workW, workH, br, bg, bb, isForest ? 4 : 2);
+
+  const bounds = opaqueBounds(working, workW, workH);
+  const radius = percentileRadius(working, workW, workH, bounds.cx, bounds.cy);
+  const forestRadius = isForest ? radius * 0.96 : radius;
+  let hex = toHexCanvas(working, workW, workH, bounds.cx, bounds.cy, forestRadius);
+  if (isForest) {
+    hex.data = peelMatNearCream(hex.data, hex.width, hex.height, br, bg, bb, 4);
+    hex.data = peelMatAtEdge(hex.data, hex.width, hex.height, br, bg, bb, 2);
+    hex.data = peelBrightMatPerimeter(hex.data, hex.width, hex.height, br, bg, bb, 36);
+    hex.data = peelBrightMatPerimeter(hex.data, hex.width, hex.height, br, bg, bb, 20);
+  }
 
   await sharp(hex.data, { raw: { width: hex.width, height: hex.height, channels: 4 } })
     .resize({
