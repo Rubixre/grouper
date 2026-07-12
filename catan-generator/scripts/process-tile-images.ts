@@ -11,7 +11,6 @@ const SOURCE_DIR = join(ROOT, 'src/assets/tiles');
 const OUTPUT_DIR = join(SOURCE_DIR, 'hex');
 
 const MAX_OUTPUT_PX = 520;
-const MAT_THRESHOLD = 42;
 const FLAT_TO_POINTY_ROTATION = 30;
 const CREAM_RUN_MIN = 4;
 const INNER_INSET = 0.972;
@@ -25,10 +24,6 @@ function colorDist(r: number, g: number, b: number, br: number, bg: number, bb: 
   return Math.sqrt(dr * dr + dg * dg + db * db);
 }
 
-function isMatColor(r: number, g: number, b: number, br: number, bg: number, bb: number): boolean {
-  return colorDist(r, g, b, br, bg, bb) <= MAT_THRESHOLD;
-}
-
 function isFeltGreen(r: number, g: number, b: number, br: number, bg: number, bb: number): boolean {
   return (
     g > r + 16 &&
@@ -39,15 +34,15 @@ function isFeltGreen(r: number, g: number, b: number, br: number, bg: number, bb
 }
 
 
-function isCreamBorder(r: number, g: number, b: number): boolean {
-  if (g > r + 16) return false;
-  if (Math.abs(r - g) > 28) return false;
+/** Fysisk kremkant på brikken – streng (matcher ikke sand/fjell) */
+function isFrameCream(r: number, g: number, b: number): boolean {
+  if (g > r + 12) return false;
+  if (Math.abs(r - g) > 20) return false;
   const spread = Math.max(r, g, b) - Math.min(r, g, b);
-  if (spread > 72) return false;
+  if (spread > 55) return false;
   const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-  return lum > 185 && r > 150 && g > 145 && b > 108;
+  return lum > 195 && r > 158 && g > 152 && b > 115;
 }
-
 
 function floodRemoveMat(
   data: Buffer,
@@ -66,7 +61,7 @@ function floodRemoveMat(
     const idx = y * width + x;
     if (visited[idx]) return;
     const i = idx * 4;
-    if (!isMatColor(data[i], data[i + 1], data[i + 2], br, bg, bb)) return;
+    if (!isFeltGreen(data[i], data[i + 1], data[i + 2], br, bg, bb)) return;
     visited[idx] = 1;
     queue.push(idx);
   };
@@ -120,6 +115,30 @@ function peelEdgeGreens(
         const i = (y * width + x) * 4;
         if (out[i + 3] < 40) continue;
         if (!isFeltGreen(out[i], out[i + 1], out[i + 2], br, bg, bb)) continue;
+        if (!touchesTransparent(out, width, height, x, y)) continue;
+        out[i + 3] = 0;
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  return out;
+}
+
+function peelFrameCream(
+  data: Buffer,
+  width: number,
+  height: number,
+  passes = 8
+): Buffer {
+  const out = Buffer.from(data);
+  for (let pass = 0; pass < passes; pass++) {
+    let changed = false;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        if (out[i + 3] < 40) continue;
+        if (!isFrameCream(out[i], out[i + 1], out[i + 2])) continue;
         if (!touchesTransparent(out, width, height, x, y)) continue;
         out[i + 3] = 0;
         changed = true;
@@ -196,7 +215,9 @@ function findInnerApothemInward(
     const { r: pr, g, b, a } = samplePixel(data, width, height, center.x + r * dirX, center.y + r * dirY);
     if (a < 40) continue;
 
-    const border = isCreamBorder(pr, g, b) || isFeltGreen(pr, g, b, br, bg, bb);
+    const border =
+      isFeltGreen(pr, g, b, br, bg, bb) ||
+      (r > outer * 0.62 && isFrameCream(pr, g, b));
     if (border) {
       borderRun++;
     } else if (borderRun >= CREAM_RUN_MIN) {
@@ -360,24 +381,6 @@ function clipToHex(data: Buffer, width: number, height: number, vertices: Point[
   return out;
 }
 
-function removeCreamPixels(
-  data: Buffer,
-  width: number,
-  height: number
-): Buffer {
-  const out = Buffer.from(data);
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const i = (y * width + x) * 4;
-      if (out[i + 3] < 40) continue;
-      if (isCreamBorder(out[i], out[i + 1], out[i + 2])) {
-        out[i + 3] = 0;
-      }
-    }
-  }
-  return out;
-}
-
 function detectMatColor(data: Buffer, width: number, height: number) {
   const edgeSamples: [number, number][] = [];
   for (let x = 0; x < width; x += Math.max(1, Math.floor(width / 24))) {
@@ -446,8 +449,8 @@ async function processImage(inputPath: string, outputPath: string): Promise<numb
 
   const clipVertices = shrinkVertices(rawVertices, center, INNER_INSET);
   let clipped = clipToHex(trimmed.data, w, h, clipVertices);
-  clipped = removeCreamPixels(clipped, w, h);
-  clipped = peelEdgeGreens(clipped, w, h, br, bg, bb);
+  clipped = peelFrameCream(clipped, w, h);
+  clipped = peelEdgeGreens(clipped, w, h, br, bg, bb, 4);
 
   const rotated = await sharp(clipped, { raw: { width: w, height: h, channels: 4 } })
     .rotate(FLAT_TO_POINTY_ROTATION, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
@@ -458,8 +461,8 @@ async function processImage(inputPath: string, outputPath: string): Promise<numb
 
   const rw = rotated.info.width;
   const rh = rotated.info.height;
-  let final = removeCreamPixels(rotated.data, rw, rh);
-  final = peelEdgeGreens(final, rw, rh, br, bg, bb, 10);
+  let final = peelFrameCream(rotated.data, rw, rh, 6);
+  final = peelEdgeGreens(final, rw, rh, br, bg, bb, 4);
 
   await sharp(final, { raw: { width: rw, height: rh, channels: 4 } })
     .resize({
