@@ -138,7 +138,7 @@ function buildMaskForSideHexes(
   const ux = dx / len;
   const uy = dy / len;
 
-  const extend = hexSize * 2.8;
+  const extend = hexSize * 3.15;
   const innerStart = { x: p1.x - ux * extend, y: p1.y - uy * extend };
   const innerEnd = { x: p2.x + ux * extend, y: p2.y + uy * extend };
 
