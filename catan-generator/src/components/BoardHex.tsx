@@ -1,5 +1,6 @@
 import type { HexCoord, HexKind, ResourceType } from '../catan/types';
 import { hexCorner } from '../catan/hex';
+import oreTile from '../assets/tiles/ore.png';
 
 const RESOURCE_COLORS: Record<string, string> = {
   wood: '#2d6a4f',
@@ -19,6 +20,10 @@ const RESOURCE_LABELS: Record<string, string> = {
   desert: 'Ørken',
 };
 
+const RESOURCE_IMAGES: Partial<Record<ResourceType, string>> = {
+  ore: oreTile,
+};
+
 const EDGE_FILL = '#3498db';
 const EDGE_STROKE = '#2471a3';
 
@@ -30,50 +35,87 @@ interface BoardHexProps {
   size: number;
 }
 
-export function BoardHex({ coord, kind, resource, number, size }: BoardHexProps) {
-  const points = Array.from({ length: 6 }, (_, i) => {
+function hexPoints(coord: HexCoord, size: number): string {
+  return Array.from({ length: 6 }, (_, i) => {
     const { x, y } = hexCorner(coord, i, size);
     return `${x},${y}`;
   }).join(' ');
+}
 
+function hexBounds(coord: HexCoord, size: number) {
+  const corners = Array.from({ length: 6 }, (_, i) => hexCorner(coord, i, size));
+  const xs = corners.map((c) => c.x);
+  const ys = corners.map((c) => c.y);
+  return {
+    minX: Math.min(...xs),
+    maxX: Math.max(...xs),
+    minY: Math.min(...ys),
+    maxY: Math.max(...ys),
+  };
+}
+
+export function BoardHex({ coord, kind, resource, number, size }: BoardHexProps) {
+  const points = hexPoints(coord, size);
   const cx = Math.sqrt(3) * size * (coord.q + coord.r / 2);
   const cy = size * (3 / 2) * coord.r;
+  const clipId = `hex-clip-${coord.q}-${coord.r}`;
 
   if (kind === 'edge') {
     return (
       <g className="hex-tile hex-edge">
-        <polygon
-          points={points}
-          fill={EDGE_FILL}
-          stroke={EDGE_STROKE}
-          strokeWidth={2}
-        />
+        <polygon points={points} fill={EDGE_FILL} stroke={EDGE_STROKE} strokeWidth={2} />
       </g>
     );
   }
 
+  const tileImage = resource ? RESOURCE_IMAGES[resource] : undefined;
   const fill = RESOURCE_COLORS[resource ?? ''] ?? '#ccc';
   const isDesert = resource === 'desert';
 
   return (
-    <g className="hex-tile hex-land">
-      <polygon
-        points={points}
-        fill={fill}
-        stroke="#2b2b2b"
-        strokeWidth={2}
-      />
-      <text
-        x={cx}
-        y={cy - 8}
-        textAnchor="middle"
-        className="hex-resource-label"
-        fill={isDesert ? '#5c4a1f' : '#fff'}
-        fontSize={9}
-        fontWeight={600}
-      >
-        {RESOURCE_LABELS[resource ?? ''] ?? resource}
-      </text>
+    <g className="hex-tile hex-land" aria-label={RESOURCE_LABELS[resource ?? ''] ?? resource ?? ''}>
+      {tileImage ? (
+        <>
+          <defs>
+            <clipPath id={clipId}>
+              <polygon points={points} />
+            </clipPath>
+          </defs>
+          {(() => {
+            const { minX, maxX, minY, maxY } = hexBounds(coord, size);
+            return (
+              <image
+                href={tileImage}
+                x={minX}
+                y={minY}
+                width={maxX - minX}
+                height={maxY - minY}
+                clipPath={`url(#${clipId})`}
+                preserveAspectRatio="xMidYMid slice"
+              />
+            );
+          })()}
+        </>
+      ) : (
+        <polygon points={points} fill={fill} stroke="#2b2b2b" strokeWidth={2} />
+      )}
+
+      <polygon points={points} fill="none" stroke="#2b2b2b" strokeWidth={2} />
+
+      {!tileImage && (
+        <text
+          x={cx}
+          y={cy - 8}
+          textAnchor="middle"
+          className="hex-resource-label"
+          fill={isDesert ? '#5c4a1f' : '#fff'}
+          fontSize={9}
+          fontWeight={600}
+        >
+          {RESOURCE_LABELS[resource ?? ''] ?? resource}
+        </text>
+      )}
+
       {!isDesert && number !== null && (
         <>
           <circle
@@ -96,6 +138,7 @@ export function BoardHex({ coord, kind, resource, number, size }: BoardHexProps)
           </text>
         </>
       )}
+
       {isDesert && (
         <text x={cx} y={cy + 12} textAnchor="middle" fontSize={18}>
           🌵
