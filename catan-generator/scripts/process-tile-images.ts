@@ -10,8 +10,8 @@ const ROOT = resolve(import.meta.dirname, '..');
 const SOURCE_DIR = join(ROOT, 'src/assets/tiles');
 const OUTPUT_DIR = join(SOURCE_DIR, 'hex');
 
-/** 45° + noen grader til for riktig retning på brettet */
-const TILE_ROTATION = 57;
+/** Ingen ekstra rotasjon – bruker fotoets naturlige retning */
+const TILE_ROTATION = 0;
 /** Litt større brikke innenfor hex */
 const HEX_OUTSET = 1.1;
 const MAX_OUTPUT_PX = 520;
@@ -227,20 +227,28 @@ async function processImage(inputPath: string, outputPath: string): Promise<void
 
   const cleaned = floodRemoveBackground(data, width, height, br, bg, bb);
 
-  const rotated = await sharp(cleaned, { raw: { width, height, channels: 4 } })
-    .rotate(TILE_ROTATION, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
-    .trim()
-    .ensureAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
+  let processed = cleaned;
+  let procW = width;
+  let procH = height;
+  if (TILE_ROTATION !== 0) {
+    const rotated = await sharp(cleaned, { raw: { width, height, channels: 4 } })
+      .rotate(TILE_ROTATION, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .trim()
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    processed = rotated.data;
+    procW = rotated.info.width;
+    procH = rotated.info.height;
+  }
 
-  const { cx, cy, sumA } = opaqueBounds(rotated.data, rotated.info.width, rotated.info.height);
+  const { cx, cy, sumA } = opaqueBounds(processed, procW, procH);
   if (sumA === 0) throw new Error(`Ingen brikke funnet i ${inputPath}`);
 
-  const radius = percentileRadius(rotated.data, rotated.info.width, rotated.info.height, cx, cy);
-  const purged = purgeBackgroundColor(rotated.data, rotated.info.width, rotated.info.height, br, bg, bb);
-  const masked = applyHexMask(purged, rotated.info.width, rotated.info.height, cx, cy, radius);
-  const hex = toHexCanvas(masked, rotated.info.width, rotated.info.height, cx, cy, radius);
+  const radius = percentileRadius(processed, procW, procH, cx, cy);
+  const purged = purgeBackgroundColor(processed, procW, procH, br, bg, bb);
+  const masked = applyHexMask(purged, procW, procH, cx, cy, radius);
+  const hex = toHexCanvas(masked, procW, procH, cx, cy, radius);
 
   await sharp(hex.data, { raw: { width: hex.width, height: hex.height, channels: 4 } })
     .resize({
