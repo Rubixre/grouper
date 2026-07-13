@@ -514,7 +514,12 @@ import { scoreFirstPlacement } from '../src/catan/placementModel.ts';
 }
 
 console.log('\nStrategy advisor');
-import { recommendStrategy, simulateToHumanSecondTurn } from '../src/catan/strategyAdvisor.ts';
+import {
+  recommendStrategy,
+  simulateToHumanSecondTurn,
+  rankFirstSettlementsWithLookahead,
+  evaluateFirstSettlementPath,
+} from '../src/catan/strategyAdvisor.ts';
 import { getValidVertices, pickGreedyOpponentVertex, vertexPipTotal } from '../src/catan/settlements.ts';
 if (board) {
   const config = createSimulationConfig(4, 0);
@@ -548,6 +553,43 @@ if (board) {
   assert(
     simulated!.filter((p) => p.player === config.humanPlayerIndex).length === 1,
     'Simulation stops after human first settlement only'
+  );
+
+  const lookaheadOpts = rankFirstSettlementsWithLookahead(
+    board,
+    sim.placements,
+    config.humanPlayerIndex,
+    4,
+    DEFAULT_RESOURCE_WEIGHTS,
+    8
+  );
+  assert(lookaheadOpts.length > 0, 'Lookahead ranking returns options');
+  assert(
+    lookaheadOpts[0]!.expectedPairScore !== undefined,
+    'Top first settlements include expected pair score'
+  );
+  assert(
+    lookaheadOpts[0]!.expectedSecondVertexId !== undefined,
+    'Top first settlements include expected second vertex'
+  );
+  const topPath = evaluateFirstSettlementPath(
+    board,
+    sim.placements,
+    config.humanPlayerIndex,
+    4,
+    lookaheadOpts[0]!.vertexId,
+    DEFAULT_RESOURCE_WEIGHTS
+  );
+  assert(topPath !== null, 'Lookahead top option has a valid path');
+  assert(
+    Math.abs((lookaheadOpts[0]!.expectedPairScore ?? 0) - (topPath?.pairScore ?? -1)) < 1e-9,
+    'Lookahead total matches evaluateFirstSettlementPath pair score'
+  );
+
+  const turnOpts = getOptionsForCurrentTurn(sim);
+  assert(
+    turnOpts[0]?.expectedPairScore !== undefined,
+    'getOptionsForCurrentTurn uses lookahead on first settlement'
   );
 }
 

@@ -153,6 +153,15 @@ export interface SettlementScore {
   complementScore?: number;
   coordination?: number;
   placementKind?: 'first' | 'second';
+  /**
+   * Ved første landsby med lookahead: forventet parscore etter simulerte
+   * mellomtrekk og beste landsby nr. 2.
+   */
+  expectedPairScore?: number;
+  /** Forventet landsby #2 under lookahead (hvis beregnet) */
+  expectedSecondVertexId?: string;
+  /** Umiddelbar lokale score før lookahead (kun første landsby) */
+  immediateScore?: number;
   breakdown: { resource: ResourceType; value: number }[];
 }
 

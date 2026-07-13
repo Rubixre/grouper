@@ -1,12 +1,23 @@
-import type { Board, PlacedSettlement, PlayerCount, ResourceWeights } from './types';
+import type {
+  Board,
+  PlacedSettlement,
+  PlayerCount,
+  ResourceWeights,
+  SettlementScore,
+} from './types';
 import {
   STRATEGY_PROFILES,
   type StrategyProfile,
   type StrategyProfileId,
 } from './resourceWeights';
-import { rankVertices, scoreSecondSettlement, pickGreedyOpponentVertex } from './settlements';
+import {
+  getValidVertices,
+  pickGreedyOpponentVertex,
+  scoreSecondSettlement,
+  scoreVertex,
+} from './settlements';
 import { computeBoardEconomics } from './placementModel';
-import { getPlacementOrder } from './simulator';
+import { getPlacementOrder } from './draftOrder';
 
 export interface FirstSettlementPath {
   firstVertexId: string;
@@ -80,20 +91,87 @@ export function evaluateFirstSettlementPath(
   );
   if (!simulated) return null;
 
-  const secondOptions = rankVertices(board, simulated, weights, humanPlayer);
+  const econ = computeBoardEconomics(board, weights);
+  const secondOptions = getValidVertices(simulated)
+    .map((id) => scoreSecondSettlement(id, firstVertexId, board, econ))
+    .sort((a, b) => b.total - a.total);
   if (secondOptions.length === 0) return null;
 
-  const bestSecond = secondOptions[0];
-  const firstScore = rankVertices(board, placed, weights, humanPlayer).find(
-    (o) => o.vertexId === firstVertexId
-  );
+  const bestSecond = secondOptions[0]!;
+  const firstScore = scoreVertex(firstVertexId, board, econ);
 
   return {
     firstVertexId,
-    firstScore: firstScore?.total ?? 0,
+    firstScore: firstScore.total,
     bestSecondVertexId: bestSecond.vertexId,
     pairScore: bestSecond.total,
   };
+}
+
+const DEFAULT_LOOKAHEAD_CANDIDATES = 12;
+
+/**
+ * Rangér første-landsbyer etter forventet parscore:
+ * toppskårere lokalt → simuler greedy-motspillere → beste landsby #2.
+ */
+export function rankFirstSettlementsWithLookahead(
+  board: Board,
+  placed: PlacedSettlement[],
+  player: number,
+  playerCount: PlayerCount,
+  weights: ResourceWeights,
+  candidateCount = DEFAULT_LOOKAHEAD_CANDIDATES
+): SettlementScore[] {
+  const econ = computeBoardEconomics(board, weights);
+  const shallow = getValidVertices(placed)
+    .map((id) => scoreVertex(id, board, econ))
+    .sort((a, b) => b.total - a.total);
+
+  if (shallow.length === 0) return [];
+
+  const candidates = shallow.slice(0, Math.min(candidateCount, shallow.length));
+  const candidateIds = new Set(candidates.map((c) => c.vertexId));
+
+  const withLookahead = candidates.map((spot) => {
+    const path = evaluateFirstSettlementPath(
+      board,
+      placed,
+      player,
+      playerCount,
+      spot.vertexId,
+      weights
+    );
+    if (!path) {
+      return {
+        ...spot,
+        immediateScore: spot.total,
+        expectedPairScore: spot.total,
+      };
+    }
+    return {
+      ...spot,
+      immediateScore: spot.total,
+      expectedPairScore: path.pairScore,
+      expectedSecondVertexId: path.bestSecondVertexId,
+      // Rangér og vis hovedsakelig på forventet par
+      total: path.pairScore,
+    };
+  });
+
+  withLookahead.sort((a, b) => {
+    const pairDiff = (b.expectedPairScore ?? b.total) - (a.expectedPairScore ?? a.total);
+    if (Math.abs(pairDiff) > 1e-9) return pairDiff;
+    return (b.immediateScore ?? 0) - (a.immediateScore ?? 0);
+  });
+
+  const rest = shallow
+    .filter((s) => !candidateIds.has(s.vertexId))
+    .map((s) => ({
+      ...s,
+      immediateScore: s.total,
+    }));
+
+  return [...withLookahead, ...rest];
 }
 
 export function recommendStrategy(
@@ -107,10 +185,11 @@ export function recommendStrategy(
 
   for (const profile of STRATEGY_PROFILES) {
     const weights = profile.weights;
-    const firstOptions = rankVertices(board, placed, weights, humanPlayer).slice(
-      0,
-      lookaheadCount
-    );
+    const econ = computeBoardEconomics(board, weights);
+    const firstOptions = getValidVertices(placed)
+      .map((id) => scoreVertex(id, board, econ))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, lookaheadCount);
 
     let bestPath: FirstSettlementPath | null = null;
     for (const option of firstOptions) {
@@ -144,10 +223,11 @@ export function recommendStrategy(
 
   const suggestedPaths: FirstSettlementPath[] = [];
   const winnerWeights = recommendedProfile.weights;
-  const topFirst = rankVertices(board, placed, winnerWeights, humanPlayer).slice(
-    0,
-    lookaheadCount
-  );
+  const winnerEcon = computeBoardEconomics(board, winnerWeights);
+  const topFirst = getValidVertices(placed)
+    .map((id) => scoreVertex(id, board, winnerEcon))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, lookaheadCount);
   for (const option of topFirst) {
     const path = evaluateFirstSettlementPath(
       board,

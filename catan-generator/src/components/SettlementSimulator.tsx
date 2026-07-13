@@ -39,8 +39,13 @@ function optionMeta(
   path: { pairScore: number } | undefined
 ): string {
   if (opt.placementKind === 'second') {
-    const synergy = (opt.buildingSynergy ?? 0) > 0 ? ` · Syn +${(opt.buildingSynergy ?? 0).toFixed(2)}` : '';
+    const synergy =
+      (opt.buildingSynergy ?? 0) > 0 ? ` · Syn +${(opt.buildingSynergy ?? 0).toFixed(2)}` : '';
     return `Par ${opt.production.toFixed(2)}${synergy}`;
+  }
+  if (opt.expectedPairScore !== undefined) {
+    const local = opt.immediateScore ?? opt.production;
+    return `Forventet par ${opt.expectedPairScore.toFixed(2)} · Spot ${local.toFixed(2)}`;
   }
   const pair = path ? ` · Par ${path.pairScore.toFixed(2)}` : '';
   return `Prod ${opt.production.toFixed(2)} · Dekk ${opt.diversity.toFixed(2)}${pair}`;
@@ -95,7 +100,7 @@ export function SettlementSimulator({
     ? isSecond
       ? 'Andre landsby — hele paret vurderes'
       : isFirstHuman
-              ? 'Gull #1 er beste. Stiplet ring = forventet nr. 2 (motspillere: høy pip)'
+              ? 'Rangert på forventet par (lookahead). Stiplet ring = landsby #2'
         : 'Første landsby'
     : 'Velg hjørne på brettet eller i listen';
 
@@ -236,13 +241,25 @@ export function SettlementSimulator({
         {selectedOption && !state.finished && (
           <details className="sim-details-block score-breakdown-details">
             <summary>
-              Poengforklaring · #{selectedRank} ({selectedOption.total.toFixed(2)})
+              Poengforklaring · #{selectedRank} (
+              {selectedOption.expectedPairScore !== undefined
+                ? `par ${selectedOption.expectedPairScore.toFixed(2)}`
+                : selectedOption.total.toFixed(2)}
+              )
             </summary>
-            {selectedPath && isFirstHuman && isYourTurn && (
+            {(selectedOption.expectedPairScore !== undefined ||
+              (selectedPath && isFirstHuman && isYourTurn)) && (
               <p className="second-preview-hint muted small">
-                  Forventet landsby nr. 2 (motspillere tar høy pip): parscore{' '}
-                <strong>{selectedPath.pairScore.toFixed(2)}</strong>
+                Forventet landsby nr. 2 (motspillere: høy pip): parscore{' '}
+                <strong>
+                  {(
+                    selectedOption.expectedPairScore ?? selectedPath?.pairScore ?? 0
+                  ).toFixed(2)}
+                </strong>
                 {secondPreviewVertex && ' — stiplet ring på brettet'}
+                {selectedOption.immediateScore !== undefined && (
+                  <> · lokal spot {selectedOption.immediateScore.toFixed(2)}</>
+                )}
               </p>
             )}
             <PlacementScoreBreakdown

@@ -7,22 +7,11 @@ import type {
 } from './types';
 import type { SimulationConfig } from './playerConfig';
 import { getValidVertices, rankVertices } from './settlements';
+import { rankFirstSettlementsWithLookahead } from './strategyAdvisor';
+import { getPlacementOrder } from './draftOrder';
+import { DEFAULT_RESOURCE_WEIGHTS } from './types';
 
-/** Snake-draft placement order for initial settlements (2 per player) */
-export function getPlacementOrder(playerCount: PlayerCount): number[] {
-  switch (playerCount) {
-    case 2:
-      return [0, 1, 1, 0];
-    case 3:
-      return [0, 1, 2, 2, 1, 0];
-    case 4:
-      return [0, 1, 2, 3, 3, 2, 1, 0];
-    case 5:
-      return [0, 1, 2, 3, 4, 4, 3, 2, 1, 0];
-    case 6:
-      return [0, 1, 2, 3, 4, 5, 5, 4, 3, 2, 1, 0];
-  }
-}
+export { getPlacementOrder } from './draftOrder';
 
 /** @deprecated Use SimulationConfig.players instead */
 export const PLAYER_COLORS = [
@@ -88,7 +77,22 @@ export function getOptionsForCurrentTurn(
 ): SettlementScore[] {
   const player = currentPlayer(state);
   if (player === null) return [];
-  return rankVertices(state.board, state.placements, weights, player);
+
+  const resolvedWeights = weights ?? DEFAULT_RESOURCE_WEIGHTS;
+  const ownCount = state.placements.filter((p) => p.player === player).length;
+
+  // Første landsby: ranger etter forventet parscore (lookahead)
+  if (ownCount === 0) {
+    return rankFirstSettlementsWithLookahead(
+      state.board,
+      state.placements,
+      player,
+      state.playerCount,
+      resolvedWeights
+    );
+  }
+
+  return rankVertices(state.board, state.placements, resolvedWeights, player);
 }
 
 export function placeSettlement(
