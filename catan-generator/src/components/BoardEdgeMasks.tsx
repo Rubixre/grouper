@@ -12,6 +12,7 @@ interface BoardEdgeMasksProps {
   boardSize: BoardSize;
   hexSize: number;
   extensionEdgeOrder?: ExtensionEdgeOrder;
+  edgePieceOrder?: number[];
 }
 
 /** Rette havfargede rektangler over taggete ytterkanter på kantbrikker */
@@ -20,12 +21,14 @@ export function BoardEdgeMasks({
   boardSize,
   hexSize,
   extensionEdgeOrder = EXTENSION_IDENTITY_ORDER,
+  edgePieceOrder,
 }: BoardEdgeMasksProps) {
   const masks = buildBoardEdgeMasks(
     edgeRotation,
     boardSize,
     hexSize,
-    extensionEdgeOrder
+    extensionEdgeOrder,
+    edgePieceOrder
   );
   const strokeWidth = hexSize * 0.12;
 

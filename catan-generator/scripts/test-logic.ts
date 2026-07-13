@@ -98,10 +98,44 @@ for (const h of atZero) {
 const pieces = getEdgePieces(0, 'base');
 assert(pieces.length === 6, '6 edge pieces');
 assert(pieces[0].kLabels.join(',') === 'K18,K1,K2', `B1 default ${pieces[0].kLabels}`);
-assert(kLabelForGroupSlot(0, 0, 1, 'base') === 'K3', 'rotation 1 moves B1 start to K3');
+assert(kLabelForGroupSlot(0, 0, 1, 'base') === 'K3', 'legacy rotation helper still maps starts');
 
-const rotated = placeHarbors(2, 1, 'base');
-assert(rotated.length === 9, '9 harbors after rotation');
+import {
+  BASE_IDENTITY_ORDER,
+  randomBaseEdgeOrder,
+} from '../src/catan/edgePieces.ts';
+const baseShuffledOrder = [2, 0, 5, 1, 4, 3];
+const baseShuffledHarbors = placeHarbors(0, 1, 'base', undefined, baseShuffledOrder);
+assert(baseShuffledHarbors.length === 9, '9 harbors after piece shuffle');
+const sheepHarbor = baseShuffledHarbors.find((h) => h.definition.id === 'harbor-g0-o2');
+assert(sheepHarbor !== undefined, 'Sheep harbor present after shuffle');
+assert(
+  sheepHarbor!.edgeHexLabel === 'K5',
+  `Sheep harbor (B1 offset 2) follows piece to slot 1 → K5 (got ${sheepHarbor!.edgeHexLabel})`
+);
+assert(
+  sheepHarbor!.definition.hexOffset === 2,
+  'Relative hex offset on piece is preserved after shuffle'
+);
+
+const identityPieces = getEdgePieces(0, 'base', undefined, BASE_IDENTITY_ORDER);
+assert(identityPieces[0].label === 'B1', 'Identity order keeps B1 in first slot');
+const baseShuffledPieces = getEdgePieces(0, 'base', undefined, baseShuffledOrder);
+assert(baseShuffledPieces[0].label === 'B3', 'Shuffle puts B3 in first geometric slot');
+assert(
+  baseShuffledPieces[0].kLabels.join(',') === 'K18,K1,K2',
+  'Geometric slot hexes stay fixed when pieces are shuffled'
+);
+
+// Flere kall skal kunne gi ulik piece-rekkefølge (statistisk)
+const orders = new Set(
+  Array.from({ length: 40 }, () => randomBaseEdgeOrder().join(','))
+);
+assert(orders.size > 1, 'randomBaseEdgeOrder produces more than one permutation');
+assert(
+  ![...orders].every((o) => o === '0,1,2,3,4,5'),
+  'randomBaseEdgeOrder is not stuck on identity'
+);
 
 console.log('\nLayout (5–6 utvidelse)');
 setBoardSize('extension56');
@@ -208,7 +242,19 @@ if (strictBoard) {
 const fixedHarborBoard = generateBoard({ ...DEFAULT_SETTINGS, randomHarbors: false }, 'base');
 if (fixedHarborBoard) {
   assert(fixedHarborBoard.edgeRotation === 0, 'Fixed harbors use rotation 0');
+  assert(
+    (fixedHarborBoard.edgePieceOrder ?? []).join(',') === '0,1,2,3,4,5',
+    'Fixed harbors use identity piece order'
+  );
 }
+
+const randomHarborBoards = Array.from({ length: 12 }, () =>
+  generateBoard({ ...DEFAULT_SETTINGS, randomHarbors: true }, 'base')
+).filter(Boolean);
+const randomOrders = new Set(
+  randomHarborBoards.map((b) => (b!.edgePieceOrder ?? []).join(','))
+);
+assert(randomOrders.size > 1, 'Random harbors shuffle piece order across boards');
 
 const extBoard = generateBoard(DEFAULT_SETTINGS, 'extension56');
 assert(extBoard !== null, 'Generates valid 5–6 player board');

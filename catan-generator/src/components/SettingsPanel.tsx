@@ -36,7 +36,7 @@ const SETTING_LABELS: {
     key: 'randomHarbors',
     label: 'Tilfeldige havner',
     description:
-      'Roterer kantbrikkene tilfeldig (1/6). Av = original rekkefølge (B1–B6, rotasjon 0)',
+      'Blander rekkefølgen på kantbrikkene (B1–B6). Hver brikke beholder sin relative havnplassering. Av = original rekkefølge.',
   },
 ];
 

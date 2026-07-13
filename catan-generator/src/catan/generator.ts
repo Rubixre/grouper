@@ -17,7 +17,10 @@ import {
   isEdgeHex,
   setBoardSize,
 } from './boardLayout';
-import { randomEdgeRotation } from './edgePieces';
+import {
+  BASE_IDENTITY_ORDER,
+  randomBaseEdgeOrder,
+} from './edgePieces';
 import {
   EXTENSION_IDENTITY_ORDER,
   randomExtensionEdgeOrder,
@@ -236,17 +239,20 @@ export function generateBoard(
           ? randomExtensionEdgeOrder()
           : EXTENSION_IDENTITY_ORDER
         : undefined;
-    const edgeRotation =
-      boardSize === 'extension56'
-        ? 0
-        : settings.randomHarbors
-          ? randomEdgeRotation(boardSize)
-          : 0;
+    const edgePieceOrder =
+      boardSize === 'base'
+        ? settings.randomHarbors
+          ? randomBaseEdgeOrder()
+          : [...BASE_IDENTITY_ORDER]
+        : undefined;
+    // Kantgeometri er fast i slots; innhold blandes via edgePieceOrder
+    const edgeRotation = 0;
     const harbors = placeHarbors(
       edgeRotation,
       1,
       boardSize,
-      extensionEdgeOrder ?? EXTENSION_IDENTITY_ORDER
+      extensionEdgeOrder ?? EXTENSION_IDENTITY_ORDER,
+      edgePieceOrder ?? BASE_IDENTITY_ORDER
     );
 
     const hexes: HexTile[] = hexCoords.map((coord) => {
@@ -262,6 +268,7 @@ export function generateBoard(
       harbors,
       coastSlots,
       edgeRotation,
+      edgePieceOrder,
       extensionEdgeOrder,
     };
   }

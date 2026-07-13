@@ -164,12 +164,13 @@ export function buildBoardEdgeMasks(
   rotation: number,
   boardSize: BoardSize,
   hexSize: number,
-  extensionEdgeOrder: ExtensionEdgeOrder = EXTENSION_IDENTITY_ORDER
+  extensionEdgeOrder: ExtensionEdgeOrder = EXTENSION_IDENTITY_ORDER,
+  baseOrder?: number[]
 ): EdgeMaskRect[] {
   const mapping = getBoardMapping(boardSize);
   const center = boardCenter(boardSize, hexSize);
 
-  return getEdgePieces(rotation, boardSize, extensionEdgeOrder).map((piece) => {
+  return getEdgePieces(rotation, boardSize, extensionEdgeOrder, baseOrder).map((piece) => {
     const [endLabel, sideALabel, sideBLabel] = piece.kLabels;
     const endHex = mapping.edgeByLabel.get(endLabel)!;
     const sideA = mapping.edgeByLabel.get(sideALabel)!;

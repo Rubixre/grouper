@@ -91,20 +91,20 @@ export interface SingleEdgePiece {
 export function getEdgePieces(
   rotation: number,
   size: BoardSize = 'base',
-  extensionOrder: ExtensionEdgeOrder = EXTENSION_IDENTITY_ORDER
+  extensionOrder: ExtensionEdgeOrder = EXTENSION_IDENTITY_ORDER,
+  baseOrder: BaseEdgeOrder = BASE_IDENTITY_ORDER
 ): EdgePiece[] {
   if (isExtensionSize(size)) {
     return getExtensionTriplePieces(extensionOrder);
   }
 
   const mapping = getBoardMapping(size);
-  const pieceCount = getHarborTriplePieceCount(size);
+  const order = normalizeBaseEdgeOrder(baseOrder);
+  void rotation; // geometriske slots er faste; innhold blandes via baseOrder
 
-  return Array.from({ length: pieceCount }, (_, groupIndex) => {
-    const kLabels = [0, 1, 2].map((offset) =>
-      kLabelForGroupSlot(groupIndex, offset, rotation, size)
-    ) as [string, string, string];
-
+  return DEFAULT_EDGE_GROUPS.map((kLabelsTuple, slotIndex) => {
+    const groupIndex = order[slotIndex]!;
+    const kLabels = [...kLabelsTuple] as [string, string, string];
     const coords = kLabels.map((label) => {
       const edge = mapping.edgeByLabel.get(label);
       if (!edge) throw new Error(`Missing edge hex ${label}`);
@@ -137,14 +137,15 @@ export function randomEdgeRotation(size: BoardSize = 'base'): number {
 export function edgePieceGroupMap(
   rotation: number,
   size: BoardSize = 'base',
-  extensionOrder: ExtensionEdgeOrder = EXTENSION_IDENTITY_ORDER
+  extensionOrder: ExtensionEdgeOrder = EXTENSION_IDENTITY_ORDER,
+  baseOrder: BaseEdgeOrder = BASE_IDENTITY_ORDER
 ): Map<string, number> {
   if (isExtensionSize(size)) {
     return extensionEdgePieceGroupMap(extensionOrder);
   }
 
   const map = new Map<string, number>();
-  for (const piece of getEdgePieces(rotation, size)) {
+  for (const piece of getEdgePieces(rotation, size, extensionOrder, baseOrder)) {
     for (const coord of piece.coords) {
       map.set(coordKey(coord), piece.groupIndex);
     }
@@ -163,3 +164,33 @@ export const DEFAULT_EDGE_GROUPS = [
   ['K12', 'K13', 'K14'],
   ['K15', 'K16', 'K17'],
 ] as const;
+
+/** Grunnspill: slot → pieceGroup (B1–B6). Identity = original rekkefølge. */
+export type BaseEdgeOrder = number[];
+
+export const BASE_IDENTITY_ORDER: BaseEdgeOrder = [0, 1, 2, 3, 4, 5];
+
+function shuffleInPlace<T>(items: T[]): T[] {
+  for (let i = items.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [items[i], items[j]] = [items[j]!, items[i]!];
+  }
+  return items;
+}
+
+/** Bland rekkefølgen på B1–B6; hver brikke beholder sin relative havnplassering */
+export function randomBaseEdgeOrder(): BaseEdgeOrder {
+  return shuffleInPlace([...BASE_IDENTITY_ORDER]);
+}
+
+export function normalizeBaseEdgeOrder(order?: number[] | null): BaseEdgeOrder {
+  if (
+    !order ||
+    order.length !== 6 ||
+    new Set(order).size !== 6 ||
+    order.some((g) => g < 0 || g > 5)
+  ) {
+    return [...BASE_IDENTITY_ORDER];
+  }
+  return [...order];
+}
