@@ -519,6 +519,8 @@ import {
   simulateToHumanSecondTurn,
   rankFirstSettlementsWithLookahead,
   evaluateFirstSettlementPath,
+  blendLocalAndPairScore,
+  PAIR_LOOKAHEAD_WEIGHT,
 } from '../src/catan/strategyAdvisor.ts';
 import { getValidVertices, pickGreedyOpponentVertex, vertexPipTotal } from '../src/catan/settlements.ts';
 if (board) {
@@ -555,6 +557,20 @@ if (board) {
     'Simulation stops after human first settlement only'
   );
 
+  assert(PAIR_LOOKAHEAD_WEIGHT === 0.3, 'Pair lookahead weight is dampened to 30%');
+  assert(
+    Math.abs(blendLocalAndPairScore(10, 20, 10, 20) - 10) < 1e-9,
+    'Blend equals local when pair is at the mean'
+  );
+  assert(
+    blendLocalAndPairScore(10, 30, 10, 20) > 10,
+    'Above-mean pair still lifts blended score modestly'
+  );
+  assert(
+    blendLocalAndPairScore(10, 30, 10, 20) < 10 + 0.5 * (15 - 10),
+    'Pair lift is weaker than a 50/50 blend would be'
+  );
+
   const lookaheadOpts = rankFirstSettlementsWithLookahead(
     board,
     sim.placements,
@@ -583,8 +599,32 @@ if (board) {
   assert(topPath !== null, 'Lookahead top option has a valid path');
   assert(
     Math.abs((lookaheadOpts[0]!.expectedPairScore ?? 0) - (topPath?.pairScore ?? -1)) < 1e-9,
-    'Lookahead total matches evaluateFirstSettlementPath pair score'
+    'Lookahead expectedPairScore matches evaluateFirstSettlementPath'
   );
+
+  const blendedCandidates = lookaheadOpts
+    .filter((o) => o.expectedPairScore !== undefined && o.immediateScore !== undefined)
+    .slice(0, 8);
+  if (blendedCandidates.length >= 2) {
+    const meanI =
+      blendedCandidates.reduce((s, o) => s + (o.immediateScore ?? 0), 0) /
+      blendedCandidates.length;
+    const meanP =
+      blendedCandidates.reduce((s, o) => s + (o.expectedPairScore ?? 0), 0) /
+      blendedCandidates.length;
+    for (const opt of blendedCandidates) {
+      const expected = blendLocalAndPairScore(
+        opt.immediateScore!,
+        opt.expectedPairScore!,
+        meanI,
+        meanP
+      );
+      assert(
+        Math.abs(opt.total - expected) < 1e-9,
+        'Lookahead total is 70/30 blend of local and scaled pair'
+      );
+    }
+  }
 
   const turnOpts = getOptionsForCurrentTurn(sim);
   assert(

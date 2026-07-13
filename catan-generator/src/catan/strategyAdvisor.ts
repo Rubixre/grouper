@@ -111,8 +111,28 @@ export function evaluateFirstSettlementPath(
 const DEFAULT_LOOKAHEAD_CANDIDATES = 12;
 
 /**
- * Rangér første-landsbyer etter forventet parscore:
- * toppskårere lokalt → simuler greedy-motspillere → beste landsby #2.
+ * Hvor hardt usikker par-lookahead får flytte rangeringen (0–1).
+ * 0 = kun lokal score, 1 = kun forventet par (gammel oppførsel).
+ * Holdes lav fordi motspillernes faktiske trekk er ukjente.
+ */
+export const PAIR_LOOKAHEAD_WEIGHT = 0.3;
+
+/** Skaler parscore til lokal skala og bland med vekt på lokal spot. */
+export function blendLocalAndPairScore(
+  immediate: number,
+  pair: number,
+  meanImmediate: number,
+  meanPair: number
+): number {
+  const w = PAIR_LOOKAHEAD_WEIGHT;
+  const scaledPair =
+    Math.abs(meanPair) > 1e-12 ? pair * (meanImmediate / meanPair) : immediate;
+  return (1 - w) * immediate + w * scaledPair;
+}
+
+/**
+ * Rangér første-landsbyer med dempet lookahead:
+ * toppskårere lokalt → simuler greedy-motspillere → bland lokal + forventet par.
  */
 export function rankFirstSettlementsWithLookahead(
   board: Board,
@@ -132,7 +152,7 @@ export function rankFirstSettlementsWithLookahead(
   const candidates = shallow.slice(0, Math.min(candidateCount, shallow.length));
   const candidateIds = new Set(candidates.map((c) => c.vertexId));
 
-  const withLookahead = candidates.map((spot) => {
+  const evaluated = candidates.map((spot) => {
     const path = evaluateFirstSettlementPath(
       board,
       placed,
@@ -141,27 +161,46 @@ export function rankFirstSettlementsWithLookahead(
       spot.vertexId,
       weights
     );
+    const immediate = spot.total;
     if (!path) {
       return {
         ...spot,
-        immediateScore: spot.total,
-        expectedPairScore: spot.total,
+        immediateScore: immediate,
+        expectedPairScore: immediate,
+        total: immediate,
       };
     }
     return {
       ...spot,
-      immediateScore: spot.total,
+      immediateScore: immediate,
       expectedPairScore: path.pairScore,
       expectedSecondVertexId: path.bestSecondVertexId,
-      // Rangér og vis hovedsakelig på forventet par
-      total: path.pairScore,
+      total: immediate, // erstattes under med blend
+    };
+  });
+
+  const meanImmediate =
+    evaluated.reduce((sum, s) => sum + (s.immediateScore ?? s.total), 0) /
+    evaluated.length;
+  const meanPair =
+    evaluated.reduce((sum, s) => sum + (s.expectedPairScore ?? s.total), 0) /
+    evaluated.length;
+
+  const withLookahead = evaluated.map((spot) => {
+    const immediate = spot.immediateScore ?? spot.total;
+    const pair = spot.expectedPairScore ?? spot.total;
+    return {
+      ...spot,
+      total: blendLocalAndPairScore(immediate, pair, meanImmediate, meanPair),
     };
   });
 
   withLookahead.sort((a, b) => {
-    const pairDiff = (b.expectedPairScore ?? b.total) - (a.expectedPairScore ?? a.total);
-    if (Math.abs(pairDiff) > 1e-9) return pairDiff;
-    return (b.immediateScore ?? 0) - (a.immediateScore ?? 0);
+    const totalDiff = b.total - a.total;
+    if (Math.abs(totalDiff) > 1e-9) return totalDiff;
+    const localDiff = (b.immediateScore ?? 0) - (a.immediateScore ?? 0);
+    if (Math.abs(localDiff) > 1e-9) return localDiff;
+    return (b.expectedPairScore ?? 0) - (a.expectedPairScore ?? 0);
   });
 
   const rest = shallow

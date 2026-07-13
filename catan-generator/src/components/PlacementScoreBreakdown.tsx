@@ -2,6 +2,7 @@ import type { Board, ResourceWeights } from '../catan/types';
 import type { SettlementScore } from '../catan/types';
 import { explainPlacementScore } from '../catan/settlements';
 import type { StrategyProfile } from '../catan/resourceWeights';
+import { PAIR_LOOKAHEAD_WEIGHT } from '../catan/strategyAdvisor';
 import { RESOURCE_LABELS } from '../catan/playerStats';
 import type { ProdResource } from '../catan/playerStats';
 
@@ -58,10 +59,12 @@ export function PlacementScoreBreakdown({
       <p className="score-breakdown-profile muted small">
         Strategi: {strategyProfile.label}
       </p>
-      {score.expectedPairScore !== undefined && (
+      {score.expectedPairScore !== undefined && score.immediateScore !== undefined && (
         <p className="score-breakdown-formula muted small">
-          Rangering bruker forventet parscore {fmt(score.expectedPairScore, 2)} (etter
-          lookahead). Under: lokal score for dette hjørnet.
+          Rangering = {Math.round((1 - PAIR_LOOKAHEAD_WEIGHT) * 100)} % lokal (
+          {fmt(score.immediateScore, 2)}) + {Math.round(PAIR_LOOKAHEAD_WEIGHT * 100)} %
+          skalert forventet par ({fmt(score.expectedPairScore, 2)}; usikker). Blend:{' '}
+          {fmt(score.total, 2)}. Under: lokal score for dette hjørnet.
         </p>
       )}
       <p className="score-breakdown-formula muted small">
