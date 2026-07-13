@@ -663,8 +663,8 @@ if (board) {
     'Highlights brick resource cluster'
   );
   assert(
-    uniqueTraits.some((t) => t.id === 'port_export' && t.resource === 'brick'),
-    'Matching 2:1 port pairs with high-production resource'
+    !/havn|nøkkelen til øyas handel/i.test(createBoardStory(uniqueBoard).narrative),
+    'Board story narrative does not push harbors as the key to victory'
   );
 
   const boringCounts = __analyzeBoardTraitsForTest({

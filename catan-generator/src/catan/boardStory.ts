@@ -74,7 +74,6 @@ export type BoardTraitId =
   | 'resource_scatter'
   | 'desert_center'
   | 'desert_rim'
-  | 'port_export'
   | 'building_skew'
   | 'city_skew'
   | 'balanced';
@@ -378,34 +377,6 @@ function analyzeTraits(board: Board, seed: number): BoardTrait[] {
           ] as const,
           seed,
           37
-        ),
-      });
-    }
-  }
-
-  const exportCandidate = [...pulses]
-    .filter((p) => p.ratio >= 1.12)
-    .sort((a, b) => b.ratio - a.ratio)[0];
-
-  if (exportCandidate) {
-    const matchingPort = board.harbors.find(
-      (h) =>
-        h.definition.harbor.kind === 'resource' &&
-        h.definition.harbor.resource === exportCandidate.resource
-    );
-    if (matchingPort) {
-      const label = RESOURCE_STORY_LABELS[exportCandidate.resource];
-      traits.push({
-        id: 'port_export',
-        strength: 0.4 + (exportCandidate.ratio - 1),
-        resource: exportCandidate.resource,
-        lore: pick(
-          [
-            `Ved kajen venter en havn viet ${label} — her byttes overflod mot fremmede skatter.`,
-            `De vise sier at den som holder ${label}-havnen, holder nøkkelen til øyas handel.`,
-          ] as const,
-          seed,
-          41
         ),
       });
     }
