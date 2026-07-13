@@ -138,6 +138,14 @@ export interface SettlementScore {
   portfolio?: number;
   /** Overlapp-straff mellom landsbyene (kun andre plassering) */
   overlap?: number;
+  pipBonus?: number;
+  redAnchorBonus?: number;
+  desertPenalty?: number;
+  lowHexPenalty?: number;
+  buildingSynergy?: number;
+  pairPipBonus?: number;
+  complementScore?: number;
+  coordination?: number;
   placementKind?: 'first' | 'second';
   breakdown: { resource: ResourceType; value: number }[];
 }

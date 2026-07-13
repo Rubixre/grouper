@@ -19,6 +19,19 @@ function pct(prob: number): string {
   return `${Math.round(prob * 100)}%`;
 }
 
+function BonusLine({ label, value, negative }: { label: string; value?: number; negative?: boolean }) {
+  if (value === undefined || value === 0) return null;
+  return (
+    <li>
+      <span>{label}</span>
+      <strong>
+        {negative ? '−' : '+'}
+        {fmt(value)}
+      </strong>
+    </li>
+  );
+}
+
 export function PlacementScoreBreakdown({
   score,
   board,
@@ -32,13 +45,9 @@ export function PlacementScoreBreakdown({
       <h3>Poengforklaring · plassering #{rank}</h3>
       <p className="score-breakdown-formula muted small">
         {explanation.kind === 'first' ? (
-          <>
-            Total = produksjon + dekning + havn
-          </>
+          <>Total = prod. + dekning + pip + havn − straff</>
         ) : (
-          <>
-            Total = par prod. + utfylling − overlapp + dekning + havn
-          </>
+          <>Total = par prod. + synergi + utfylling − overlapp + dekning + havn</>
         )}
       </p>
 
@@ -90,24 +99,20 @@ export function PlacementScoreBreakdown({
           <span>Dekning ({explanation.coveredResources.length}/5 typer)</span>
           <strong>+{fmt(explanation.diversity)}</strong>
         </li>
+        <BonusLine label="Pip-kvalitet" value={explanation.pipBonus} />
+        <BonusLine label="Rødt tall (6/8)" value={explanation.redAnchorBonus} />
+        <BonusLine label="Ørken-straff" value={explanation.desertPenalty} negative />
+        <BonusLine label="Få prod. hex" value={explanation.lowHexPenalty} negative />
         {explanation.kind === 'second' && (
           <>
-            <li>
-              <span>Utfylling mot 1. landsby</span>
-              <strong>+{fmt(explanation.portfolio ?? 0)}</strong>
-            </li>
-            <li>
-              <span>Overlapp-straff</span>
-              <strong>−{fmt(explanation.overlap ?? 0)}</strong>
-            </li>
+            <BonusLine label="Byggepakker (vei/by/landsby)" value={explanation.buildingSynergy} />
+            <BonusLine label="Tømmer+tegl koordinering" value={explanation.coordination} />
+            <BonusLine label="Par-pip bonus (14+)" value={explanation.pairPipBonus} />
+            <BonusLine label="Utfylling mot 1. landsby" value={explanation.portfolio} />
+            <BonusLine label="Overlapp-straff" value={explanation.overlap} negative />
           </>
         )}
-        {explanation.harbor > 0 && (
-          <li>
-            <span>Havn (3:1 / 2:1, maks 3% per landsby)</span>
-            <strong>+{fmt(explanation.harbor)}</strong>
-          </li>
-        )}
+        <BonusLine label="Havn" value={explanation.harbor} />
         <li className="score-breakdown-total">
           <span>Total</span>
           <strong>{fmt(explanation.total, 2)}</strong>

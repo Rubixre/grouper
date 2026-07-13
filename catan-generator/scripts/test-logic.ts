@@ -272,7 +272,7 @@ assert(
 
 console.log('\nPlacement scoring');
 import { getHarborsForVertex } from '../src/catan/harbors.ts';
-import { scoreSecondSettlement } from '../src/catan/settlements.ts';
+import { computeBoardEconomics } from '../src/catan/placementModel.ts';
 if (board) {
   const sim = createSimulation(board, 4);
   const options = getOptionsForCurrentTurn(sim);
@@ -306,10 +306,22 @@ if (board) {
   assert(
     secondOpts.every((o) => {
       const recomposed =
-        o.production + o.diversity + (o.portfolio ?? 0) - (o.overlap ?? 0) + o.harbor;
-      return Math.abs(recomposed - o.total) < 1e-9;
+        o.production +
+        o.diversity +
+        (o.portfolio ?? 0) -
+        (o.overlap ?? 0) +
+        o.harbor +
+        (o.buildingSynergy ?? 0) +
+        (o.coordination ?? 0) +
+        (o.pairPipBonus ?? 0) -
+        (o.desertPenalty ?? 0);
+      return Math.abs(recomposed - o.total) < 1e-6;
     }),
-    'Second settlement score components sum to total (no double diversity)'
+    'Second settlement score components sum to total'
+  );
+  assert(
+    secondOpts.every((o) => (o.buildingSynergy ?? 0) >= 0),
+    'Second settlement exposes building synergy'
   );
 
   const harborOpts = secondOpts.filter(
@@ -321,6 +333,12 @@ if (board) {
       'Harbor bonus capped relative to pair production'
     );
   }
+
+  assert(
+    computeBoardEconomics(board).dynamicWeights.brick >
+      DEFAULT_RESOURCE_WEIGHTS.brick,
+    'Scarce brick gets higher dynamic weight on standard board'
+  );
 
   const firstId = state.placements.find((p) => p.player === 0)!.vertexId;
   const ranked = secondOpts[0];

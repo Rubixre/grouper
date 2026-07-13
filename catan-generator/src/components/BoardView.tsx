@@ -52,8 +52,8 @@ function placementScoreTitle(score: SettlementScore, rank: number): string {
   ];
   if (score.placementKind === 'second') {
     lines[1] = `Parprod. ${score.production.toFixed(2)}`;
-    if (score.firstProduction !== undefined && score.secondProduction !== undefined) {
-      lines.splice(2, 0, `1.+2. ${score.firstProduction.toFixed(2)}+${score.secondProduction.toFixed(2)}`);
+    if (score.buildingSynergy && score.buildingSynergy > 0) {
+      lines.push(`Synergi +${score.buildingSynergy.toFixed(2)}`);
     }
     lines.push(
       `Utfylling ${((score.portfolio ?? 0) - (score.overlap ?? 0)).toFixed(2)}`,

@@ -84,8 +84,10 @@ export function SettlementSimulator({
                 <span className="option-detail">
                   {opt.placementKind === 'second' ? (
                     <>
-                      Par {opt.production.toFixed(2)} · Utfylling{' '}
-                      {((opt.portfolio ?? 0) - (opt.overlap ?? 0)).toFixed(2)}
+                      Par {opt.production.toFixed(2)}
+                      {(opt.buildingSynergy ?? 0) > 0 && (
+                        <> · Syn {(opt.buildingSynergy ?? 0).toFixed(2)}</>
+                      )}
                     </>
                   ) : (
                     <>

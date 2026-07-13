@@ -14,7 +14,9 @@ const options = rankVertices(board, []);
 
 function printExplanation(label: string, score: ReturnType<typeof explainPlacementScore>) {
   console.log(`\n=== ${label} ===`);
-  console.log(`Formel: ${score.kind === 'first' ? 'prod + dekning + havn' : 'par prod. + utfylling − overlapp + dekning + havn'}`);
+  console.log(`Formel: ${score.kind === 'first' ? 'prod + dekning + pip + havn − straff' : 'par prod. + synergi + utfylling − overlapp + dekning + havn'}`);
+  if (score.pipBonus) console.log(`Pip-bonus: +${score.pipBonus.toFixed(3)}`);
+  if (score.buildingSynergy) console.log(`Byggepakker: +${score.buildingSynergy.toFixed(3)}`);
   console.log('Hex-bidrag (sannsynlighet × ressursvekt):');
   for (const row of score.hexContributions) {
     const res = RESOURCE_LABELS[row.resource as ProdResource];
