@@ -519,6 +519,10 @@ if (board) {
   assert(story.highlights.length <= 3, 'Board story keeps at most three highlights');
   assert(story.stats.resources.length === 5, 'Board story includes resource stats');
   assert(story.stats.totalExpectedProduction > 0, 'Board stats have total expected production');
+  assert(!/\bens\b/i.test(story.islandName), 'Island name avoids bare genitive like Leirens');
+  assert(!/\s/.test(story.islandName), 'Island name is a single compound word');
+  // Intro should be one short beat, not stacked lore paragraphs
+  assert(story.narrative.split('. ').length <= 3, 'Narrative stays a short introduction');
 
   const again = createBoardStory(board);
   assert(again.islandName === story.islandName, 'Same board yields same island name');

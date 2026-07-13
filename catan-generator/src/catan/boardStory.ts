@@ -10,12 +10,61 @@ export const RESOURCE_STORY_LABELS: Record<ProdResource, string> = {
   ore: 'malm',
 };
 
-export const RESOURCE_PLACE_LABELS: Record<ProdResource, { land: string; theme: string }> = {
-  wood: { land: 'Skogens', theme: 'Tømrets' },
-  brick: { land: 'Leirens', theme: 'Teglbruddets' },
-  sheep: { land: 'Engens', theme: 'Ullens' },
-  wheat: { land: 'Åkerens', theme: 'Kornets' },
-  ore: { land: 'Fjellets', theme: 'Malmens' },
+export const RESOURCE_PLACE_STEMS: Record<
+  ProdResource,
+  readonly { stem: string; flavor: 'rich' | 'scarce' }[]
+> = {
+  wood: [
+    { stem: 'Skog', flavor: 'rich' },
+    { stem: 'Tømmer', flavor: 'rich' },
+    { stem: 'Gran', flavor: 'scarce' },
+  ],
+  brick: [
+    { stem: 'Leir', flavor: 'rich' },
+    { stem: 'Tegl', flavor: 'rich' },
+    { stem: 'Rød', flavor: 'scarce' },
+  ],
+  sheep: [
+    { stem: 'Eng', flavor: 'rich' },
+    { stem: 'Ull', flavor: 'rich' },
+    { stem: 'Beite', flavor: 'scarce' },
+  ],
+  wheat: [
+    { stem: 'Åker', flavor: 'rich' },
+    { stem: 'Korn', flavor: 'rich' },
+    { stem: 'Gull', flavor: 'scarce' },
+  ],
+  ore: [
+    { stem: 'Malm', flavor: 'rich' },
+    { stem: 'Fjell', flavor: 'rich' },
+    { stem: 'Berg', flavor: 'scarce' },
+  ],
+};
+
+/** Grammatisk sammensatte stedsnavn (bestemt form i suffikset) */
+const PLACE_SUFFIXES = [
+  'bukta',
+  'neset',
+  'sundet',
+  'øya',
+  'skjæret',
+  'klippen',
+  'fjorden',
+  'revet',
+  'holmen',
+  'dalen',
+  'høyden',
+  'vika',
+] as const;
+
+const THEME_STEMS: Record<string, readonly string[]> = {
+  desert_center: ['Øde', 'Aske', 'Tom'],
+  desert_rim: ['Ytter', 'Sand', 'Kyst'],
+  building_skew: ['Vei', 'Sti', 'Bro'],
+  city_skew: ['Tårn', 'Mur', 'By'],
+  resource_scatter: ['Mosaikk', 'Broket', 'Flekk'],
+  balanced: ['Jevn', 'Stille', 'Mild'],
+  mood: ['Tåke', 'Vind', 'Storm', 'Skjær', 'Tide', 'Rød'],
 };
 
 export type BoardTraitId =
@@ -447,35 +496,6 @@ function buildStats(board: Board): BoardStats {
   };
 }
 
-const GEO_NOUNS = [
-  'øy',
-  'skjær',
-  'sund',
-  'nes',
-  'vik',
-  'fjord',
-  'klippe',
-  'høydene',
-  'dalene',
-  'bukten',
-  'revet',
-  'holmen',
-] as const;
-
-const MOOD_PREFIXES = [
-  'Stridbare',
-  'Stille',
-  'Vill',
-  'Skjulte',
-  'Gamle',
-  'Tørre',
-  'Gyldne',
-  'Grønne',
-  'Vindharde',
-  'Tåkelagte',
-  'Solbrente',
-] as const;
-
 const MYTHIC_EPITHETS = [
   'der de gamle stiene ennå huskes',
   'beskyttet av tåke og tidevann',
@@ -483,83 +503,94 @@ const MYTHIC_EPITHETS = [
   'forlatt av kart, men ikke av myter',
   'der Catanøyriket puster hardest',
   'med en skjebne skrevet i stein og sand',
+  'en plass sjøfolk bare nevner hviskende',
+  'kjent for land som bytter temperament med vinden',
 ] as const;
+
+function compoundPlaceName(stem: string, suffix: string): string {
+  // Unngå trippel-konsonant / rare sammensetninger: Skygg + skjæret → Skyggskjæret ok
+  return `${stem}${suffix}`;
+}
 
 function nameFromTraits(
   traits: BoardTrait[],
   seed: number
 ): { islandName: string; epithet: string } {
   const primary = traits[0];
-  const noun = pick(GEO_NOUNS, seed, 3);
+  const suffix = pick(PLACE_SUFFIXES, seed, 3);
   const epithet = pick(MYTHIC_EPITHETS, seed, 9);
 
   if (primary?.resource) {
-    const place = RESOURCE_PLACE_LABELS[primary.resource];
-    const theme = primary.id === 'low_production' ? place.theme : place.land;
-    return { islandName: `${theme} ${noun}`, epithet };
+    const stems = RESOURCE_PLACE_STEMS[primary.resource];
+    const wantScarce = primary.id === 'low_production';
+    const matching = stems.filter((s) =>
+      wantScarce ? s.flavor === 'scarce' : s.flavor === 'rich'
+    );
+    const pool = matching.length > 0 ? matching : stems;
+    const stem = pick(pool, seed, 5).stem;
+    return { islandName: compoundPlaceName(stem, suffix), epithet };
   }
 
-  if (primary?.id === 'desert_center') {
-    return { islandName: `Ødemarkens ${noun}`, epithet };
-  }
-  if (primary?.id === 'desert_rim') {
-    return { islandName: `Ytterstens ${noun}`, epithet };
-  }
-  if (primary?.id === 'building_skew') {
-    return { islandName: `Veifarernes ${noun}`, epithet };
-  }
-  if (primary?.id === 'city_skew') {
-    return { islandName: `Bygnærenes ${noun}`, epithet };
-  }
-  if (primary?.id === 'resource_scatter') {
-    return { islandName: `Mosaikkens ${noun}`, epithet };
-  }
+  const themeKey =
+    primary?.id === 'desert_center' ||
+    primary?.id === 'desert_rim' ||
+    primary?.id === 'building_skew' ||
+    primary?.id === 'city_skew' ||
+    primary?.id === 'resource_scatter' ||
+    primary?.id === 'balanced'
+      ? primary.id
+      : 'mood';
 
-  return {
-    islandName: `${pick(MOOD_PREFIXES, seed, 7)} ${noun}`,
-    epithet,
-  };
+  const stem = pick(THEME_STEMS[themeKey]!, seed, 7);
+  return { islandName: compoundPlaceName(stem, suffix), epithet };
 }
 
-function buildNarrative(islandName: string, highlights: BoardTrait[], seed: number): string {
-  const opener = pick(
-    [
-      `I det vide Catanøyriket ligger ${islandName}, en skjærgård med eget lys og egen skygge.`,
-      `Blant hundre øyer i Catanøyriket reiser ${islandName} seg — kjent i sagn, sjelden på samme kart to ganger.`,
-      `Sjøfarere hvisker om ${islandName}: en øy i Catanøyriket der landet selv synes å velge sine herrer.`,
-    ] as const,
-    seed,
-    2
-  );
-
-  const pieces = highlights.slice(0, 3).map((t) => t.lore);
-  if (pieces.length === 0) {
-    return `${opener} Destyngden er fordelt med jevn hånd, og hemmeligheten ligger i den som leser stiene riktig.`;
+/** Én kort, spennende intro — ikke en liste over trekk */
+function buildNarrative(islandName: string, primary: BoardTrait | undefined, seed: number): string {
+  if (!primary) {
+    return pick(
+      [
+        `I Catanøyriket venter ${islandName} — rolig på kartet, urolig under støvlene.`,
+        `${islandName} stiger frem i Catanøyriket som et blankt løfte: hvem tar den først?`,
+      ] as const,
+      seed,
+      2
+    );
   }
 
-  return [opener, ...pieces].join(' ');
+  // Bruk én lore-linje som kjerne, men pakk den som intro med øynavn
+  const core = primary.lore.replace(/\s+/g, ' ').trim().replace(/\.$/, '');
+  return pick(
+    [
+      `Velkommen til ${islandName} i Catanøyriket. ${core}.`,
+      `I Catanøyriket ligger ${islandName}. ${core}.`,
+      `${islandName} — en øy i Catanøyriket. ${core}.`,
+    ] as const,
+    seed,
+    13
+  );
 }
 
 export function createBoardStory(board: Board): BoardStory {
   const seed = fingerprint(board);
   const traits = analyzeTraits(board, seed);
   const highlights = traits.slice(0, 3);
+  const primary = highlights[0];
   const { islandName, epithet } = nameFromTraits(highlights, seed);
+  const prettyName = capitalizeIslandName(islandName);
 
   return {
-    islandName: capitalizeIslandName(islandName),
+    islandName: prettyName,
     epithet,
-    narrative: buildNarrative(islandName, highlights, seed),
+    narrative: buildNarrative(prettyName, primary, seed),
     stats: buildStats(board),
     highlights,
   };
 }
 
 function capitalizeIslandName(name: string): string {
-  return name
-    .split(' ')
-    .map((word) => (word.length === 0 ? word : word[0]!.toUpperCase() + word.slice(1)))
-    .join(' ');
+  if (name.length === 0) return name;
+  return name[0]!.toUpperCase() + name.slice(1);
 }
 
 /** @internal test helper */
