@@ -93,7 +93,8 @@ export function BoardView({
   const edgePieces = getEdgePieces(
     board.edgeRotation,
     board.boardSize,
-    board.extensionEdgeOrder
+    board.extensionEdgeOrder,
+    board.edgePieceOrder
   );
   const singleEdgePieces = getSingleEdgePieces(
     board.boardSize,
@@ -150,6 +151,7 @@ export function BoardView({
         boardSize={board.boardSize}
         hexSize={HEX_SIZE}
         extensionEdgeOrder={board.extensionEdgeOrder}
+        edgePieceOrder={board.edgePieceOrder}
       />
 
       {landHexes.map((tile) => (

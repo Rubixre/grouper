@@ -90,8 +90,13 @@ export interface Board {
   hexes: HexTile[];
   harbors: PlacedHarbor[];
   coastSlots: CoastSlot[];
-  /** Edge piece rotation 0–5 (grunnspill) */
+  /** @deprecated Beholdes for bakoverkompatibilitet; grunnspill bruker edgePieceOrder */
   edgeRotation: number;
+  /**
+   * Grunnspill: permutasjon av kantbrikker B1–B6.
+   * `edgePieceOrder[slot] = pieceGroup` — hver brikke beholder intern havnplassering.
+   */
+  edgePieceOrder?: number[];
   /** Permutasjon av kantbrikker i 5–6 utvidelse */
   extensionEdgeOrder?: ExtensionEdgeOrder;
 }

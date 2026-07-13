@@ -7,7 +7,12 @@ import {
   placeExtensionHarbors,
 } from './extensionLayout';
 import { harborPortNodes } from './harborPorts';
-import { kLabelForGroupSlot } from './edgePieces';
+import {
+  BASE_IDENTITY_ORDER,
+  DEFAULT_EDGE_GROUPS,
+  normalizeBaseEdgeOrder,
+  type BaseEdgeOrder,
+} from './edgePieces';
 import { getBoardMapping } from './mapping';
 import { hexCorner, hexToPixel } from './hex';
 
@@ -82,26 +87,28 @@ export const HARBOR_LAYOUT: HarborDefinition[] = [
   },
 ];
 
-/** Place harbors after edge-piece rotation (0–5 = 1/6 turn each) */
+/** Place harbors. Grunnspill: bland/fast order av B1–B6 med intern plassering beholdt. */
 export function placeHarbors(
   rotation: number,
   hexSize = 1,
   size: BoardSize = 'base',
-  extensionOrder: ExtensionEdgeOrder = EXTENSION_IDENTITY_ORDER
+  extensionOrder: ExtensionEdgeOrder = EXTENSION_IDENTITY_ORDER,
+  baseOrder: BaseEdgeOrder = BASE_IDENTITY_ORDER
 ): PlacedHarbor[] {
   if (isExtensionSize(size)) {
     return placeExtensionHarbors(extensionOrder, hexSize);
   }
 
+  void rotation;
   const mapping = getBoardMapping(size);
+  const order = normalizeBaseEdgeOrder(baseOrder);
 
   return HARBOR_LAYOUT.map((definition) => {
-    const kLabel =       kLabelForGroupSlot(
-      definition.pieceGroup,
-      definition.hexOffset,
-      rotation,
-      size
-    );
+    const slotIndex = order.indexOf(definition.pieceGroup);
+    if (slotIndex < 0) {
+      throw new Error(`Piece group ${definition.pieceGroup} missing from edge order`);
+    }
+    const kLabel = DEFAULT_EDGE_GROUPS[slotIndex]![definition.hexOffset]!;
     const edge = mapping.edgeByLabel.get(kLabel)!;
     const [nodeA, nodeB] = harborPortNodes(
       kLabel,
