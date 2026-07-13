@@ -506,7 +506,11 @@ if (board) {
 }
 
 console.log('\nBoard story');
-import { createBoardStory, __analyzeBoardTraitsForTest } from '../src/catan/boardStory.ts';
+import {
+  createBoardStory,
+  __analyzeBoardTraitsForTest,
+  __measureResourcePulsesForTest,
+} from '../src/catan/boardStory.ts';
 if (board) {
   const story = createBoardStory(board);
   assert(story.islandName.length > 3, 'Board story has island name');
@@ -520,16 +524,8 @@ if (board) {
   const traits = __analyzeBoardTraitsForTest(board);
   assert(traits.length >= 1, 'Trait analysis returns at least one trait');
   assert(
-    !traits.some((t) =>
-      ['hot_resource', 'cold_resource', 'adjacent_reds', 'scarce_access', 'port_match'].includes(
-        t.id
-      )
-    ),
-    'Story traits avoid production-number and scarce-port framing'
-  );
-  assert(
-    !/forventet produksjon|terning|hete|kalde|6 og en 8|røde nabopar/i.test(story.narrative),
-    'Story narrative avoids production-number language'
+    !traits.some((t) => t.id === 'scarce_resource' || t.id === 'abundant_resource'),
+    'Story no longer treats fixed tile counts as unique scarcity/abundance'
   );
 }
 
@@ -546,19 +542,30 @@ if (board) {
     number: resource === 'desert' ? null : number,
   });
 
-  const exportBoard = {
+  // Standard tile counts (4 wood / 3 brick / …), but brick gets hot numbers and
+  // sits in a cluster; wood gets cold numbers. That — not tile count — is unique.
+  const uniqueBoard = {
     boardSize: 'base' as const,
     hexes: [
-      makeLand('brick', 0, 0),
-      makeLand('brick', 1, 0),
-      makeLand('brick', 2, 0),
-      makeLand('brick', 0, 1),
-      makeLand('brick', 1, 1),
-      makeLand('wood', 2, 1),
-      makeLand('sheep', 3, 1),
-      makeLand('wheat', 0, 2),
-      makeLand('ore', 1, 2),
-      makeLand('desert', 2, 2, null),
+      makeLand('brick', 0, 0, 6),
+      makeLand('brick', 1, 0, 8),
+      makeLand('brick', 0, 1, 5),
+      makeLand('wood', 3, 0, 2),
+      makeLand('wood', -2, 2, 3),
+      makeLand('wood', 2, 2, 11),
+      makeLand('wood', -1, -2, 12),
+      makeLand('sheep', 2, 0, 4),
+      makeLand('sheep', -1, 1, 9),
+      makeLand('sheep', 1, -1, 10),
+      makeLand('sheep', -2, 0, 4),
+      makeLand('wheat', 1, 1, 9),
+      makeLand('wheat', -1, 0, 10),
+      makeLand('wheat', 0, -1, 3),
+      makeLand('wheat', 2, -1, 11),
+      makeLand('ore', -2, 1, 5),
+      makeLand('ore', 1, -2, 9),
+      makeLand('ore', 0, 2, 10),
+      makeLand('desert', 0, -2, null),
     ],
     harbors: [
       {
@@ -572,7 +579,7 @@ if (board) {
         pieceGroup: 0,
         edgeHexLabel: 'E1',
         nodeLabels: ['K1', 'K2'] as [string, string],
-        edgeCoord: { q: 3, r: 0 },
+        edgeCoord: { q: 3, r: -1 },
         nodeVertexIds: ['a', 'b'] as [string, string],
         angle: 0,
       },
@@ -581,14 +588,60 @@ if (board) {
     edgeRotation: 0,
   };
 
-  const exportTraits = __analyzeBoardTraitsForTest(exportBoard);
+  const pulses = __measureResourcePulsesForTest(uniqueBoard);
+  const brickPulse = pulses.pulses.find((p) => p.resource === 'brick')!;
+  const woodPulse = pulses.pulses.find((p) => p.resource === 'wood')!;
+  assert(brickPulse.tileCount === 3, 'Fixture keeps standard brick tile count');
+  assert(woodPulse.tileCount === 4, 'Fixture keeps standard wood tile count');
+  assert(brickPulse.ratio > 1.1, 'Hot numbers lift brick production above fair share');
+  assert(woodPulse.ratio < 0.9, 'Cold numbers drop wood production below fair share');
+
+  const uniqueTraits = __analyzeBoardTraitsForTest(uniqueBoard);
   assert(
-    exportTraits.some((t) => t.id === 'port_export' && t.resource === 'brick'),
-    'Matching 2:1 port pairs with abundant resource, not scarce'
+    uniqueTraits.some((t) => t.id === 'high_production' && t.resource === 'brick'),
+    'Highlights unusually high brick expected production'
   );
   assert(
-    !exportTraits.some((t) => t.id === 'port_export' && t.resource === 'ore'),
-    'Port trait is not attached to scarce resources'
+    uniqueTraits.some((t) => t.id === 'low_production' && t.resource === 'wood'),
+    'Highlights unusually low wood expected production'
+  );
+  assert(
+    uniqueTraits.some((t) => t.id === 'resource_cluster' && t.resource === 'brick'),
+    'Highlights brick resource cluster'
+  );
+  assert(
+    uniqueTraits.some((t) => t.id === 'port_export' && t.resource === 'brick'),
+    'Matching 2:1 port pairs with high-production resource'
+  );
+
+  const boringCounts = __analyzeBoardTraitsForTest({
+    ...uniqueBoard,
+    hexes: [
+      makeLand('brick', 0, 0, 5),
+      makeLand('brick', 2, 2, 5),
+      makeLand('brick', -2, 1, 4),
+      makeLand('wood', 1, 0, 6),
+      makeLand('wood', -1, 2, 8),
+      makeLand('wood', 2, -1, 3),
+      makeLand('wood', -2, -1, 9),
+      makeLand('sheep', 0, 1, 10),
+      makeLand('sheep', 1, -1, 4),
+      makeLand('sheep', -1, 0, 9),
+      makeLand('sheep', 1, 1, 3),
+      makeLand('wheat', 0, -1, 11),
+      makeLand('wheat', 2, 0, 10),
+      makeLand('wheat', -1, -1, 5),
+      makeLand('wheat', -2, 2, 4),
+      makeLand('ore', 1, -2, 8),
+      makeLand('ore', -1, 1, 6),
+      makeLand('ore', 2, 1, 2),
+      makeLand('desert', 0, 2, null),
+    ],
+    harbors: [],
+  });
+  assert(
+    !boringCounts.some((t) => t.headline.includes('Lite') && t.headline.includes('tegl')),
+    'Does not call standard 3-brick boards uniquely brick-scarce'
   );
 }
 

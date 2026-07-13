@@ -1,6 +1,6 @@
 import type { Board, HexTile } from './types';
 import { coordKey, getNeighbors, hexDistance } from './hex';
-import { PROD_RESOURCES, type ProdResource } from './placementModel';
+import { NUMBER_PROB, PROD_RESOURCES, type ProdResource } from './placementModel';
 
 export const RESOURCE_STORY_LABELS: Record<ProdResource, string> = {
   wood: 'tømmer',
@@ -19,8 +19,8 @@ export const RESOURCE_PLACE_LABELS: Record<ProdResource, { land: string; theme: 
 };
 
 export type BoardTraitId =
-  | 'scarce_resource'
-  | 'abundant_resource'
+  | 'high_production'
+  | 'low_production'
   | 'resource_cluster'
   | 'resource_scatter'
   | 'desert_center'
@@ -39,14 +39,20 @@ export interface BoardTrait {
 }
 
 export interface BoardStory {
-  /** Øynavn i Catanøyriket */
   islandName: string;
-  /** Én kort tittel-linje under navnet */
   epithet: string;
-  /** 2–3 setninger som forteller hva som er spesielt */
   narrative: string;
-  /** Opp til tre fremhevede trekk */
   highlights: BoardTrait[];
+}
+
+interface ResourcePulse {
+  resource: ProdResource;
+  tileCount: number;
+  actualSupply: number;
+  expectedSupply: number;
+  /** actual / expected — 1 = typisk for antall felt */
+  ratio: number;
+  clusterPairs: number;
 }
 
 function emptyRecord(): Record<ProdResource, number> {
@@ -55,15 +61,6 @@ function emptyRecord(): Record<ProdResource, number> {
 
 function landTiles(board: Board): HexTile[] {
   return board.hexes.filter((h) => h.kind === 'land');
-}
-
-function countResources(board: Board): Record<ProdResource, number> {
-  const counts = emptyRecord();
-  for (const tile of landTiles(board)) {
-    if (!tile.resource || tile.resource === 'desert') continue;
-    counts[tile.resource]++;
-  }
-  return counts;
 }
 
 function fingerprint(board: Board): number {
@@ -89,153 +86,219 @@ function capitalizeLabel(label: string): string {
   return label[0]!.toUpperCase() + label.slice(1);
 }
 
-function analyzeTraits(board: Board): BoardTrait[] {
+/**
+ * Forventet produksjon vs. «rettferdig» snitt gitt antall felt.
+ * Fixed tile counts (4 tømmer / 3 tegl) er like på alle brett — det som skiller
+ * er hvilke tall ressursene lander på.
+ */
+function measureResourcePulses(board: Board): {
+  pulses: ResourcePulse[];
+  meanPip: number;
+  totalClusterPairs: number;
+  landEdges: number;
+} {
   const tiles = landTiles(board);
   const tileMap = new Map(tiles.map((t) => [coordKey(t.coord), t]));
-  const counts = countResources(board);
-  const traits: BoardTrait[] = [];
 
-  const total = PROD_RESOURCES.reduce((s, r) => s + counts[r], 0);
-  const avgCount = total / PROD_RESOURCES.length;
+  const numbered = tiles.filter(
+    (t) => t.resource && t.resource !== 'desert' && t.number != null
+  );
+  const meanPip =
+    numbered.length > 0
+      ? numbered.reduce((s, t) => s + (NUMBER_PROB[t.number!] ?? 0), 0) / numbered.length
+      : 0;
 
-  let scarcest: ProdResource = 'sheep';
-  let scarcestRatio = Infinity;
-  let richest: ProdResource = 'wheat';
-  let richestRatio = -Infinity;
-
-  for (const resource of PROD_RESOURCES) {
-    const ratio = counts[resource] / Math.max(avgCount, 0.01);
-    if (ratio < scarcestRatio) {
-      scarcestRatio = ratio;
-      scarcest = resource;
-    }
-    if (ratio > richestRatio) {
-      richestRatio = ratio;
-      richest = resource;
-    }
+  const tileCount = emptyRecord();
+  const actualSupply = emptyRecord();
+  for (const tile of numbered) {
+    const resource = tile.resource as ProdResource;
+    tileCount[resource]++;
+    actualSupply[resource] += NUMBER_PROB[tile.number!] ?? 0;
   }
 
-  if (scarcestRatio <= 0.85) {
-    const label = RESOURCE_STORY_LABELS[scarcest];
-    traits.push({
-      id: 'scarce_resource',
-      strength: 1.15 - scarcestRatio,
-      headline: `Lite ${label}-land`,
-      detail: `${capitalizeLabel(label)} er sjeldent på øya — det finnes færre felt av denne typen enn av de fleste andre ressursene.`,
-      resource: scarcest,
-    });
-  }
-
-  if (richestRatio >= 1.15) {
-    const label = RESOURCE_STORY_LABELS[richest];
-    traits.push({
-      id: 'abundant_resource',
-      strength: richestRatio - 1,
-      headline: `Mye ${label}-land`,
-      detail: `${capitalizeLabel(label)}-landet breier seg: her er det mer av denne ressursen enn øyas øvrige landtyper.`,
-      resource: richest,
-    });
-  }
-
-  // Adjacent same-resource clustering
-  let sameAdj = 0;
+  const clusterPairs = emptyRecord();
+  let totalClusterPairs = 0;
   let landEdges = 0;
   const seenEdge = new Set<string>();
+
   for (const tile of tiles) {
     if (!tile.resource || tile.resource === 'desert') continue;
     for (const n of getNeighbors(tile.coord)) {
       const nk = coordKey(n);
       const neighbor = tileMap.get(nk);
-      if (!neighbor || neighbor.kind !== 'land') continue;
+      if (!neighbor || neighbor.kind !== 'land' || !neighbor.resource || neighbor.resource === 'desert') {
+        continue;
+      }
       const edgeKey = [coordKey(tile.coord), nk].sort().join('|');
       if (seenEdge.has(edgeKey)) continue;
       seenEdge.add(edgeKey);
       landEdges++;
-      if (neighbor.resource === tile.resource) sameAdj++;
+      if (neighbor.resource === tile.resource) {
+        clusterPairs[tile.resource as ProdResource]++;
+        totalClusterPairs++;
+      }
     }
   }
-  const clusterRate = landEdges > 0 ? sameAdj / landEdges : 0;
-  if (clusterRate >= 0.22) {
+
+  const pulses: ResourcePulse[] = PROD_RESOURCES.map((resource) => {
+    const count = tileCount[resource];
+    const expected = count * meanPip;
+    const actual = actualSupply[resource];
+    return {
+      resource,
+      tileCount: count,
+      actualSupply: actual,
+      expectedSupply: expected,
+      ratio: expected > 0 ? actual / expected : 1,
+      clusterPairs: clusterPairs[resource],
+    };
+  });
+
+  return { pulses, meanPip, totalClusterPairs, landEdges };
+}
+
+/** Typisk for tre like felt: ~2 nabopar i en klynge; 1 kan være tilfeldig. */
+const CLUSTER_PAIR_THRESHOLD = 2;
+const HIGH_PROD_RATIO = 1.18;
+const LOW_PROD_RATIO = 0.85;
+
+function analyzeTraits(board: Board): BoardTrait[] {
+  const tiles = landTiles(board);
+  const { pulses, totalClusterPairs, landEdges } = measureResourcePulses(board);
+  const traits: BoardTrait[] = [];
+
+  const byRatio = [...pulses].sort((a, b) => b.ratio - a.ratio);
+  const hottest = byRatio[0];
+  const coldest = byRatio[byRatio.length - 1];
+
+  if (hottest && hottest.ratio >= HIGH_PROD_RATIO) {
+    const label = RESOURCE_STORY_LABELS[hottest.resource];
     traits.push({
-      id: 'resource_cluster',
-      strength: clusterRate,
-      headline: 'Sammenhengende landskap',
-      detail:
-        'Likartede ressurser ligger ofte side om side — øya får tydelige regioner i stedet for et jevnt mosaikk.',
-    });
-  } else if (clusterRate <= 0.08 && landEdges > 10) {
-    traits.push({
-      id: 'resource_scatter',
-      strength: 0.15 - clusterRate,
-      headline: 'Spredt mosaikk',
-      detail:
-        'Ressursene er veldig blandet: det er vanskelig å monopolisere én type land, og mangfold belønnes.',
+      id: 'high_production',
+      strength: hottest.ratio - 1,
+      headline: `Sterk ${label}-produksjon`,
+      detail: `${capitalizeLabel(label)} har landet på uvanlig gode tall for antall felt — forventet produksjon ligger klart over det normale for denne ressursen.`,
+      resource: hottest.resource,
     });
   }
 
-  // Desert position
+  if (
+    coldest &&
+    coldest.ratio <= LOW_PROD_RATIO &&
+    coldest.resource !== hottest?.resource
+  ) {
+    const label = RESOURCE_STORY_LABELS[coldest.resource];
+    traits.push({
+      id: 'low_production',
+      strength: 1 - coldest.ratio,
+      headline: `Svak ${label}-produksjon`,
+      detail: `${capitalizeLabel(label)} er satt på svake tall — forventet produksjon er merkbart lavere enn det antall felt skulle tilsi.`,
+      resource: coldest.resource,
+    });
+  }
+
+  // Per-resource clusters (what actually distinguishes boards with fixed tile counts)
+  const clustered = [...pulses]
+    .filter((p) => p.clusterPairs >= CLUSTER_PAIR_THRESHOLD)
+    .sort((a, b) => b.clusterPairs - a.clusterPairs);
+
+  for (const pulse of clustered.slice(0, 2)) {
+    const label = RESOURCE_STORY_LABELS[pulse.resource];
+    traits.push({
+      id: 'resource_cluster',
+      strength: 0.25 + pulse.clusterPairs * 0.12,
+      headline: `${capitalizeLabel(label)}-klynge`,
+      detail: `${capitalizeLabel(label)}-feltene ligger samlet i et sammenhengende område i stedet for å være spredt over øya.`,
+      resource: pulse.resource,
+    });
+  }
+
+  const clusterRate = landEdges > 0 ? totalClusterPairs / landEdges : 0;
+  if (clustered.length === 0 && clusterRate <= 0.06 && landEdges > 10) {
+    traits.push({
+      id: 'resource_scatter',
+      strength: 0.18 - clusterRate,
+      headline: 'Spredt mosaikk',
+      detail:
+        'Like ressurser ligger sjelden inntil hverandre — landskapet er et broket mosaikk uten store ensartede regioner.',
+    });
+  }
+
   const desert = tiles.find((t) => t.resource === 'desert');
   if (desert) {
     const centerDist = hexDistance(desert.coord, { q: 0, r: 0 });
     if (centerDist <= 1) {
       traits.push({
         id: 'desert_center',
-        strength: 0.35,
+        strength: 0.22,
         headline: 'Ørken i hjertet',
         detail: 'Ørkenen ligger midt i øya og splitter landskapet rundt midten.',
       });
     } else if (centerDist >= 2) {
       traits.push({
         id: 'desert_rim',
-        strength: 0.25,
+        strength: 0.18,
         headline: 'Ørken mot kanten',
         detail: 'Ørkenen er skjøvet ut mot kysten — midten av øya er mer ekspansiv.',
       });
     }
   }
 
-  // 2:1-havn er verdifull når det er MYE av ressursen (eksport/overskudd)
-  if (richestRatio >= 1.1) {
+  // 2:1-havn er verdifull når forventet produksjon av ressursen er høy
+  const exportCandidate = [...pulses]
+    .filter((p) => p.ratio >= 1.12)
+    .sort((a, b) => b.ratio - a.ratio)[0];
+
+  if (exportCandidate) {
     const matchingPort = board.harbors.find(
-      (h) => h.definition.harbor.kind === 'resource' && h.definition.harbor.resource === richest
+      (h) =>
+        h.definition.harbor.kind === 'resource' &&
+        h.definition.harbor.resource === exportCandidate.resource
     );
     if (matchingPort) {
-      const label = RESOURCE_STORY_LABELS[richest];
+      const label = RESOURCE_STORY_LABELS[exportCandidate.resource];
       traits.push({
         id: 'port_export',
-        strength: 0.55 + (richestRatio - 1),
-        headline: `2:1-havn for rik ${label}`,
-        detail: `Øya har rikelig med ${label}, og den matchende 2:1-havnen gjør overskuddet omsettelig — et naturlig eksportsted.`,
-        resource: richest,
+        strength: 0.4 + (exportCandidate.ratio - 1),
+        headline: `2:1-havn for sterk ${label}`,
+        detail: `${capitalizeLabel(label)} har høy forventet produksjon, og den matchende 2:1-havnen gjør overskuddet omsettelig — et naturlig eksportsted.`,
+        resource: exportCandidate.resource,
       });
     }
   }
 
-  const woodBrick = counts.wood + counts.brick;
-  const cityFuel = counts.ore + counts.wheat;
-  const roadCityRatio = woodBrick / Math.max(1, cityFuel);
-  if (roadCityRatio >= 1.25) {
+  const woodBrick =
+    (pulses.find((p) => p.resource === 'wood')?.actualSupply ?? 0) +
+    (pulses.find((p) => p.resource === 'brick')?.actualSupply ?? 0);
+  const cityFuel =
+    (pulses.find((p) => p.resource === 'ore')?.actualSupply ?? 0) +
+    (pulses.find((p) => p.resource === 'wheat')?.actualSupply ?? 0);
+  const roadCityRatio = woodBrick / Math.max(0.01, cityFuel);
+  if (roadCityRatio >= 1.3) {
     traits.push({
       id: 'building_skew',
-      strength: roadCityRatio - 1,
-      headline: 'Veilandskapet dominerer',
-      detail: 'Tømmer- og teglfelt veier tyngre enn malm og korn — øya lener seg mot veibygging.',
+      strength: Math.min(roadCityRatio - 1, 0.6),
+      headline: 'Veilandskapet står sterkt',
+      detail:
+        'Forventet produksjon av tømmer og tegl er tydelig høyere enn for malm og korn — øya lener seg mot veibygging.',
     });
-  } else if (roadCityRatio <= 0.8) {
+  } else if (roadCityRatio <= 0.77) {
     traits.push({
       id: 'city_skew',
-      strength: 1 - roadCityRatio,
+      strength: Math.min(1 - roadCityRatio, 0.6),
       headline: 'Byens råvarer står sterkt',
-      detail: 'Malm- og kornfelt er rikelig sammenlignet med tømmer og tegl — øya lener seg mot byer.',
+      detail:
+        'Forventet produksjon av malm og korn er tydelig høyere enn for tømmer og tegl — øya lener seg mot byer.',
     });
   }
 
   if (traits.length === 0) {
     traits.push({
       id: 'balanced',
-      strength: 0.2,
+      strength: 0.15,
       headline: 'Jevn fordeling',
-      detail: 'Denne øya skiller seg lite ut: landtypene er overraskende jevnt fordelt. Små posisjonsvalg avgjør mer.',
+      detail:
+        'Verken tallfordeling eller landklynger skiller seg sterkt ut — denne øya er overraskende jevn.',
     });
   }
 
@@ -279,7 +342,7 @@ function nameFromTraits(traits: BoardTrait[], seed: number): { islandName: strin
   if (primary?.resource) {
     const place = RESOURCE_PLACE_LABELS[primary.resource];
     const theme =
-      primary.id === 'scarce_resource' ? place.theme : place.land;
+      primary.id === 'low_production' ? place.theme : place.land;
     const islandName = `${theme} ${noun}`;
     const epithet =
       secondary?.headline != null
@@ -297,15 +360,11 @@ function nameFromTraits(traits: BoardTrait[], seed: number): { islandName: strin
   }
 
   if (primary?.id === 'building_skew') {
-    return { islandName: `Veifarernes ${noun}`, epithet: 'rik på tømmer og tegl' };
+    return { islandName: `Veifarernes ${noun}`, epithet: 'sterk tømmer- og teglproduksjon' };
   }
 
   if (primary?.id === 'city_skew') {
-    return { islandName: `Bygnærenes ${noun}`, epithet: 'malm og korn i overflod' };
-  }
-
-  if (primary?.id === 'resource_cluster') {
-    return { islandName: `Regionenes ${noun}`, epithet: 'tydelige landskapssoner' };
+    return { islandName: `Bygnærenes ${noun}`, epithet: 'sterk malm- og kornproduksjon' };
   }
 
   if (primary?.id === 'resource_scatter') {
@@ -322,7 +381,7 @@ function nameFromTraits(traits: BoardTrait[], seed: number): { islandName: strin
 function buildNarrative(islandName: string, highlights: BoardTrait[]): string {
   const lead = `I Catanøyriket stiger ${islandName} frem som en egen skjærgård.`;
   if (highlights.length === 0) {
-    return `${lead} Fordelingen er jevn, så det er posisjonering og tempererte valg som skiller seierherrene.`;
+    return `${lead} Landskapet er jevnt, så det er posisjonering som skiller seierherrene.`;
   }
 
   const first = highlights[0]!;
@@ -333,24 +392,22 @@ function buildNarrative(islandName: string, highlights: BoardTrait[]): string {
   if (second) {
     story += ` Samtidig merkes ${second.headline.toLowerCase()}: ${second.detail}`;
   }
-  if (third && highlights.length >= 3) {
+  if (third) {
     story += ` Til sist: ${third.detail}`;
   }
   return story;
 }
 
-/** Analyser brettet og lag øynavn + kort «historie» om det som skiller det ut */
 export function createBoardStory(board: Board): BoardStory {
   const traits = analyzeTraits(board);
   const highlights = traits.slice(0, 3);
   const seed = fingerprint(board);
   const { islandName, epithet } = nameFromTraits(highlights, seed);
-  const narrative = buildNarrative(islandName, highlights);
 
   return {
     islandName: capitalizeIslandName(islandName),
     epithet,
-    narrative,
+    narrative: buildNarrative(islandName, highlights),
     highlights,
   };
 }
@@ -365,4 +422,9 @@ function capitalizeIslandName(name: string): string {
 /** @internal test helper */
 export function __analyzeBoardTraitsForTest(board: Board): BoardTrait[] {
   return analyzeTraits(board);
+}
+
+/** @internal test helper */
+export function __measureResourcePulsesForTest(board: Board) {
+  return measureResourcePulses(board);
 }
