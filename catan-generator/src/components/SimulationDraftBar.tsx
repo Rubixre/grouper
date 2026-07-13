@@ -54,21 +54,6 @@ export function SimulationDraftBar({ state }: SimulationDraftBarProps) {
           );
         })}
       </div>
-      {!finished && activePlayer !== null && (
-        <p className="sim-draft-turn muted small">
-          {activePlayer === config.humanPlayerIndex ? (
-            <>
-              <span style={{ color: getPlayerConfig(config, activePlayer).color }}>●</span>{' '}
-              Din tur — velg plassering
-            </>
-          ) : (
-            <>
-              <span style={{ color: getPlayerConfig(config, activePlayer).color }}>●</span>{' '}
-              Plasser manuelt for {getPlayerConfig(config, activePlayer).name}
-            </>
-          )}
-        </p>
-      )}
     </div>
   );
 }

@@ -67,6 +67,10 @@ body {
   grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
 }
 
+.layout-two-col.layout-simulating {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 400px);
+}
+
 .sidebar {
   display: flex;
   flex-direction: column;
@@ -83,6 +87,35 @@ body {
 
 .sidebar-right {
   gap: 0.65rem;
+}
+
+.sidebar-right.sim-sidebar-active {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow: hidden;
+  padding-bottom: 0.25rem;
+}
+
+.sim-setup-details {
+  flex-shrink: 0;
+  padding: 0.55rem 0.75rem;
+}
+
+.sim-setup-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: #1a5276;
+  user-select: none;
+}
+
+.sim-setup-details[open] {
+  padding-bottom: 0.75rem;
+}
+
+.sim-setup-details .field {
+  margin-top: 0.65rem;
 }
 
 .board-legend {
@@ -513,7 +546,70 @@ body {
 }
 
 .simulator-panel {
-  padding-top: 0.85rem;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0.65rem 0.75rem 0.75rem;
+  overflow: hidden;
+}
+
+.sim-sticky-head {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid #e8ecef;
+}
+
+.sim-main-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.55rem 0 0.35rem;
+}
+
+.sim-details-foot {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid #e8ecef;
+  max-height: 38vh;
+  overflow-y: auto;
+}
+
+.sim-details-block {
+  border: 1px solid #e4eaee;
+  border-radius: 8px;
+  background: #fafcfd;
+}
+
+.sim-details-block summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #1a5276;
+  padding: 0.45rem 0.6rem;
+  user-select: none;
+}
+
+.sim-details-block[open] summary {
+  border-bottom: 1px solid #e8ecef;
+}
+
+.sim-details-block .strategy-recommendation-card,
+.sim-details-block .score-breakdown,
+.sim-details-block .placement-log-list {
+  padding: 0.55rem 0.6rem 0.65rem;
+}
+
+.sim-details-block .score-breakdown {
+  margin: 0;
+  border: none;
+  background: transparent;
 }
 
 .simulator-panel h3 {
@@ -523,9 +619,15 @@ body {
 }
 
 .placement-log {
-  margin-top: 0.85rem;
-  border-top: 1px solid #eee;
-  padding-top: 0.5rem;
+  margin-top: 0;
+  border-top: none;
+  padding-top: 0;
+}
+
+.placement-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
 }
 
 .placement-log summary {
@@ -608,6 +710,103 @@ body {
 }
 
 .options-list {
+  margin-bottom: 0;
+}
+
+.options-list-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.options-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.options-list-header h3 {
+  margin: 0;
+}
+
+.options-toggle {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  color: #1a5276;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.option-row-compact {
+  display: grid;
+  grid-template-columns: 2.25rem 3.25rem 1fr;
+  gap: 0.4rem;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid #dde5ea;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+
+.option-row-compact:hover {
+  border-color: #b8c9d4;
+  background: #f8fbfd;
+}
+
+.option-row-compact.selected {
+  border-color: #1a5276;
+  background: #f0f7fb;
+}
+
+.option-row-rank {
+  font-weight: 800;
+  color: #1a5276;
+  font-size: 0.72rem;
+}
+
+.option-row-rank[data-rank='1'] {
+  color: #b8860b;
+}
+
+.option-row-score {
+  font-weight: 800;
+  color: #1a5276;
+  font-size: 0.88rem;
+}
+
+.option-row-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  min-width: 0;
+}
+
+.option-row-resources {
+  font-weight: 600;
+  color: #2c3e50;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.option-row-meta {
+  color: #777;
+  font-size: 0.7rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.options-list-scroll {
   max-height: 220px;
   overflow-y: auto;
   margin-bottom: 0.75rem;
@@ -1427,6 +1626,32 @@ body {
   margin-bottom: 0.75rem;
 }
 
+.player-setup.is-compact .player-setup-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+
+.player-setup.is-compact .player-setup-card {
+  grid-template-columns: auto 1fr;
+  padding: 0.45rem 0.5rem;
+  gap: 0.35rem 0.5rem;
+}
+
+.player-setup.is-compact .player-human-radio {
+  grid-row: 1 / span 2;
+}
+
+.player-setup.is-compact .player-color-field {
+  display: none;
+}
+
+.player-setup.is-compact .player-name-field input {
+  font-size: 0.82rem;
+  padding: 0.3rem 0.4rem;
+}
+
 .player-setup-card {
   border: 2px solid #e4eaee;
   border-radius: 10px;
@@ -1555,9 +1780,9 @@ body {
 }
 
 .sim-draft-bar {
-  margin-bottom: 0.85rem;
-  padding-bottom: 0.65rem;
-  border-bottom: 1px solid #e6edf2;
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
 }
 
 .sim-draft-bar-header {
@@ -1622,13 +1847,35 @@ body {
 .sim-you-banner {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 0.35rem 0.65rem;
+  grid-template-rows: auto auto;
+  gap: 0.25rem 0.55rem;
   align-items: center;
-  padding: 0.65rem 0.75rem;
-  margin-bottom: 0.75rem;
+  padding: 0.55rem 0.65rem;
+  margin-bottom: 0;
   border-left: 4px solid;
   border-radius: 8px;
   background: #f8fbfd;
+}
+
+.sim-you-banner-text {
+  min-width: 0;
+}
+
+.sim-you-banner-text strong {
+  font-size: 0.9rem;
+}
+
+.sim-you-banner-text p {
+  margin: 0.1rem 0 0;
+}
+
+.sim-profile-chip {
+  grid-column: 2;
+  justify-self: start;
+  font-size: 0.72rem;
+  background: #eef2f5;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
 }
 
 .sim-you-dot {
@@ -1638,7 +1885,7 @@ body {
 }
 
 .sim-progress-mini {
-  grid-column: 2;
+  grid-column: 1 / -1;
   height: 4px;
   background: #e8edf1;
   border-radius: 999px;
@@ -1668,11 +1915,11 @@ body {
 }
 
 .strategy-recommendation-card {
-  margin-bottom: 0.85rem;
-  padding: 0.75rem;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #f0f7ff, #f8fffb);
-  border: 1px solid #d4e6f5;
+  margin-bottom: 0;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border: none;
 }
 
 .strategy-recommendation-header {
@@ -1761,6 +2008,7 @@ body {
   border-color: var(--player-color, #1a5276);
   background: var(--player-color, #1a5276);
   color: #fff;
+  margin-bottom: 0;
 }
 
 @media (max-width: 900px) {
@@ -1772,6 +2020,22 @@ body {
   .sidebar-right {
     position: static;
     max-height: none;
+    overflow: visible;
+  }
+
+  .sidebar-right.sim-sidebar-active {
+    overflow: visible;
+  }
+
+  .simulator-panel {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .sim-main-scroll,
+  .sim-details-foot {
+    max-height: none;
+    overflow: visible;
   }
 
   .field-row {

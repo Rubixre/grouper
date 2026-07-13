@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { SettlementScore, ResourceWeights } from '../catan/types';
 import type { Board } from '../catan/types';
 import type { SimulationState } from '../catan/simulator';
@@ -27,9 +27,23 @@ interface SettlementSimulatorProps {
   onApplyRecommendedStrategy: (profileId: StrategyProfileId) => void;
 }
 
+const DEFAULT_VISIBLE_OPTIONS = 5;
+
 function resourceSummary(score: SettlementScore): string {
   const types = [...new Set(score.breakdown.map((b) => b.resource))] as ProdResource[];
   return types.map((r) => RESOURCE_LABELS[r]).join(' · ') || '—';
+}
+
+function optionMeta(
+  opt: SettlementScore,
+  path: { pairScore: number } | undefined
+): string {
+  if (opt.placementKind === 'second') {
+    const synergy = (opt.buildingSynergy ?? 0) > 0 ? ` · Syn +${(opt.buildingSynergy ?? 0).toFixed(2)}` : '';
+    return `Par ${opt.production.toFixed(2)}${synergy}`;
+  }
+  const pair = path ? ` · Par ${path.pairScore.toFixed(2)}` : '';
+  return `Prod ${opt.production.toFixed(2)} · Dekk ${opt.diversity.toFixed(2)}${pair}`;
 }
 
 export function SettlementSimulator({
@@ -45,6 +59,8 @@ export function SettlementSimulator({
   onConfirm,
   onApplyRecommendedStrategy,
 }: SettlementSimulatorProps) {
+  const [showAllOptions, setShowAllOptions] = useState(false);
+
   const player = currentPlayer(state);
   const human = state.config.humanPlayerIndex;
   const humanConfig = getPlayerConfig(state.config, human);
@@ -55,7 +71,8 @@ export function SettlementSimulator({
   const progress = state.finished ? 100 : (step / total) * 100;
   const isSecond = options[0]?.placementKind === 'second';
   const isFirstHuman = isHumanFirstSettlementTurn(state.placements, human);
-  const topOptions = options.slice(0, 8);
+  const visibleCount = showAllOptions ? options.length : DEFAULT_VISIBLE_OPTIONS;
+  const visibleOptions = options.slice(0, visibleCount);
   const selectedOption = selectedVertex
     ? options.find((opt) => opt.vertexId === selectedVertex)
     : undefined;
@@ -74,93 +91,110 @@ export function SettlementSimulator({
     );
   }, [selectedVertex, strategyRecommendation, isFirstHuman, isYourTurn]);
 
+  const turnHint = isYourTurn
+    ? isSecond
+      ? 'Andre landsby — hele paret vurderes'
+      : isFirstHuman
+        ? 'Gull #1 er beste. Stiplet ring = forventet nr. 2'
+        : 'Første landsby'
+    : 'Velg hjørne på brettet eller i listen';
+
   return (
     <div className="panel simulator-panel">
-      <SimulationDraftBar state={state} />
+      <div className="sim-sticky-head">
+        <SimulationDraftBar state={state} />
 
-      <div
-        className={`sim-you-banner ${isYourTurn ? 'is-your-turn' : 'is-opponent-turn'}`}
-        style={{ borderColor: activeConfig.color }}
-      >
-        <span className="sim-you-dot" style={{ background: activeConfig.color }} />
-        <div>
-          {isYourTurn ? (
-            <>
-              <strong>Din tur — {humanConfig.name}</strong>
-              <p className="muted small">
-                {isSecond ? 'Andre landsby — hele paret vurderes' : 'Første landsby'}
-              </p>
-            </>
-          ) : (
-            <>
-              <strong>Plasser for {activeConfig.name}</strong>
-              <p className="muted small">
-                Manuell plassering · du er {humanConfig.name}
-              </p>
-            </>
-          )}
+        <div
+          className={`sim-you-banner ${isYourTurn ? 'is-your-turn' : 'is-opponent-turn'}`}
+          style={{ borderColor: activeConfig.color }}
+        >
+          <span className="sim-you-dot" style={{ background: activeConfig.color }} />
+          <div className="sim-you-banner-text">
+            {isYourTurn ? (
+              <>
+                <strong>Din tur — {humanConfig.name}</strong>
+                <p className="muted small">{turnHint}</p>
+              </>
+            ) : (
+              <>
+                <strong>Plasser for {activeConfig.name}</strong>
+                <p className="muted small">
+                  Manuell plassering · du er {humanConfig.name}
+                </p>
+              </>
+            )}
+          </div>
+          <div className="sim-progress-mini">
+            <div className="sim-progress-fill" style={{ width: `${progress}%` }} />
+          </div>
+          <span className="sim-profile-chip muted small">{strategyProfile.label}</span>
         </div>
-        <div className="sim-progress-mini">
-          <div className="sim-progress-fill" style={{ width: `${progress}%` }} />
-        </div>
+
+        {!state.finished && (
+          <button
+            type="button"
+            className="btn primary btn-block sim-confirm-btn"
+            disabled={!selectedVertex}
+            onClick={onConfirm}
+            style={{ '--player-color': activeConfig.color } as CSSProperties}
+          >
+            Bekreft for {activeConfig.name}
+          </button>
+        )}
       </div>
 
       {state.finished ? (
         <p className="sim-done">Ferdig! Statistikk vises under brettet.</p>
       ) : (
-        <>
+        <div className="sim-main-scroll">
           {strategyRecommendation && isFirstHuman && isYourTurn && (
-            <div className="strategy-recommendation-card">
-              <div className="strategy-recommendation-header">
-                <span className="strategy-recommendation-icon" aria-hidden>
-                  ✦
-                </span>
-                <div>
-                  <h3>Anbefalt strategi</h3>
-                  <p className="muted small">{strategyRecommendation.reason}</p>
+            <details className="sim-details-block strategy-recommendation-details">
+              <summary>
+                Anbefalt strategi: {strategyRecommendation.recommendedProfile.label}
+              </summary>
+              <div className="strategy-recommendation-card">
+                <p className="muted small">{strategyRecommendation.reason}</p>
+                <div className="strategy-recommendation-actions">
+                  {strategyProfile.id !== strategyRecommendation.recommendedProfileId && (
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={() =>
+                        onApplyRecommendedStrategy(strategyRecommendation.recommendedProfileId)
+                      }
+                    >
+                      Bruk anbefaling
+                    </button>
+                  )}
                 </div>
-              </div>
-              <div className="strategy-recommendation-actions">
-                <span className="strategy-pill">{strategyRecommendation.recommendedProfile.label}</span>
-                {strategyProfile.id !== strategyRecommendation.recommendedProfileId && (
-                  <button
-                    type="button"
-                    className="btn btn-sm"
-                    onClick={() =>
-                      onApplyRecommendedStrategy(strategyRecommendation.recommendedProfileId)
-                    }
-                  >
-                    Bruk anbefaling
-                  </button>
+                {strategyRecommendation.suggestedPaths.length > 0 && (
+                  <ul className="strategy-path-list muted small">
+                    {strategyRecommendation.suggestedPaths.slice(0, 3).map((path, i) => (
+                      <li key={path.firstVertexId}>
+                        #{i + 1} parscore {path.pairScore.toFixed(2)} · 1. landsby{' '}
+                        {path.firstScore.toFixed(2)}
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </div>
-              {strategyRecommendation.suggestedPaths.length > 0 && (
-                <ul className="strategy-path-list muted small">
-                  {strategyRecommendation.suggestedPaths.slice(0, 3).map((path, i) => (
-                    <li key={path.firstVertexId}>
-                      #{i + 1} parscore {path.pairScore.toFixed(2)} · 1. landsby{' '}
-                      {path.firstScore.toFixed(2)}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            </details>
           )}
 
-          <p className="sim-hint">
-            <strong>Profil:</strong> {strategyProfile.label}.{' '}
-            {isYourTurn && isFirstHuman && !isSecond
-              ? 'Gull #1 er beste plassering. Stiplet markør viser forventet landsby nr. 2.'
-              : isSecond
-                ? 'Grønn stiplet markør viser beste nr. 2 når det er din tur.'
-                : 'Velg hjørne på brettet eller fra listen under.'}
-          </p>
-
-          <div className="options-list">
-            <h3>
-              Topp {Math.min(8, options.length)} for {activeConfig.name}
-            </h3>
-            {topOptions.map((opt, i) => {
+          <div className="options-list options-list-compact">
+            <div className="options-list-header">
+              <h3>Topp {Math.min(visibleCount, options.length)} for {activeConfig.name}</h3>
+              {options.length > DEFAULT_VISIBLE_OPTIONS && (
+                <button
+                  type="button"
+                  className="btn-link options-toggle"
+                  onClick={() => setShowAllOptions((on) => !on)}
+                >
+                  {showAllOptions ? 'Vis færre' : `Vis alle (${options.length})`}
+                </button>
+              )}
+            </div>
+            {visibleOptions.map((opt, i) => {
               const path =
                 isYourTurn && isFirstHuman
                   ? strategyRecommendation?.suggestedPaths.find(
@@ -171,96 +205,79 @@ export function SettlementSimulator({
                 <button
                   key={opt.vertexId}
                   type="button"
-                  className={`option-card ${selectedVertex === opt.vertexId ? 'selected' : ''}`}
+                  className={`option-row-compact ${selectedVertex === opt.vertexId ? 'selected' : ''}`}
                   onClick={() => onSelectVertex(opt.vertexId)}
                 >
-                  <div className="option-card-rank" data-rank={i + 1}>
+                  <span className="option-row-rank" data-rank={i + 1}>
                     #{i + 1}
-                  </div>
-                  <div className="option-card-body">
-                    <div className="option-card-score">{opt.total.toFixed(2)}</div>
-                    <div className="option-card-resources">{resourceSummary(opt)}</div>
-                    <div className="option-card-meta">
-                      {opt.placementKind === 'second' ? (
-                        <>
-                          Par {opt.production.toFixed(2)}
-                          {(opt.buildingSynergy ?? 0) > 0 && (
-                            <> · Syn +{(opt.buildingSynergy ?? 0).toFixed(2)}</>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          Prod {opt.production.toFixed(2)} · Dekk {opt.diversity.toFixed(2)}
-                          {path && <> · Par {path.pairScore.toFixed(2)}</>}
-                        </>
-                      )}
-                    </div>
-                  </div>
+                  </span>
+                  <span className="option-row-score">{opt.total.toFixed(2)}</span>
+                  <span className="option-row-detail">
+                    <span className="option-row-resources">{resourceSummary(opt)}</span>
+                    <span className="option-row-meta">{optionMeta(opt, path)}</span>
+                  </span>
                 </button>
               );
             })}
-            {selectedOption && selectedRank > 8 && (
-              <div className="option-card selected custom-placement">
-                <div className="option-card-rank">#{selectedRank}</div>
-                <div className="option-card-body">
-                  <div className="option-card-score">{selectedOption.total.toFixed(2)}</div>
-                  <div className="option-card-meta">Valgt på brettet (utenfor topp 8)</div>
-                </div>
+            {selectedOption && selectedRank > visibleCount && (
+              <div className="option-row-compact selected custom-placement">
+                <span className="option-row-rank">#{selectedRank}</span>
+                <span className="option-row-score">{selectedOption.total.toFixed(2)}</span>
+                <span className="option-row-detail">
+                  <span className="option-row-meta">Valgt på brettet (utenfor listen)</span>
+                </span>
               </div>
             )}
           </div>
-
-          {selectedOption && (
-            <>
-              {selectedPath && isFirstHuman && isYourTurn && (
-                <p className="second-preview-hint muted small">
-                  Forventet landsby nr. 2 (mot simulerte motspillere): parscore{' '}
-                  <strong>{selectedPath.pairScore.toFixed(2)}</strong>
-                  {secondPreviewVertex && ' — markert på brettet med stiplet ring'}
-                </p>
-              )}
-              <PlacementScoreBreakdown
-                score={selectedOption}
-                board={board}
-                rank={selectedRank}
-                strategyProfile={strategyProfile}
-                strategyWeights={strategyWeights}
-                firstVertexId={
-                  selectedOption.placementKind === 'second' ? currentFirstVertex : undefined
-                }
-              />
-            </>
-          )}
-
-          <button
-            type="button"
-            className="btn primary btn-block sim-confirm-btn"
-            disabled={!selectedVertex}
-            onClick={onConfirm}
-            style={{ '--player-color': activeConfig.color } as CSSProperties}
-          >
-            Bekreft for {activeConfig.name}
-          </button>
-        </>
+        </div>
       )}
 
-      {state.placements.length > 0 && (
-        <details className="placement-log" open={state.placements.length <= 4}>
-          <summary>Plasseringer ({state.placements.length})</summary>
-          {state.placements.map((p, i) => {
-            const cfg = getPlayerConfig(state.config, p.player);
-            return (
-              <div key={i} className="log-row">
-                <span style={{ color: cfg.color }}>●</span>
-                <span>
-                  {cfg.name}
-                  {p.player === human ? ' (deg)' : ''} · trekk {i + 1}
-                </span>
-              </div>
-            );
-          })}
-        </details>
-      )}
+      <div className="sim-details-foot">
+        {selectedOption && !state.finished && (
+          <details className="sim-details-block score-breakdown-details">
+            <summary>
+              Poengforklaring · #{selectedRank} ({selectedOption.total.toFixed(2)})
+            </summary>
+            {selectedPath && isFirstHuman && isYourTurn && (
+              <p className="second-preview-hint muted small">
+                Forventet landsby nr. 2: parscore{' '}
+                <strong>{selectedPath.pairScore.toFixed(2)}</strong>
+                {secondPreviewVertex && ' — stiplet ring på brettet'}
+              </p>
+            )}
+            <PlacementScoreBreakdown
+              score={selectedOption}
+              board={board}
+              rank={selectedRank}
+              strategyProfile={strategyProfile}
+              strategyWeights={strategyWeights}
+              firstVertexId={
+                selectedOption.placementKind === 'second' ? currentFirstVertex : undefined
+              }
+            />
+          </details>
+        )}
+
+        {state.placements.length > 0 && (
+          <details className="sim-details-block placement-log">
+            <summary>Plasseringer ({state.placements.length})</summary>
+            <div className="placement-log-list">
+              {state.placements.map((p, i) => {
+                const cfg = getPlayerConfig(state.config, p.player);
+                return (
+                  <div key={i} className="log-row">
+                    <span style={{ color: cfg.color }}>●</span>
+                    <span>
+                      {cfg.name}
+                      {p.player === human ? ' (deg)' : ''} · trekk {i + 1}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </details>
+        )}
+      </div>
     </div>
   );
 }

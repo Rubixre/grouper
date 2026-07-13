@@ -193,7 +193,7 @@ function App() {
 
       {error && <div className="error-banner">{error}</div>}
 
-      <div className="layout layout-two-col">
+      <div className={`layout layout-two-col ${simPlacing ? 'layout-simulating' : ''}`}>
         <main className="board-area">
           {board ? (
             <div className="board-wrap">
@@ -263,13 +263,89 @@ function App() {
           )}
         </main>
 
-        <aside className="sidebar sidebar-right">
+        <aside className={`sidebar sidebar-right ${simActive ? 'sim-sidebar-active' : ''}`}>
           {mappingMode ? (
             <MappingPanel
               mapping={boardMapping}
               onHighlightEdge={setHighlightEdge}
               onHighlightCorner={setHighlightCorner}
             />
+          ) : simPlacing ? (
+            <>
+              <details className="panel sim-setup-details">
+                <summary>
+                  Oppsett · {playerCount} spillere · {activeStrategy.label}
+                </summary>
+                <label className="field">
+                  Antall spillere
+                  <select
+                    value={playerCount}
+                    disabled
+                    onChange={(e) =>
+                      handlePlayerCountChange(Number(e.target.value) as PlayerCount)
+                    }
+                  >
+                    <option value={2}>2 spillere</option>
+                    <option value={3}>3 spillere</option>
+                    <option value={4}>4 spillere</option>
+                    {boardSize === 'extension56' && (
+                      <>
+                        <option value={5}>5 spillere</option>
+                        <option value={6}>6 spillere</option>
+                      </>
+                    )}
+                  </select>
+                </label>
+
+                <PlayerSetupPanel
+                  playerCount={playerCount}
+                  config={simulation?.config ?? simulationConfig}
+                  disabled
+                  compact
+                  onConfigChange={setSimulationConfig}
+                />
+
+                <label className="field">
+                  Strategiprofil
+                  <select
+                    value={strategyProfile}
+                    onChange={(e) =>
+                      setStrategyProfile(e.target.value as StrategyProfileId)
+                    }
+                  >
+                    {STRATEGY_PROFILES.map((profile) => (
+                      <option key={profile.id} value={profile.id}>
+                        {profile.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <button
+                  type="button"
+                  className="btn btn-block"
+                  onClick={resetSimulation}
+                >
+                  Avbryt simulering
+                </button>
+              </details>
+
+              {simulation && board && (
+                <SettlementSimulator
+                  state={simulation}
+                  board={board}
+                  options={rankedOptions}
+                  selectedVertex={selectedVertex}
+                  strategyProfile={activeStrategy}
+                  strategyWeights={strategyWeights}
+                  strategyRecommendation={strategyRecommendation}
+                  secondPreviewVertex={secondPreviewVertex}
+                  onSelectVertex={setSelectedVertex}
+                  onConfirm={handleConfirm}
+                  onApplyRecommendedStrategy={setStrategyProfile}
+                />
+              )}
+            </>
           ) : (
             <>
               <div className="panel simulation-setup">
@@ -337,27 +413,18 @@ function App() {
                   </button>
                 ) : (
                   <div className="sim-actions">
-                    {!simulation?.finished && (
-                      <button
-                        type="button"
-                        className="btn btn-block"
-                        onClick={resetSimulation}
-                      >
-                        Avbryt
-                      </button>
-                    )}
                     <button
                       type="button"
                       className="btn primary btn-block"
                       onClick={startSimulation}
                     >
-                      {simulation?.finished ? 'Ny runde' : 'Start på nytt'}
+                      Ny runde
                     </button>
                   </div>
                 )}
               </div>
 
-              {simActive && simulation && board && (
+              {simActive && simulation?.finished && board && (
                 <SettlementSimulator
                   state={simulation}
                   board={board}

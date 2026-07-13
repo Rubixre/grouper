@@ -11,6 +11,7 @@ interface PlayerSetupPanelProps {
   playerCount: PlayerCount;
   config: SimulationConfig;
   disabled?: boolean;
+  compact?: boolean;
   onConfigChange: (config: SimulationConfig) => void;
 }
 
@@ -18,6 +19,7 @@ export function PlayerSetupPanel({
   playerCount,
   config,
   disabled,
+  compact,
   onConfigChange,
 }: PlayerSetupPanelProps) {
   const order = getPlacementOrder(playerCount);
@@ -33,12 +35,21 @@ export function PlayerSetupPanel({
     onConfigChange({ ...config, humanPlayerIndex });
   };
 
+  const visiblePresets = compact
+    ? PLAYER_COLOR_PRESETS.slice(0, 4)
+    : PLAYER_COLOR_PRESETS;
+
   return (
-    <div className="player-setup">
-      <h3 className="player-setup-title">Spillere</h3>
-      <p className="muted small player-setup-lead">
-        Velg hvem du er (for strategianbefaling). Alle spillere plasseres manuelt i draft-rekkefølge.
-      </p>
+    <div className={`player-setup ${compact ? 'is-compact' : ''}`}>
+      {!compact && (
+        <>
+          <h3 className="player-setup-title">Spillere</h3>
+          <p className="muted small player-setup-lead">
+            Velg hvem du er (for strategianbefaling). Alle spillere plasseres manuelt i
+            draft-rekkefølge.
+          </p>
+        </>
+      )}
 
       <div className="player-setup-grid">
         {config.players.slice(0, playerCount).map((player, index) => {
@@ -86,7 +97,7 @@ export function PlayerSetupPanel({
                     aria-label={`Farge for ${player.name}`}
                   />
                   <div className="player-color-presets">
-                    {PLAYER_COLOR_PRESETS.map((color) => (
+                    {visiblePresets.map((color) => (
                       <button
                         key={color}
                         type="button"
@@ -105,25 +116,27 @@ export function PlayerSetupPanel({
         })}
       </div>
 
-      <div className="draft-order-visual" aria-label="Draft-rekkefølge">
-        <span className="draft-order-visual-label">Draft</span>
-        <div className="draft-order-track">
-          {order.map((playerIndex, step) => {
-            const p = config.players[playerIndex];
-            const isHuman = playerIndex === config.humanPlayerIndex;
-            return (
-              <div
-                key={`${step}-${playerIndex}`}
-                className={`draft-order-chip ${isHuman ? 'is-human' : ''}`}
-                title={`Trekk ${step + 1}: ${p?.name ?? defaultPlayerName(playerIndex)}`}
-              >
-                <span className="draft-order-dot" style={{ background: p?.color }} />
-                <span className="draft-order-step">{step + 1}</span>
-              </div>
-            );
-          })}
+      {!compact && (
+        <div className="draft-order-visual" aria-label="Draft-rekkefølge">
+          <span className="draft-order-visual-label">Draft</span>
+          <div className="draft-order-track">
+            {order.map((playerIndex, step) => {
+              const p = config.players[playerIndex];
+              const isHuman = playerIndex === config.humanPlayerIndex;
+              return (
+                <div
+                  key={`${step}-${playerIndex}`}
+                  className={`draft-order-chip ${isHuman ? 'is-human' : ''}`}
+                  title={`Trekk ${step + 1}: ${p?.name ?? defaultPlayerName(playerIndex)}`}
+                >
+                  <span className="draft-order-dot" style={{ background: p?.color }} />
+                  <span className="draft-order-step">{step + 1}</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
