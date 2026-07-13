@@ -115,7 +115,7 @@ export function BoardView({
   const playerColor = (playerIndex: number) =>
     playerConfig
       ? getPlayerConfig(playerConfig, playerIndex).color
-      : ['#e74c3c', '#3498db', '#f39c12', '#2ecc71', '#9b59b6', '#1abc9c'][playerIndex];
+      : ['#c0392b', '#e8d4b0', '#1a3a6e', '#c9972a', '#1f8a7a', '#4a235a'][playerIndex];
 
   const previewPos = previewSecondVertex
     ? getVertexPixel(previewSecondVertex, HEX_SIZE)
