@@ -64,7 +64,7 @@ export function SimulationDraftBar({ state }: SimulationDraftBarProps) {
           ) : (
             <>
               <span style={{ color: getPlayerConfig(config, activePlayer).color }}>●</span>{' '}
-              {getPlayerConfig(config, activePlayer).name} plasserer…
+              Plasser manuelt for {getPlayerConfig(config, activePlayer).name}
             </>
           )}
         </p>

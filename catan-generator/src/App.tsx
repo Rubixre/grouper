@@ -20,7 +20,6 @@ import {
   recommendStrategy,
 } from './catan/strategyAdvisor';
 import {
-  advanceToHumanTurn,
   createSimulation,
   getOptionsForCurrentTurn,
   isHumanTurn,
@@ -95,11 +94,7 @@ function App() {
 
   const startSimulation = () => {
     if (!board) return;
-    const sim = advanceToHumanTurn(
-      createSimulation(board, simulationConfig),
-      strategyWeights
-    );
-    setSimulation(sim);
+    setSimulation(createSimulation(board, simulationConfig));
     setSelectedVertex(null);
     setMode('simulate');
   };
@@ -110,13 +105,15 @@ function App() {
     setMode('view');
   };
 
-  const showHumanOptions = simulation && simActive && isHumanTurn(simulation);
+  const simPlacing = simulation && simActive && !simulation.finished;
 
   const rankedOptions =
-    showHumanOptions ? getOptionsForCurrentTurn(simulation, strategyWeights) : [];
+    simPlacing ? getOptionsForCurrentTurn(simulation, strategyWeights) : [];
+
+  const isYourTurn = simulation && simActive && isHumanTurn(simulation);
 
   const strategyRecommendation = useMemo(() => {
-    if (!board || !simulation || !showHumanOptions) return null;
+    if (!board || !simulation || !isYourTurn) return null;
     const human = simulation.config.humanPlayerIndex;
     if (!isHumanFirstSettlementTurn(simulation.placements, human)) return null;
     return recommendStrategy(
@@ -125,10 +122,10 @@ function App() {
       human,
       simulation.playerCount
     );
-  }, [board, simulation, showHumanOptions]);
+  }, [board, simulation, isYourTurn]);
 
   const secondPreviewVertex = useMemo(() => {
-    if (!board || !simulation || !selectedVertex || !showHumanOptions) return null;
+    if (!board || !simulation || !selectedVertex || !isYourTurn) return null;
     const human = simulation.config.humanPlayerIndex;
     if (!isHumanFirstSettlementTurn(simulation.placements, human)) return null;
     return getSecondSettlementPreview(
@@ -139,26 +136,11 @@ function App() {
       selectedVertex,
       strategyWeights
     );
-  }, [board, simulation, selectedVertex, showHumanOptions, strategyWeights]);
-
-  useEffect(() => {
-    if (!simulation || simulation.finished || !simActive) return;
-    if (isHumanTurn(simulation)) return;
-
-    const timer = window.setTimeout(() => {
-      setSimulation((prev) =>
-        prev ? advanceToHumanTurn(prev, strategyWeights) : prev
-      );
-    }, 450);
-
-    return () => window.clearTimeout(timer);
-  }, [simulation, simActive, strategyWeights]);
+  }, [board, simulation, selectedVertex, isYourTurn, strategyWeights]);
 
   const handleConfirm = () => {
     if (!simulation || !selectedVertex) return;
-    let next = placeSettlement(simulation, selectedVertex);
-    next = advanceToHumanTurn(next, strategyWeights);
-    setSimulation(next);
+    setSimulation(placeSettlement(simulation, selectedVertex));
     setSelectedVertex(null);
   };
 
@@ -219,17 +201,17 @@ function App() {
                 board={board}
                 placements={simulation?.placements ?? []}
                 playerConfig={simulation?.config ?? simulationConfig}
-                highlightedVertices={showHumanOptions ? rankedOptions : []}
+                highlightedVertices={simPlacing ? rankedOptions : []}
                 previewSecondVertex={secondPreviewVertex}
                 selectedVertex={selectedVertex}
-                onVertexClick={showHumanOptions ? setSelectedVertex : undefined}
-                interactive={Boolean(showHumanOptions && !simulation?.finished)}
+                onVertexClick={simPlacing ? setSelectedVertex : undefined}
+                interactive={Boolean(simPlacing)}
                 mappingMode={mappingMode}
                 mapping={boardMapping}
                 highlightEdge={highlightEdge}
                 highlightCorner={highlightCorner}
               />
-              {simActive && !simulation?.finished && showHumanOptions && (
+              {simPlacing && isYourTurn && (
                 <div className="placement-heatmap-legend" aria-hidden>
                   <strong>Dine beste plasseringer</strong>
                   <div className="placement-legend-scale">
@@ -246,6 +228,14 @@ function App() {
                   </div>
                   <span className="placement-legend-hint">
                     #1 = best · stiplet ring = forventet landsby nr. 2
+                  </span>
+                </div>
+              )}
+              {simPlacing && !isYourTurn && (
+                <div className="placement-heatmap-legend" aria-hidden>
+                  <strong>Plasser manuelt for motspiller</strong>
+                  <span className="placement-legend-hint">
+                    Markører viser modellens toppforslag for spilleren som har tur
                   </span>
                 </div>
               )}
@@ -386,9 +376,8 @@ function App() {
               {!simActive && (
                 <div className="panel sim-placeholder">
                   <p className="muted small">
-                    Velg hvem du er, gi spillere navn og farger, og trykk{' '}
-                    <strong>Start plassering</strong>. Du får anbefalinger og ser forventet
-                    landsby nr. 2 på brettet.
+                    Velg hvem du er, gi spillere navn og farger. Alle plasseres manuelt i
+                    draft-rekkefølge. Du får strategianbefaling og par-preview når det er din tur.
                   </p>
                 </div>
               )}

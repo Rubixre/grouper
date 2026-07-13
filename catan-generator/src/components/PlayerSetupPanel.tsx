@@ -37,7 +37,7 @@ export function PlayerSetupPanel({
     <div className="player-setup">
       <h3 className="player-setup-title">Spillere</h3>
       <p className="muted small player-setup-lead">
-        Velg hvem du er, gi navn og farger. Motspillere plasserer automatisk til det er din tur.
+        Velg hvem du er (for strategianbefaling). Alle spillere plasseres manuelt i draft-rekkefølge.
       </p>
 
       <div className="player-setup-grid">

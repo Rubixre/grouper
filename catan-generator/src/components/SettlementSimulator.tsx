@@ -48,6 +48,8 @@ export function SettlementSimulator({
   const player = currentPlayer(state);
   const human = state.config.humanPlayerIndex;
   const humanConfig = getPlayerConfig(state.config, human);
+  const activeConfig = player !== null ? getPlayerConfig(state.config, player) : humanConfig;
+  const isYourTurn = isHumanTurn(state);
   const step = state.currentStep;
   const total = state.placementOrder.length;
   const progress = state.finished ? 100 : (step / total) * 100;
@@ -60,42 +62,43 @@ export function SettlementSimulator({
   const selectedRank = selectedVertex
     ? options.findIndex((opt) => opt.vertexId === selectedVertex) + 1
     : 0;
-  const playerFirstVertex = state.placements.find((p) => p.player === human)?.vertexId;
+  const currentFirstVertex =
+    player !== null
+      ? state.placements.find((p) => p.player === player)?.vertexId
+      : undefined;
 
   const selectedPath = useMemo(() => {
-    if (!selectedVertex || !strategyRecommendation || !isFirstHuman) return null;
+    if (!selectedVertex || !strategyRecommendation || !isFirstHuman || !isYourTurn) return null;
     return strategyRecommendation.suggestedPaths.find(
       (p) => p.firstVertexId === selectedVertex
     );
-  }, [selectedVertex, strategyRecommendation, isFirstHuman]);
-
-  if (!isHumanTurn(state) && !state.finished) {
-    const active = player !== null ? getPlayerConfig(state.config, player) : null;
-    return (
-      <div className="panel simulator-panel simulator-waiting">
-        <SimulationDraftBar state={state} />
-        <div className="sim-waiting-card">
-          <span className="sim-waiting-spinner" aria-hidden />
-          <p>
-            <strong style={{ color: active?.color }}>{active?.name}</strong> plasserer…
-          </p>
-          <p className="muted small">Motspillerne velger automatisk beste tilgjengelige spot.</p>
-        </div>
-      </div>
-    );
-  }
+  }, [selectedVertex, strategyRecommendation, isFirstHuman, isYourTurn]);
 
   return (
     <div className="panel simulator-panel">
       <SimulationDraftBar state={state} />
 
-      <div className="sim-you-banner" style={{ borderColor: humanConfig.color }}>
-        <span className="sim-you-dot" style={{ background: humanConfig.color }} />
+      <div
+        className={`sim-you-banner ${isYourTurn ? 'is-your-turn' : 'is-opponent-turn'}`}
+        style={{ borderColor: activeConfig.color }}
+      >
+        <span className="sim-you-dot" style={{ background: activeConfig.color }} />
         <div>
-          <strong>Du spiller som {humanConfig.name}</strong>
-          <p className="muted small">
-            {isSecond ? 'Andre landsby — hele paret vurderes' : 'Første landsby'}
-          </p>
+          {isYourTurn ? (
+            <>
+              <strong>Din tur — {humanConfig.name}</strong>
+              <p className="muted small">
+                {isSecond ? 'Andre landsby — hele paret vurderes' : 'Første landsby'}
+              </p>
+            </>
+          ) : (
+            <>
+              <strong>Plasser for {activeConfig.name}</strong>
+              <p className="muted small">
+                Manuell plassering · du er {humanConfig.name}
+              </p>
+            </>
+          )}
         </div>
         <div className="sim-progress-mini">
           <div className="sim-progress-fill" style={{ width: `${progress}%` }} />
@@ -106,7 +109,7 @@ export function SettlementSimulator({
         <p className="sim-done">Ferdig! Statistikk vises under brettet.</p>
       ) : (
         <>
-          {strategyRecommendation && isFirstHuman && (
+          {strategyRecommendation && isFirstHuman && isYourTurn && (
             <div className="strategy-recommendation-card">
               <div className="strategy-recommendation-header">
                 <span className="strategy-recommendation-icon" aria-hidden>
@@ -146,17 +149,24 @@ export function SettlementSimulator({
 
           <p className="sim-hint">
             <strong>Profil:</strong> {strategyProfile.label}.{' '}
-            {isSecond
-              ? 'Grønn stiplet markør på brettet viser beste nr. 2 for valgt plassering.'
-              : 'Gull #1 er beste plassering. Stiplet markør viser forventet landsby nr. 2.'}
+            {isYourTurn && isFirstHuman && !isSecond
+              ? 'Gull #1 er beste plassering. Stiplet markør viser forventet landsby nr. 2.'
+              : isSecond
+                ? 'Grønn stiplet markør viser beste nr. 2 når det er din tur.'
+                : 'Velg hjørne på brettet eller fra listen under.'}
           </p>
 
           <div className="options-list">
-            <h3>Topp {Math.min(8, options.length)} for deg</h3>
+            <h3>
+              Topp {Math.min(8, options.length)} for {activeConfig.name}
+            </h3>
             {topOptions.map((opt, i) => {
-              const path = strategyRecommendation?.suggestedPaths.find(
-                (p) => p.firstVertexId === opt.vertexId
-              );
+              const path =
+                isYourTurn && isFirstHuman
+                  ? strategyRecommendation?.suggestedPaths.find(
+                      (p) => p.firstVertexId === opt.vertexId
+                    )
+                  : undefined;
               return (
                 <button
                   key={opt.vertexId}
@@ -181,9 +191,7 @@ export function SettlementSimulator({
                       ) : (
                         <>
                           Prod {opt.production.toFixed(2)} · Dekk {opt.diversity.toFixed(2)}
-                          {path && (
-                            <> · Par {path.pairScore.toFixed(2)}</>
-                          )}
+                          {path && <> · Par {path.pairScore.toFixed(2)}</>}
                         </>
                       )}
                     </div>
@@ -204,7 +212,7 @@ export function SettlementSimulator({
 
           {selectedOption && (
             <>
-              {selectedPath && isFirstHuman && (
+              {selectedPath && isFirstHuman && isYourTurn && (
                 <p className="second-preview-hint muted small">
                   Forventet landsby nr. 2 (mot simulerte motspillere): parscore{' '}
                   <strong>{selectedPath.pairScore.toFixed(2)}</strong>
@@ -218,9 +226,7 @@ export function SettlementSimulator({
                 strategyProfile={strategyProfile}
                 strategyWeights={strategyWeights}
                 firstVertexId={
-                  selectedOption.placementKind === 'second'
-                    ? playerFirstVertex
-                    : undefined
+                  selectedOption.placementKind === 'second' ? currentFirstVertex : undefined
                 }
               />
             </>
@@ -231,9 +237,9 @@ export function SettlementSimulator({
             className="btn primary btn-block sim-confirm-btn"
             disabled={!selectedVertex}
             onClick={onConfirm}
-            style={{ '--player-color': humanConfig.color } as CSSProperties}
+            style={{ '--player-color': activeConfig.color } as CSSProperties}
           >
-            Bekreft for {humanConfig.name}
+            Bekreft for {activeConfig.name}
           </button>
         </>
       )}

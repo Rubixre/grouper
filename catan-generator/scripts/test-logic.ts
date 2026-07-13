@@ -449,11 +449,9 @@ import { scoreFirstPlacement } from '../src/catan/placementModel.ts';
 
 console.log('\nStrategy advisor');
 import { recommendStrategy } from '../src/catan/strategyAdvisor.ts';
-import { advanceToHumanTurn, isHumanTurn } from '../src/catan/simulator.ts';
 if (board) {
-  const config = createSimulationConfig(4, 2);
-  const sim = advanceToHumanTurn(createSimulation(board, config));
-  assert(isHumanTurn(sim), 'Advance lands on human player turn');
+  const config = createSimulationConfig(4, 0);
+  const sim = createSimulation(board, config);
   const rec = recommendStrategy(board, sim.placements, config.humanPlayerIndex, 4);
   assert(rec.recommendedProfileId.length > 0, 'Strategy recommendation returns profile');
   assert(rec.suggestedPaths.length > 0, 'Strategy recommendation has suggested paths');
