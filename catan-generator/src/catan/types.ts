@@ -142,6 +142,7 @@ export interface SettlementScore {
   redAnchorBonus?: number;
   desertPenalty?: number;
   lowHexPenalty?: number;
+  monoResourcePenalty?: number;
   buildingSynergy?: number;
   pairPipBonus?: number;
   complementScore?: number;

@@ -238,6 +238,7 @@ function scoreToResult(
     redAnchorBonus: c.redAnchorBonus,
     desertPenalty: c.desertPenalty,
     lowHexPenalty: c.lowHexPenalty,
+    monoResourcePenalty: c.monoResourcePenalty,
     buildingSynergy: c.buildingSynergy,
     pairPipBonus: c.pairPipBonus,
     complementScore: c.complementScore,
@@ -341,6 +342,7 @@ export interface ScoreExplanation {
   redAnchorBonus?: number;
   desertPenalty?: number;
   lowHexPenalty?: number;
+  monoResourcePenalty?: number;
   buildingSynergy?: number;
   pairPipBonus?: number;
   complementScore?: number;
@@ -400,6 +402,7 @@ export function explainPlacementScore(
     redAnchorBonus: score.redAnchorBonus,
     desertPenalty: score.desertPenalty,
     lowHexPenalty: score.lowHexPenalty,
+    monoResourcePenalty: score.monoResourcePenalty,
     buildingSynergy: score.buildingSynergy,
     pairPipBonus: score.pairPipBonus,
     complementScore: score.complementScore,

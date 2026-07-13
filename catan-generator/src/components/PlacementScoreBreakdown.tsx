@@ -103,6 +103,7 @@ export function PlacementScoreBreakdown({
         <BonusLine label="Rødt tall (6/8)" value={explanation.redAnchorBonus} />
         <BonusLine label="Ørken-straff" value={explanation.desertPenalty} negative />
         <BonusLine label="Få prod. hex" value={explanation.lowHexPenalty} negative />
+        <BonusLine label="Ensidig ressurs" value={explanation.monoResourcePenalty} negative />
         {explanation.kind === 'second' && (
           <>
             <BonusLine label="Byggepakker (vei/by/landsby)" value={explanation.buildingSynergy} />

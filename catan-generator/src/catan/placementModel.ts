@@ -54,6 +54,7 @@ export interface PlacementComponents {
   redAnchorBonus: number;
   desertPenalty: number;
   lowHexPenalty: number;
+  monoResourcePenalty: number;
   buildingSynergy: number;
   pairPipBonus: number;
   complementScore: number;
@@ -69,6 +70,8 @@ const PIP_PAIR_STRONG = 16 / 36;
 const PIP_QUALITY_SCALE = 0.12;
 const PAIR_PIP_BONUS_SCALE = 0.2;
 const RED_ANCHOR_BONUS = 0.03;
+const MONO_RESOURCE_PENALTY = 0.12;
+const MONO_SINGLE_HEX_EXTRA = 0.06;
 const DESERT_PENALTY_PER_HEX = 0.04;
 const LOW_HEX_PIP_THRESHOLD = 10 / 36;
 const LOW_HEX_PENALTY = 0.03;
@@ -253,12 +256,27 @@ function pipQualityBonus(pipTotal: number): number {
   return Math.min((pipTotal - PIP_STRONG_SINGLE) * PIP_QUALITY_SCALE * 36, 0.08);
 }
 
+function redAnchorBonus(profile: ProductionProfile): number {
+  if (!profile.hasRedNumber) return 0;
+  // Ensidig 6/8 på én ressurs er for volatilt uten mangfold
+  if (profile.resources.size < 2) return 0;
+  return RED_ANCHOR_BONUS;
+}
+
+function monoResourcePenalty(profile: ProductionProfile): number {
+  if (profile.resources.size !== 1) return 0;
+  let penalty = MONO_RESOURCE_PENALTY;
+  if (profile.producingHexCount === 1) penalty += MONO_SINGLE_HEX_EXTRA;
+  return penalty;
+}
+
 function desertPenalty(profile: ProductionProfile): number {
   return profile.desertNeighbors * DESERT_PENALTY_PER_HEX;
 }
 
 function lowHexPenalty(profile: ProductionProfile): number {
   if (profile.producingHexCount >= 3) return 0;
+  if (profile.resources.size === 1 && profile.producingHexCount === 1) return 0;
   if (profile.pipTotal >= LOW_HEX_PIP_THRESHOLD) return 0;
   return LOW_HEX_PENALTY;
 }
@@ -381,18 +399,20 @@ export function scoreFirstPlacement(
 ): { total: number; components: PlacementComponents } {
   const diversity = coverageBonus(profile.resources, weights);
   const pipBonus = pipQualityBonus(profile.pipTotal);
-  const redAnchorBonus = profile.hasRedNumber ? RED_ANCHOR_BONUS : 0;
+  const redAnchor = redAnchorBonus(profile);
   const desertPen = desertPenalty(profile);
   const lowHexPen = lowHexPenalty(profile);
+  const monoPen = monoResourcePenalty(profile);
 
   const components: PlacementComponents = {
     production: profile.total,
     diversity,
     harbor,
     pipBonus,
-    redAnchorBonus,
+    redAnchorBonus: redAnchor,
     desertPenalty: desertPen,
     lowHexPenalty: lowHexPen,
+    monoResourcePenalty: monoPen,
     buildingSynergy: 0,
     pairPipBonus: 0,
     complementScore: 0,
@@ -406,9 +426,10 @@ export function scoreFirstPlacement(
     diversity +
     harbor +
     pipBonus +
-    redAnchorBonus -
+    redAnchor -
     desertPen -
-    lowHexPen;
+    lowHexPen -
+    monoPen;
 
   return { total, components };
 }
@@ -437,6 +458,7 @@ export function scorePairPlacement(
     redAnchorBonus: 0,
     desertPenalty: desertPen,
     lowHexPenalty: 0,
+    monoResourcePenalty: 0,
     buildingSynergy: building,
     pairPipBonus: pairPip,
     complementScore: complement,

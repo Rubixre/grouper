@@ -374,6 +374,68 @@ console.log('\nSupply-based scarcity');
   );
 }
 
+console.log('\nMono-resource penalty');
+import { scoreFirstPlacement } from '../src/catan/placementModel.ts';
+{
+  const oreOnly6 = {
+    byResource: { ore: (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.ore },
+    byNumber: { 6: (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.ore },
+    rawByResource: { ore: 5 / 36 },
+    rawByNumber: { 6: 5 / 36 },
+    rawByResourceNumber: { ore: { 6: 5 / 36 } },
+    total: (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.ore,
+    pipTotal: 5 / 36,
+    producingHexCount: 1,
+    desertNeighbors: 1,
+    hasRedNumber: true,
+    resources: new Set(['ore']),
+    breakdown: [{ resource: 'ore' as const, value: (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.ore }],
+  };
+
+  const balanced = {
+    byResource: {
+      wood: (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.wood,
+      brick: (4 / 36) * DEFAULT_RESOURCE_WEIGHTS.brick,
+      sheep: (4 / 36) * DEFAULT_RESOURCE_WEIGHTS.sheep,
+    },
+    byNumber: {
+      6: (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.wood,
+      5: (4 / 36) * DEFAULT_RESOURCE_WEIGHTS.brick,
+      9: (4 / 36) * DEFAULT_RESOURCE_WEIGHTS.sheep,
+    },
+    rawByResource: { wood: 5 / 36, brick: 4 / 36, sheep: 4 / 36 },
+    rawByNumber: { 6: 5 / 36, 5: 4 / 36, 9: 4 / 36 },
+    rawByResourceNumber: {
+      wood: { 6: 5 / 36 },
+      brick: { 5: 4 / 36 },
+      sheep: { 9: 4 / 36 },
+    },
+    total:
+      (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.wood +
+      (4 / 36) * DEFAULT_RESOURCE_WEIGHTS.brick +
+      (4 / 36) * DEFAULT_RESOURCE_WEIGHTS.sheep,
+    pipTotal: 13 / 36,
+    producingHexCount: 3,
+    desertNeighbors: 0,
+    hasRedNumber: true,
+    resources: new Set(['wood', 'brick', 'sheep']),
+    breakdown: [],
+  };
+
+  const monoScore = scoreFirstPlacement(oreOnly6, DEFAULT_RESOURCE_WEIGHTS, 0);
+  const balancedScore = scoreFirstPlacement(balanced, DEFAULT_RESOURCE_WEIGHTS, 0);
+
+  assert(
+    (monoScore.components.monoResourcePenalty ?? 0) > 0,
+    'Single-resource placement gets mono-resource penalty'
+  );
+  assert(monoScore.components.redAnchorBonus === 0, 'Red anchor bonus requires resource diversity');
+  assert(
+    balancedScore.total > monoScore.total,
+    'Balanced 3-resource spot outranks lone ore-6 edge gamble'
+  );
+}
+
 console.log('\nPlacement scoring');
 import { getHarborsForVertex } from '../src/catan/harbors.ts';
 import { computeBoardEconomics } from '../src/catan/placementModel.ts';
