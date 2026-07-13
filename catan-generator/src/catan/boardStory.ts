@@ -545,44 +545,69 @@ function nameFromTraits(
   return { islandName: compoundPlaceName(stem, suffix), epithet };
 }
 
-/** Én kort, spennende intro — ikke en liste over trekk */
-function buildNarrative(islandName: string, primary: BoardTrait | undefined, seed: number): string {
-  if (!primary) {
-    return pick(
-      [
-        `I Catanøyriket venter ${islandName} — rolig på kartet, urolig under støvlene.`,
-        `${islandName} stiger frem i Catanøyriket som et blankt løfte: hvem tar den først?`,
-      ] as const,
-      seed,
-      2
-    );
-  }
+const INTRO_CLOSERS = [
+  'De som går i land først, skriver øyas neste kapittel.',
+  'Her avgjøres lykke ofte i de to første landsbyene.',
+  'Tåkeflor og tidevann skjuler mer enn kartet tør innrømme.',
+  'Den kloke ser ikke bare felt — men hvor stiene møtes.',
+  'Sjøfolk sier at øya husker den som tar den alvorlig.',
+] as const;
 
-  // Bruk én lore-linje som kjerne, men pakk den som intro med øynavn
-  const core = primary.lore.replace(/\s+/g, ' ').trim().replace(/\.$/, '');
-  return pick(
+/** Flytende intro (2–4 setninger) — ikke en punktliste over trekk */
+function buildNarrative(
+  islandName: string,
+  highlights: BoardTrait[],
+  seed: number
+): string {
+  const opener = pick(
     [
-      `Velkommen til ${islandName} i Catanøyriket. ${core}.`,
-      `I Catanøyriket ligger ${islandName}. ${core}.`,
-      `${islandName} — en øy i Catanøyriket. ${core}.`,
+      `I det vide Catanøyriket ligger ${islandName}, en øy med eget temperament og egne hemmeligheter.`,
+      `Velkommen til ${islandName} — en skjærgård i Catanøyriket der landskapet selv synes å velge sine herrer.`,
+      `Blant mange øyer i Catanøyriket reiser ${islandName} seg: kjent i hvisking, sjelden tegnet likt to ganger.`,
     ] as const,
     seed,
-    13
+    2
   );
+
+  const primary = highlights[0];
+  const secondary = highlights[1];
+
+  if (!primary) {
+    return `${opener} ${pick(INTRO_CLOSERS, seed, 19)}`;
+  }
+
+  const first = primary.lore.replace(/\s+/g, ' ').trim().replace(/\.$/, '');
+  const bridge = pick(
+    [
+      'Likevel er det mer som former øya:',
+      'Men det er ikke alt som kjennetegner stedet:',
+      'Under overflaten finnes ennå en annen signatur:',
+    ] as const,
+    seed,
+    7
+  );
+
+  const closer = pick(INTRO_CLOSERS, seed, 19);
+
+  if (secondary) {
+    const second = secondary.lore.replace(/\s+/g, ' ').trim().replace(/\.$/, '');
+    return `${opener} ${first}. ${bridge} ${second}. ${closer}`;
+  }
+
+  return `${opener} ${first}. ${closer}`;
 }
 
 export function createBoardStory(board: Board): BoardStory {
   const seed = fingerprint(board);
   const traits = analyzeTraits(board, seed);
   const highlights = traits.slice(0, 3);
-  const primary = highlights[0];
   const { islandName, epithet } = nameFromTraits(highlights, seed);
   const prettyName = capitalizeIslandName(islandName);
 
   return {
     islandName: prettyName,
     epithet,
-    narrative: buildNarrative(prettyName, primary, seed),
+    narrative: buildNarrative(prettyName, highlights, seed),
     stats: buildStats(board),
     highlights,
   };
