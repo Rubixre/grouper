@@ -478,11 +478,11 @@ if (board) {
   assert(rec.suggestedPaths.length > 0, 'Strategy recommendation has suggested paths');
 
   const valid = getValidVertices(sim.placements);
-  let bestPipVertex = valid[0];
+  let bestPipVertex = valid[0]!;
   let bestPip = -1;
   for (const vertexId of valid) {
     const pip = vertexPipTotal(vertexId, board);
-    if (pip > bestPip) {
+    if (pip > bestPip || (pip === bestPip && vertexId < bestPipVertex)) {
       bestPip = pip;
       bestPipVertex = vertexId;
     }
@@ -820,6 +820,60 @@ if (board) {
     Math.abs(startingSum - (p0.secondSettlement?.totalPerRoll ?? 0)) < 1e-9,
     'Starting hand matches second settlement production'
   );
+}
+
+console.log('\nSession persistence');
+import {
+  clearSession,
+  loadSession,
+  saveSession,
+} from '../src/catan/sessionPersistence.ts';
+{
+  const store = new Map<string, string>();
+  const memoryStorage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      store.set(key, value);
+    },
+    removeItem: (key: string) => {
+      store.delete(key);
+    },
+  };
+  (globalThis as { localStorage: typeof memoryStorage }).localStorage = memoryStorage;
+
+  clearSession();
+  assert(loadSession() === null, 'Empty storage yields no session');
+
+  if (board) {
+    const config = createSimulationConfig(4, 0);
+    let sim = createSimulation(board, config);
+    const firstOpts = getOptionsForCurrentTurn(sim);
+    sim = placeSettlement(sim, firstOpts[0].vertexId);
+
+    saveSession({
+      version: 1,
+      settings: DEFAULT_SETTINGS,
+      boardSize: 'base',
+      board,
+      playerCount: 4,
+      simulationConfig: config,
+      strategyProfile: 'general',
+      simulation: sim,
+      selectedVertex: null,
+      mode: 'simulate',
+    });
+
+    const restored = loadSession();
+    assert(restored !== null, 'Saved session can be loaded');
+    assert(restored!.board.hexes.length === board.hexes.length, 'Restored board hex count');
+    assert(restored!.mode === 'simulate', 'Restored simulate mode');
+    assert(restored!.simulation?.placements.length === 1, 'Restored placement progress');
+    assert(
+      restored!.simulation?.placements[0]?.vertexId === firstOpts[0].vertexId,
+      'Restored same placed vertex'
+    );
+    assert(restored!.boardStory.islandName.length > 0, 'Restored session rebuilds board story');
+  }
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
