@@ -250,7 +250,7 @@ export function SettlementSimulator({
             {(selectedOption.expectedPairScore !== undefined ||
               (selectedPath && isFirstHuman && isYourTurn)) && (
               <p className="second-preview-hint muted small">
-                Forventet landsby nr. 2 (motspillere: høy pip): parscore{' '}
+                Forventet landsby nr. 2 (motspillere: pip + mangfold): parscore{' '}
                 <strong>
                   {(
                     selectedOption.expectedPairScore ?? selectedPath?.pairScore ?? 0

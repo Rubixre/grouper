@@ -40,7 +40,7 @@ export interface StrategyRecommendation {
   suggestedPaths: FirstSettlementPath[];
 }
 
-/** Simuler motspillere (høyest pip) til det er din andre landsby-tur */
+/** Simuler motspillere (pip + ressursmangfold) til det er din andre landsby-tur */
 export function simulateToHumanSecondTurn(
   board: Board,
   placed: PlacedSettlement[],
@@ -112,7 +112,7 @@ const DEFAULT_LOOKAHEAD_CANDIDATES = 12;
 
 /**
  * Rangér første-landsbyer etter forventet parscore:
- * toppskårere lokalt → simuler greedy-motspillere → beste landsby #2.
+ * toppskårere lokalt → simuler motspillere (pip + mangfold) → beste landsby #2.
  */
 export function rankFirstSettlementsWithLookahead(
   board: Board,
@@ -218,7 +218,7 @@ export function recommendStrategy(
 
   let reason = 'Ingen gyldige parplasseringer funnet – bruker balansert profil.';
   if (winnerPath) {
-    reason = `${recommendedProfile.label} gir best forventet parscore (${winnerPath.pairScore.toFixed(2)}) når motspillere velger høy produksjon (pip) og du følger med landsby nr. 2 på ${describeSecondPreview(board, winnerPath, recommendedProfile.weights)}.`;
+    reason = `${recommendedProfile.label} gir best forventet parscore (${winnerPath.pairScore.toFixed(2)}) når motspillere velger høy produksjon med litt ressursmangfold, og du følger med landsby nr. 2 på ${describeSecondPreview(board, winnerPath, recommendedProfile.weights)}.`;
   }
 
   const suggestedPaths: FirstSettlementPath[] = [];
