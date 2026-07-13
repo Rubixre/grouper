@@ -270,6 +270,55 @@ assert(
   'Full resource coverage scores higher'
 );
 
+console.log('\nSupply-based scarcity');
+{
+  const makeLand = (
+    resource: 'wood' | 'brick' | 'sheep' | 'wheat' | 'ore',
+    number: number,
+    q: number,
+    r: number
+  ) => ({
+    coord: { q, r },
+    kind: 'land' as const,
+    resource,
+    number,
+  });
+
+  const scarcityBoard = {
+    boardSize: 'base' as const,
+    hexes: [
+      makeLand('brick', 6, 0, 0),
+      makeLand('brick', 8, 1, 0),
+      makeLand('brick', 5, 2, 0),
+      makeLand('sheep', 2, 0, 1),
+      makeLand('sheep', 3, 1, 1),
+      makeLand('sheep', 11, 2, 1),
+      makeLand('sheep', 12, 3, 1),
+    ],
+    harbors: [],
+    coastSlots: [],
+    edgeRotation: 0,
+  };
+
+  const econ = computeBoardEconomics(scarcityBoard);
+  assert(
+    econ.hexCountByResource.brick < econ.hexCountByResource.sheep,
+    'Brick has fewer tiles in scarcity fixture'
+  );
+  assert(
+    econ.supplyByResource.brick > econ.supplyByResource.sheep,
+    'Brick has higher expected supply despite fewer tiles'
+  );
+  assert(
+    econ.scarcityMultiplier.sheep > econ.scarcityMultiplier.brick,
+    'Scarcity multiplier follows supply, not tile count alone'
+  );
+  assert(
+    econ.dynamicWeights.sheep > econ.dynamicWeights.brick,
+    'Low-supply resource gets higher dynamic weight'
+  );
+}
+
 console.log('\nPlacement scoring');
 import { getHarborsForVertex } from '../src/catan/harbors.ts';
 import { computeBoardEconomics } from '../src/catan/placementModel.ts';
@@ -337,7 +386,7 @@ if (board) {
   assert(
     computeBoardEconomics(board).dynamicWeights.brick >
       DEFAULT_RESOURCE_WEIGHTS.brick,
-    'Scarce brick gets higher dynamic weight on standard board'
+    'Low-supply brick gets higher dynamic weight on standard board'
   );
 
   const firstId = state.placements.find((p) => p.player === 0)!.vertexId;

@@ -37,6 +37,8 @@ export interface ProductionProfile {
 
 export interface BoardEconomics {
   hexCountByResource: Record<ProdResource, number>;
+  /** Forventet terningstreff per ressurs på hele brettet (sum av sannsynligheter) */
+  supplyByResource: Record<ProdResource, number>;
   scarcityMultiplier: ResourceWeights;
   dynamicWeights: ResourceWeights;
 }
@@ -107,22 +109,27 @@ export function computeBoardEconomics(
   baseWeights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS
 ): BoardEconomics {
   const hexCountByResource = emptyResourceRecord();
+  const supplyByResource = emptyResourceRecord();
+
   for (const tile of board.hexes) {
     if (tile.kind !== 'land' || !tile.resource || tile.resource === 'desert') continue;
     hexCountByResource[tile.resource]++;
+    if (tile.number != null) {
+      supplyByResource[tile.resource] += NUMBER_PROB[tile.number] ?? 0;
+    }
   }
 
-  const counts = Object.values(hexCountByResource).filter((c) => c > 0);
-  const avgCount = counts.reduce((a, b) => a + b, 0) / counts.length;
+  const supplies = Object.values(supplyByResource).filter((s) => s > 0);
+  const avgSupply = supplies.reduce((a, b) => a + b, 0) / supplies.length;
 
   const scarcityMultiplier = { ...baseWeights };
   for (const resource of PROD_RESOURCES) {
-    const count = hexCountByResource[resource] || 1;
-    scarcityMultiplier[resource] = avgCount / count;
+    const supply = supplyByResource[resource];
+    scarcityMultiplier[resource] = supply > 0 ? avgSupply / supply : 1;
   }
 
   const dynamicWeights = multiplyWeights(baseWeights, scarcityMultiplier);
-  return { hexCountByResource, scarcityMultiplier, dynamicWeights };
+  return { hexCountByResource, supplyByResource, scarcityMultiplier, dynamicWeights };
 }
 
 function capHarborBonus(harbor: number, production: number): number {
