@@ -336,6 +336,26 @@ console.log('\nSupply-based scarcity');
     econ.dynamicWeights.sheep > econ.dynamicWeights.brick,
     'Low-access resource gets higher dynamic weight'
   );
+  assert(
+    econ.scarcityMultiplier.sheep <= 1.29,
+    'Scarcity factor is capped near neutral'
+  );
+  assert(
+    econ.scarcityMultiplier.brick >= 0.79,
+    'Abundant resource scarcity factor has a floor near neutral'
+  );
+
+  const roadEcon = computeBoardEconomics(scarcityBoard, WEIGHTS_LONGEST_ROAD_ONLY);
+  const armyEcon = computeBoardEconomics(scarcityBoard, WEIGHTS_LARGEST_ARMY_ONLY);
+  assert(
+    roadEcon.strategyWeights.brick === WEIGHTS_LONGEST_ROAD_ONLY.brick,
+    'Strategy weights are kept separate from scarcity tuning'
+  );
+  assert(
+    roadEcon.dynamicWeights.wood + roadEcon.dynamicWeights.brick >
+      armyEcon.dynamicWeights.wood + armyEcon.dynamicWeights.brick,
+    'Strategy profile still drives resource priorities more than scarcity'
+  );
 
   const fewWoodBoard = {
     boardSize: 'base' as const,

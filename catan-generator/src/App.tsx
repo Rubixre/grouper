@@ -398,8 +398,8 @@ function App() {
                 <p className="muted small strategy-hint">{activeStrategy.description}</p>
 
                 <p className="muted small scoring-hint">
-                  Poeng: vektet produksjon + dekning + pip, justert for knapphet på
-                  brettet. Ved første landsby foreslås strategi ut fra parpotensial.
+                  Poeng: vektet produksjon (lett justert for knapphet) + dekning og pip etter
+                  valgt strategi. Ved første landsby foreslås strategi ut fra parpotensial.
                 </p>
 
                 {!simActive ? (

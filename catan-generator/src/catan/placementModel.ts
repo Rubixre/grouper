@@ -42,7 +42,11 @@ export interface BoardEconomics {
   supplyByResource: Record<ProdResource, number>;
   /** Vektet sum av pip fra gode hjørner som berører ressursen */
   placementOpportunityByResource: Record<ProdResource, number>;
+  /** Valgt strategiprofil (ujustert for knapphet) */
+  strategyWeights: ResourceWeights;
+  /** Dempet knapphetsfaktor per ressurs (1 = nøytral) */
   scarcityMultiplier: ResourceWeights;
+  /** Strategivekter × dempet knapphet – brukes kun for produksjonspoeng */
   dynamicWeights: ResourceWeights;
 }
 
@@ -90,6 +94,15 @@ const HARBOR_RATE_GENERIC = 0.024;
 const HARBOR_RATE_RESOURCE_MATCH = 0.04;
 const HARBOR_RATE_RESOURCE_OTHER = 0.028;
 const GENERIC_HARBOR_DIVERSITY_BONUS = 0.015;
+
+/**
+ * Hvor mye brettets knapphet justerer ressursvekter (0 = kun strategi, 1 = full ratio).
+ * Lav verdi holder strategiprofilen som hovedstyringsparameter.
+ */
+const SCARCITY_INFLUENCE = 0.28;
+/** Grenser for rå tilgjengelighetsratio før demping */
+const SCARCITY_RATIO_MIN = 0.8;
+const SCARCITY_RATIO_MAX = 1.28;
 
 /** Minst ett tall ≥ 4 på ressurs-hex ved hjørnet for å telle som god plassering */
 const GOOD_PLACEMENT_PIP = NUMBER_PROB[4]!;
@@ -169,6 +182,12 @@ function multiplyWeights(base: ResourceWeights, mult: ResourceWeights): Resource
   };
 }
 
+/** Demp rå knapphetsratio slik at strategiprofil fortsatt styrer valg */
+function dampScarcityFactor(rawRatio: number): number {
+  const clamped = Math.min(SCARCITY_RATIO_MAX, Math.max(SCARCITY_RATIO_MIN, rawRatio));
+  return 1 + (clamped - 1) * SCARCITY_INFLUENCE;
+}
+
 export function computeBoardEconomics(
   board: Board,
   baseWeights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS
@@ -198,10 +217,11 @@ export function computeBoardEconomics(
   const avgAvailability =
     availabilities.length > 0 ? availabilities.reduce((a, b) => a + b, 0) / availabilities.length : 1;
 
-  const scarcityMultiplier = { ...baseWeights };
+  const scarcityMultiplier = emptyResourceRecord();
   for (const resource of PROD_RESOURCES) {
     const availability = availabilityByResource[resource];
-    scarcityMultiplier[resource] = availability > 0 ? avgAvailability / availability : 1;
+    const rawRatio = availability > 0 ? avgAvailability / availability : 1;
+    scarcityMultiplier[resource] = dampScarcityFactor(rawRatio);
   }
 
   const dynamicWeights = multiplyWeights(baseWeights, scarcityMultiplier);
@@ -209,6 +229,7 @@ export function computeBoardEconomics(
     hexCountByResource,
     supplyByResource,
     placementOpportunityByResource,
+    strategyWeights: baseWeights,
     scarcityMultiplier,
     dynamicWeights,
   };

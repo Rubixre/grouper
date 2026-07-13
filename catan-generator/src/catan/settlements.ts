@@ -257,7 +257,7 @@ export function scoreVertex(
   const profile = buildProductionProfile(vertexId, board, econ.dynamicWeights);
   const harbors = getHarborsForVertex(vertexId, board.harbors);
   const harbor = harborBonusForProfile(profile, harbors);
-  const scored = scoreFirstPlacement(profile, econ.dynamicWeights, harbor);
+  const scored = scoreFirstPlacement(profile, econ.strategyWeights, harbor);
   return scoreToResult(vertexId, 'first', profile, scored);
 }
 
@@ -281,7 +281,7 @@ export function scoreSecondSettlement(
       combinedResources.size
     );
 
-  const scored = scorePairPlacement(first, second, econ.dynamicWeights, harbor);
+  const scored = scorePairPlacement(first, second, econ.strategyWeights, harbor);
   return scoreToResult(secondVertexId, 'second', second, scored, {
     firstProduction: first.total,
     secondProduction: second.total,
