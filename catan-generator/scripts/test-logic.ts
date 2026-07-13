@@ -519,6 +519,9 @@ import {
   simulateToHumanSecondTurn,
   rankFirstSettlementsWithLookahead,
   evaluateFirstSettlementPath,
+  blendLocalAndPairScore,
+  PAIR_LOOKAHEAD_WEIGHT,
+  pairLookaheadWeight,
 } from '../src/catan/strategyAdvisor.ts';
 import { getValidVertices, pickGreedyOpponentVertex, vertexPipTotal } from '../src/catan/settlements.ts';
 if (board) {
@@ -555,6 +558,34 @@ if (board) {
     'Simulation stops after human first settlement only'
   );
 
+  assert(PAIR_LOOKAHEAD_WEIGHT === 0.3, 'Default pair lookahead weight is 30% (4 players)');
+  assert(pairLookaheadWeight(2) === 0.5, '2 players: 50% pair weight');
+  assert(pairLookaheadWeight(3) === 0.4, '3 players: 40% pair weight');
+  assert(pairLookaheadWeight(4) === 0.3, '4 players: 30% pair weight');
+  assert(pairLookaheadWeight(5) === 0.2, '5 players: 20% pair weight');
+  assert(pairLookaheadWeight(6) === 0.15, '6 players: 15% pair weight');
+  assert(
+    pairLookaheadWeight(2) > pairLookaheadWeight(6),
+    'Fewer players means stronger pair lookahead weight'
+  );
+  assert(
+    Math.abs(blendLocalAndPairScore(10, 20, 10, 20, 0.3) - 10) < 1e-9,
+    'Blend equals local when pair is at the mean'
+  );
+  assert(
+    blendLocalAndPairScore(10, 30, 10, 20, 0.3) > 10,
+    'Above-mean pair still lifts blended score modestly'
+  );
+  assert(
+    blendLocalAndPairScore(10, 30, 10, 20, 0.3) < 10 + 0.5 * (15 - 10),
+    'Pair lift is weaker than a 50/50 blend would be'
+  );
+  assert(
+    blendLocalAndPairScore(10, 30, 10, 20, pairLookaheadWeight(2)) >
+      blendLocalAndPairScore(10, 30, 10, 20, pairLookaheadWeight(6)),
+    'Same pair delta lifts score more with fewer players'
+  );
+
   const lookaheadOpts = rankFirstSettlementsWithLookahead(
     board,
     sim.placements,
@@ -572,6 +603,10 @@ if (board) {
     lookaheadOpts[0]!.expectedSecondVertexId !== undefined,
     'Top first settlements include expected second vertex'
   );
+  assert(
+    lookaheadOpts[0]!.pairLookaheadWeight === pairLookaheadWeight(4),
+    'Lookahead options store player-count pair weight'
+  );
   const topPath = evaluateFirstSettlementPath(
     board,
     sim.placements,
@@ -583,8 +618,34 @@ if (board) {
   assert(topPath !== null, 'Lookahead top option has a valid path');
   assert(
     Math.abs((lookaheadOpts[0]!.expectedPairScore ?? 0) - (topPath?.pairScore ?? -1)) < 1e-9,
-    'Lookahead total matches evaluateFirstSettlementPath pair score'
+    'Lookahead expectedPairScore matches evaluateFirstSettlementPath'
   );
+
+  const blendedCandidates = lookaheadOpts
+    .filter((o) => o.expectedPairScore !== undefined && o.immediateScore !== undefined)
+    .slice(0, 8);
+  if (blendedCandidates.length >= 2) {
+    const meanI =
+      blendedCandidates.reduce((s, o) => s + (o.immediateScore ?? 0), 0) /
+      blendedCandidates.length;
+    const meanP =
+      blendedCandidates.reduce((s, o) => s + (o.expectedPairScore ?? 0), 0) /
+      blendedCandidates.length;
+    const w = pairLookaheadWeight(4);
+    for (const opt of blendedCandidates) {
+      const expected = blendLocalAndPairScore(
+        opt.immediateScore!,
+        opt.expectedPairScore!,
+        meanI,
+        meanP,
+        w
+      );
+      assert(
+        Math.abs(opt.total - expected) < 1e-9,
+        'Lookahead total is player-weighted blend of local and scaled pair'
+      );
+    }
+  }
 
   const turnOpts = getOptionsForCurrentTurn(sim);
   assert(

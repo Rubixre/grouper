@@ -6,7 +6,10 @@ import type { SimulationState } from '../catan/simulator';
 import { currentPlayer, isHumanTurn } from '../catan/simulator';
 import type { StrategyProfile, StrategyProfileId } from '../catan/resourceWeights';
 import type { StrategyRecommendation } from '../catan/strategyAdvisor';
-import { isHumanFirstSettlementTurn } from '../catan/strategyAdvisor';
+import {
+  isHumanFirstSettlementTurn,
+  PAIR_LOOKAHEAD_WEIGHT,
+} from '../catan/strategyAdvisor';
 import { getPlayerConfig } from '../catan/playerConfig';
 import { RESOURCE_LABELS } from '../catan/playerStats';
 import type { ProdResource } from '../catan/playerStats';
@@ -45,7 +48,7 @@ function optionMeta(
   }
   if (opt.expectedPairScore !== undefined) {
     const local = opt.immediateScore ?? opt.production;
-    return `Forventet par ${opt.expectedPairScore.toFixed(2)} · Spot ${local.toFixed(2)}`;
+    return `Blend ${opt.total.toFixed(2)} · Spot ${local.toFixed(2)} · Par ${opt.expectedPairScore.toFixed(2)}`;
   }
   const pair = path ? ` · Par ${path.pairScore.toFixed(2)}` : '';
   return `Prod ${opt.production.toFixed(2)} · Dekk ${opt.diversity.toFixed(2)}${pair}`;
@@ -243,14 +246,18 @@ export function SettlementSimulator({
             <summary>
               Poengforklaring · #{selectedRank} (
               {selectedOption.expectedPairScore !== undefined
-                ? `par ${selectedOption.expectedPairScore.toFixed(2)}`
+                ? `blend ${selectedOption.total.toFixed(2)}`
                 : selectedOption.total.toFixed(2)}
               )
             </summary>
             {(selectedOption.expectedPairScore !== undefined ||
               (selectedPath && isFirstHuman && isYourTurn)) && (
               <p className="second-preview-hint muted small">
-                Forventet landsby nr. 2 (motspillere: høy pip): parscore{' '}
+                Lookahead (
+                {Math.round(
+                  (selectedOption.pairLookaheadWeight ?? PAIR_LOOKAHEAD_WEIGHT) * 100
+                )}{' '}
+                % vekt, usikker · {state.playerCount} spillere): parscore{' '}
                 <strong>
                   {(
                     selectedOption.expectedPairScore ?? selectedPath?.pairScore ?? 0
@@ -258,7 +265,16 @@ export function SettlementSimulator({
                 </strong>
                 {secondPreviewVertex && ' — stiplet ring på brettet'}
                 {selectedOption.immediateScore !== undefined && (
-                  <> · lokal spot {selectedOption.immediateScore.toFixed(2)}</>
+                  <>
+                    {' '}
+                    · lokal {selectedOption.immediateScore.toFixed(2)} (
+                    {Math.round(
+                      (1 -
+                        (selectedOption.pairLookaheadWeight ?? PAIR_LOOKAHEAD_WEIGHT)) *
+                        100
+                    )}{' '}
+                    %)
+                  </>
                 )}
               </p>
             )}
