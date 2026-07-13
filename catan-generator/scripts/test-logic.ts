@@ -291,9 +291,9 @@ console.log('\nSupply-based scarcity');
       makeLand('brick', 8, 1, 0),
       makeLand('brick', 5, 2, 0),
       makeLand('sheep', 2, 0, 1),
-      makeLand('sheep', 3, 1, 1),
-      makeLand('sheep', 11, 2, 1),
-      makeLand('sheep', 12, 3, 1),
+      makeLand('sheep', 12, 1, 1),
+      makeLand('sheep', 3, 2, 1),
+      makeLand('sheep', 11, 3, 1),
     ],
     harbors: [],
     coastSlots: [],
@@ -310,12 +310,67 @@ console.log('\nSupply-based scarcity');
     'Brick has higher expected supply despite fewer tiles'
   );
   assert(
+    econ.placementOpportunityByResource.brick > 0,
+    'Hot brick tiles create good placement opportunities'
+  );
+  assert(
+    econ.placementOpportunityByResource.sheep < econ.placementOpportunityByResource.brick,
+    'Cold sheep tiles create far fewer good placement opportunities than hot brick'
+  );
+  assert(
     econ.scarcityMultiplier.sheep > econ.scarcityMultiplier.brick,
-    'Scarcity multiplier follows supply, not tile count alone'
+    'Scarcity multiplier follows supply and placement access'
   );
   assert(
     econ.dynamicWeights.sheep > econ.dynamicWeights.brick,
-    'Low-supply resource gets higher dynamic weight'
+    'Low-access resource gets higher dynamic weight'
+  );
+
+  const fewWoodBoard = {
+    boardSize: 'base' as const,
+    hexes: [
+      makeLand('wood', 6, 0, 0),
+      makeLand('wood', 5, 2, 0),
+      makeLand('wood', 8, 4, 0),
+      makeLand('brick', 9, 0, 2),
+      makeLand('brick', 10, 2, 2),
+      makeLand('brick', 4, 4, 2),
+      makeLand('brick', 9, 6, 2),
+    ],
+    harbors: [],
+    coastSlots: [],
+    edgeRotation: 0,
+  };
+
+  const manyWoodBoard = {
+    boardSize: 'base' as const,
+    hexes: [
+      makeLand('wood', 4, 0, 0),
+      makeLand('wood', 5, 1, 0),
+      makeLand('wood', 9, 2, 0),
+      makeLand('wood', 10, 3, 0),
+      makeLand('brick', 10, 0, 2),
+      makeLand('brick', 4, 2, 2),
+      makeLand('brick', 3, 4, 2),
+    ],
+    harbors: [],
+    coastSlots: [],
+    edgeRotation: 0,
+  };
+
+  const fewWood = computeBoardEconomics(fewWoodBoard);
+  const manyWood = computeBoardEconomics(manyWoodBoard);
+  assert(
+    Math.abs(fewWood.supplyByResource.wood - manyWood.supplyByResource.wood) < 0.02,
+    'Similar wood supply in few-tile vs many-tile fixture'
+  );
+  assert(
+    fewWood.placementOpportunityByResource.wood < manyWood.placementOpportunityByResource.wood,
+    'Fewer wood tiles means fewer good placement opportunities'
+  );
+  assert(
+    fewWood.scarcityMultiplier.wood > manyWood.scarcityMultiplier.wood,
+    'Fewer placement opportunities increases wood scarcity'
   );
 }
 

@@ -1,6 +1,7 @@
-import type { Board, HarborType, ResourceType, ResourceWeights } from './types';
+import type { Board, HarborType, HexCoord, HexTile, ResourceType, ResourceWeights } from './types';
 import { DEFAULT_RESOURCE_WEIGHTS } from './types';
 import { coverageBonus } from './resourceWeights';
+import { coordKey, hexNeighbor } from './hex';
 
 /** Terningssannsynlighet per tall (to terninger) */
 export const NUMBER_PROB: Record<number, number> = {
@@ -39,6 +40,8 @@ export interface BoardEconomics {
   hexCountByResource: Record<ProdResource, number>;
   /** Forventet terningstreff per ressurs på hele brettet (sum av sannsynligheter) */
   supplyByResource: Record<ProdResource, number>;
+  /** Vektet sum av pip fra gode hjørner som berører ressursen */
+  placementOpportunityByResource: Record<ProdResource, number>;
   scarcityMultiplier: ResourceWeights;
   dynamicWeights: ResourceWeights;
 }
@@ -85,6 +88,65 @@ const HARBOR_RATE_RESOURCE_MATCH = 0.04;
 const HARBOR_RATE_RESOURCE_OTHER = 0.028;
 const GENERIC_HARBOR_DIVERSITY_BONUS = 0.015;
 
+/** Minst ett tall ≥ 4 på ressurs-hex ved hjørnet for å telle som god plassering */
+const GOOD_PLACEMENT_PIP = NUMBER_PROB[4]!;
+
+function vertexKey(hexes: HexCoord[]): string {
+  return hexes.map(coordKey).sort().join('|');
+}
+
+function buildTileMap(board: Board): Map<string, HexTile> {
+  const map = new Map<string, HexTile>();
+  for (const tile of board.hexes) {
+    map.set(coordKey(tile.coord), tile);
+  }
+  return map;
+}
+
+function computePlacementOpportunityByResource(
+  board: Board,
+  tileByCoord: Map<string, HexTile>
+): Record<ProdResource, number> {
+  const boardSet = new Set(board.hexes.map((h) => coordKey(h.coord)));
+  const placementOpportunity = emptyResourceRecord();
+  const seenVertices = new Set<string>();
+
+  for (const tile of board.hexes) {
+    if (tile.kind !== 'land') continue;
+    const coord = tile.coord;
+
+    for (let corner = 0; corner < 6; corner++) {
+      const participants: HexCoord[] = [coord];
+      const n1 = hexNeighbor(coord, (corner + 5) % 6);
+      const n2 = hexNeighbor(coord, corner);
+      if (boardSet.has(coordKey(n1))) participants.push(n1);
+      if (boardSet.has(coordKey(n2))) participants.push(n2);
+
+      const key = vertexKey(participants);
+      if (seenVertices.has(key)) continue;
+      seenVertices.add(key);
+
+      const pipByResource = emptyResourceRecord();
+      for (const hexCoord of participants) {
+        const hex = tileByCoord.get(coordKey(hexCoord));
+        if (!hex || hex.kind !== 'land' || !hex.resource || hex.resource === 'desert' || hex.number == null) {
+          continue;
+        }
+        pipByResource[hex.resource] += NUMBER_PROB[hex.number] ?? 0;
+      }
+
+      for (const resource of PROD_RESOURCES) {
+        const pip = pipByResource[resource];
+        if (pip >= GOOD_PLACEMENT_PIP) {
+          placementOpportunity[resource] += pip;
+        }
+      }
+    }
+  }
+
+  return placementOpportunity;
+}
+
 const COMPLEMENT_PAIRS: [ProdResource, ProdResource][] = [
   ['wood', 'brick'],
   ['ore', 'wheat'],
@@ -108,6 +170,7 @@ export function computeBoardEconomics(
   board: Board,
   baseWeights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS
 ): BoardEconomics {
+  const tileByCoord = buildTileMap(board);
   const hexCountByResource = emptyResourceRecord();
   const supplyByResource = emptyResourceRecord();
 
@@ -119,17 +182,33 @@ export function computeBoardEconomics(
     }
   }
 
-  const supplies = Object.values(supplyByResource).filter((s) => s > 0);
-  const avgSupply = supplies.reduce((a, b) => a + b, 0) / supplies.length;
+  const placementOpportunityByResource = computePlacementOpportunityByResource(board, tileByCoord);
+
+  const availabilityByResource = emptyResourceRecord();
+  for (const resource of PROD_RESOURCES) {
+    const supply = supplyByResource[resource];
+    const opportunity = placementOpportunityByResource[resource];
+    availabilityByResource[resource] = supply > 0 && opportunity > 0 ? supply * opportunity : 0;
+  }
+
+  const availabilities = Object.values(availabilityByResource).filter((a) => a > 0);
+  const avgAvailability =
+    availabilities.length > 0 ? availabilities.reduce((a, b) => a + b, 0) / availabilities.length : 1;
 
   const scarcityMultiplier = { ...baseWeights };
   for (const resource of PROD_RESOURCES) {
-    const supply = supplyByResource[resource];
-    scarcityMultiplier[resource] = supply > 0 ? avgSupply / supply : 1;
+    const availability = availabilityByResource[resource];
+    scarcityMultiplier[resource] = availability > 0 ? avgAvailability / availability : 1;
   }
 
   const dynamicWeights = multiplyWeights(baseWeights, scarcityMultiplier);
-  return { hexCountByResource, supplyByResource, scarcityMultiplier, dynamicWeights };
+  return {
+    hexCountByResource,
+    supplyByResource,
+    placementOpportunityByResource,
+    scarcityMultiplier,
+    dynamicWeights,
+  };
 }
 
 function capHarborBonus(harbor: number, production: number): number {
