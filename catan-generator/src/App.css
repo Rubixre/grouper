@@ -445,6 +445,10 @@ body {
   margin: 0 0 0.75rem;
 }
 
+.strategy-hint {
+  margin: 0 0 0.75rem;
+}
+
 .draft-order {
   margin: 0 0 0.75rem;
   word-break: break-word;
@@ -1267,6 +1271,10 @@ body {
 
 .score-breakdown-formula {
   margin: 0 0 0.5rem;
+}
+
+.score-breakdown-profile {
+  margin: 0 0 0.35rem;
 }
 
 .score-hex-table {

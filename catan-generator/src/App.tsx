@@ -5,6 +5,12 @@ import { BOARD_SIZE_CONFIG } from './catan/boardLayout';
 import { generateBoard } from './catan/generator';
 import { getBoardMapping } from './catan/mapping';
 import {
+  getStrategyProfile,
+  getStrategyWeights,
+  STRATEGY_PROFILES,
+  type StrategyProfileId,
+} from './catan/resourceWeights';
+import {
   createSimulation,
   getOptionsForCurrentTurn,
   getPlacementOrder,
@@ -30,6 +36,7 @@ function App() {
   const [board, setBoard] = useState<Board | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [playerCount, setPlayerCount] = useState<PlayerCount>(4);
+  const [strategyProfile, setStrategyProfile] = useState<StrategyProfileId>('general');
   const [simulation, setSimulation] = useState<SimulationState | null>(null);
   const [selectedVertex, setSelectedVertex] = useState<string | null>(null);
   const [mode, setMode] = useState<'view' | 'simulate'>('view');
@@ -39,6 +46,8 @@ function App() {
   const [highlightCorner, setHighlightCorner] = useState<string | null>(null);
 
   const boardMapping = useMemo(() => getBoardMapping(boardSize), [boardSize]);
+  const activeStrategy = useMemo(() => getStrategyProfile(strategyProfile), [strategyProfile]);
+  const strategyWeights = useMemo(() => getStrategyWeights(strategyProfile), [strategyProfile]);
   const simActive = mode === 'simulate' && simulation !== null;
 
   const handleBoardSizeChange = (size: BoardSize) => {
@@ -81,7 +90,7 @@ function App() {
   };
 
   const rankedOptions =
-    simulation && simActive ? getOptionsForCurrentTurn(simulation) : [];
+    simulation && simActive ? getOptionsForCurrentTurn(simulation, strategyWeights) : [];
 
   const handleConfirm = () => {
     if (!simulation || !selectedVertex) return;
@@ -231,14 +240,31 @@ function App() {
                   </select>
                 </label>
 
+                <label className="field">
+                  Strategiprofil
+                  <select
+                    value={strategyProfile}
+                    onChange={(e) =>
+                      setStrategyProfile(e.target.value as StrategyProfileId)
+                    }
+                  >
+                    {STRATEGY_PROFILES.map((profile) => (
+                      <option key={profile.id} value={profile.id}>
+                        {profile.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <p className="muted small strategy-hint">{activeStrategy.description}</p>
+
                 <p className="muted small draft-order">
                   Draft: {formatDraftOrder(playerCount)}
                 </p>
 
                 <p className="muted small scoring-hint">
-                  Poeng: vektet produksjon + ressursdekning. Landsby nr. 2
-                  vurderes også mot nr. 1 (utfylling/overlapp). Havner teller
-                  lite.
+                  Poeng: vektet produksjon + dekning + pip, justert for knapphet på
+                  brettet. Landsby nr. 2 vurderes som par med nr. 1.
                 </p>
 
                 {!simActive ? (
@@ -278,6 +304,8 @@ function App() {
                   board={board}
                   options={rankedOptions}
                   selectedVertex={selectedVertex}
+                  strategyProfile={activeStrategy}
+                  strategyWeights={strategyWeights}
                   onSelectVertex={setSelectedVertex}
                   onConfirm={handleConfirm}
                 />

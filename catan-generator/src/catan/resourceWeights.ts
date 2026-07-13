@@ -56,6 +56,64 @@ export const WEIGHTS_GENERAL: ResourceWeights = averageWeights([
   WEIGHTS_NEITHER,
 ]);
 
+export type StrategyProfileId =
+  | 'general'
+  | 'longestRoad'
+  | 'largestArmy'
+  | 'both'
+  | 'neither';
+
+export interface StrategyProfile {
+  id: StrategyProfileId;
+  label: string;
+  description: string;
+  weights: ResourceWeights;
+}
+
+/** Valgbare strategiprofiler for plasseringsmodellen (PSM) */
+export const STRATEGY_PROFILES: StrategyProfile[] = [
+  {
+    id: 'general',
+    label: 'Balansert (standard)',
+    description:
+      'Gjennomsnitt av fire seiersveier – god default når du ikke jager én bonus.',
+    weights: WEIGHTS_GENERAL,
+  },
+  {
+    id: 'longestRoad',
+    label: 'Lengste vei',
+    description: 'Høyere vekt på tømmer og tegl for veibygging.',
+    weights: WEIGHTS_LONGEST_ROAD_ONLY,
+  },
+  {
+    id: 'largestArmy',
+    label: 'Største hær',
+    description: 'Høyere vekt på malm, korn og ull for byer og utviklingskort.',
+    weights: WEIGHTS_LARGEST_ARMY_ONLY,
+  },
+  {
+    id: 'both',
+    label: 'Begge bonusene',
+    description: 'Balansert mot både lengste vei og største hær.',
+    weights: WEIGHTS_BOTH,
+  },
+  {
+    id: 'neither',
+    label: 'Kun seierspoeng',
+    description: 'Fokus på byer – lite vekt på infrastruktur-ressurser.',
+    weights: WEIGHTS_NEITHER,
+  },
+];
+
+export function getStrategyWeights(profileId: StrategyProfileId): ResourceWeights {
+  const profile = STRATEGY_PROFILES.find((p) => p.id === profileId);
+  return profile?.weights ?? WEIGHTS_GENERAL;
+}
+
+export function getStrategyProfile(profileId: StrategyProfileId): StrategyProfile {
+  return STRATEGY_PROFILES.find((p) => p.id === profileId) ?? STRATEGY_PROFILES[0];
+}
+
 const PROD_RESOURCES: (keyof ResourceWeights)[] = [
   'wood',
   'brick',

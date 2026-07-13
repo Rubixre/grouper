@@ -1,6 +1,7 @@
-import type { Board } from '../catan/types';
+import type { Board, ResourceWeights } from '../catan/types';
 import type { SettlementScore } from '../catan/types';
 import { explainPlacementScore } from '../catan/settlements';
+import type { StrategyProfile } from '../catan/resourceWeights';
 import { RESOURCE_LABELS } from '../catan/playerStats';
 import type { ProdResource } from '../catan/playerStats';
 
@@ -8,6 +9,8 @@ interface PlacementScoreBreakdownProps {
   score: SettlementScore;
   board: Board;
   rank: number;
+  strategyProfile: StrategyProfile;
+  strategyWeights: ResourceWeights;
   firstVertexId?: string;
 }
 
@@ -36,13 +39,18 @@ export function PlacementScoreBreakdown({
   score,
   board,
   rank,
+  strategyProfile,
+  strategyWeights,
   firstVertexId,
 }: PlacementScoreBreakdownProps) {
-  const explanation = explainPlacementScore(score, board, firstVertexId);
+  const explanation = explainPlacementScore(score, board, firstVertexId, strategyWeights);
 
   return (
     <div className="score-breakdown">
       <h3>Poengforklaring · plassering #{rank}</h3>
+      <p className="score-breakdown-profile muted small">
+        Strategi: {strategyProfile.label}
+      </p>
       <p className="score-breakdown-formula muted small">
         {explanation.kind === 'first' ? (
           <>Total = prod. + dekning + pip + havn − straff</>

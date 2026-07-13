@@ -2,9 +2,9 @@ import type {
   Board,
   PlacedSettlement,
   PlayerCount,
+  ResourceWeights,
   SettlementScore,
 } from './types';
-import { DEFAULT_RESOURCE_WEIGHTS } from './types';
 import { getValidVertices, rankVertices } from './settlements';
 
 /** Snake-draft placement order for initial settlements (2 per player) */
@@ -72,16 +72,12 @@ export function currentPlayer(state: SimulationState): number | null {
 
 /** Rangér gyldige plasseringer for spilleren som har tur */
 export function getOptionsForCurrentTurn(
-  state: SimulationState
+  state: SimulationState,
+  weights?: ResourceWeights
 ): SettlementScore[] {
   const player = currentPlayer(state);
   if (player === null) return [];
-  return rankVertices(
-    state.board,
-    state.placements,
-    DEFAULT_RESOURCE_WEIGHTS,
-    player
-  );
+  return rankVertices(state.board, state.placements, weights, player);
 }
 
 export function placeSettlement(

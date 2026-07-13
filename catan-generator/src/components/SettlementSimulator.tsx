@@ -1,6 +1,7 @@
-import type { SettlementScore } from '../catan/types';
+import type { SettlementScore, ResourceWeights } from '../catan/types';
 import type { Board } from '../catan/types';
 import type { SimulationState } from '../catan/simulator';
+import type { StrategyProfile } from '../catan/resourceWeights';
 import { PLAYER_COLORS, PLAYER_NAMES, currentPlayer } from '../catan/simulator';
 import { PlacementScoreBreakdown } from './PlacementScoreBreakdown';
 
@@ -9,6 +10,8 @@ interface SettlementSimulatorProps {
   board: Board;
   options: SettlementScore[];
   selectedVertex: string | null;
+  strategyProfile: StrategyProfile;
+  strategyWeights: ResourceWeights;
   onSelectVertex: (vertexId: string) => void;
   onConfirm: () => void;
 }
@@ -18,6 +21,8 @@ export function SettlementSimulator({
   board,
   options,
   selectedVertex,
+  strategyProfile,
+  strategyWeights,
   onSelectVertex,
   onConfirm,
 }: SettlementSimulatorProps) {
@@ -64,6 +69,7 @@ export function SettlementSimulator({
       ) : (
         <>
           <p className="sim-hint">
+            <strong>Profil:</strong> {strategyProfile.label}.{' '}
             {isSecond
               ? 'Andre landsby: poengsum vurderer hele paret (1.+2. landsby), utfylling og havntilgang.'
               : 'Første landsby: poengsum basert på vektet produksjon og ressursdekning.'}{' '}
@@ -110,6 +116,8 @@ export function SettlementSimulator({
               score={selectedOption}
               board={board}
               rank={selectedRank}
+              strategyProfile={strategyProfile}
+              strategyWeights={strategyWeights}
               firstVertexId={
                 selectedOption.placementKind === 'second'
                   ? playerFirstVertex

@@ -240,6 +240,7 @@ import {
   WEIGHTS_LONGEST_ROAD_ONLY,
   WEIGHTS_LARGEST_ARMY_ONLY,
   coverageBonus,
+  getStrategyWeights,
 } from '../src/catan/resourceWeights.ts';
 import { DEFAULT_RESOURCE_WEIGHTS } from '../src/catan/types.ts';
 
@@ -251,6 +252,15 @@ assert(
 assert(
   WEIGHTS_LARGEST_ARMY_ONLY.ore > WEIGHTS_GENERAL.ore,
   'Largest army profile has higher ore weight'
+);
+
+assert(
+  getStrategyWeights('longestRoad').wood > getStrategyWeights('largestArmy').wood,
+  'Longest road strategy weights wood higher than largest army'
+);
+assert(
+  getStrategyWeights('largestArmy').ore > getStrategyWeights('longestRoad').ore,
+  'Largest army strategy weights ore higher than longest road'
 );
 const highValueCoverage = coverageBonus(
   new Set(['wheat', 'ore', 'wood']),
