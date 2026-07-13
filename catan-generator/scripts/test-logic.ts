@@ -519,6 +519,77 @@ if (board) {
 
   const traits = __analyzeBoardTraitsForTest(board);
   assert(traits.length >= 1, 'Trait analysis returns at least one trait');
+  assert(
+    !traits.some((t) =>
+      ['hot_resource', 'cold_resource', 'adjacent_reds', 'scarce_access', 'port_match'].includes(
+        t.id
+      )
+    ),
+    'Story traits avoid production-number and scarce-port framing'
+  );
+  assert(
+    !/forventet produksjon|terning|hete|kalde|6 og en 8|røde nabopar/i.test(story.narrative),
+    'Story narrative avoids production-number language'
+  );
+}
+
+{
+  const makeLand = (
+    resource: 'wood' | 'brick' | 'sheep' | 'wheat' | 'ore' | 'desert',
+    q: number,
+    r: number,
+    number: number | null = 5
+  ) => ({
+    coord: { q, r },
+    kind: 'land' as const,
+    resource,
+    number: resource === 'desert' ? null : number,
+  });
+
+  const exportBoard = {
+    boardSize: 'base' as const,
+    hexes: [
+      makeLand('brick', 0, 0),
+      makeLand('brick', 1, 0),
+      makeLand('brick', 2, 0),
+      makeLand('brick', 0, 1),
+      makeLand('brick', 1, 1),
+      makeLand('wood', 2, 1),
+      makeLand('sheep', 3, 1),
+      makeLand('wheat', 0, 2),
+      makeLand('ore', 1, 2),
+      makeLand('desert', 2, 2, null),
+    ],
+    harbors: [
+      {
+        definition: {
+          id: 'brick-port',
+          name: 'Teglhavn',
+          harbor: { kind: 'resource' as const, resource: 'brick' as const },
+          pieceGroup: 0,
+          hexOffset: 1,
+        },
+        pieceGroup: 0,
+        edgeHexLabel: 'E1',
+        nodeLabels: ['K1', 'K2'] as [string, string],
+        edgeCoord: { q: 3, r: 0 },
+        nodeVertexIds: ['a', 'b'] as [string, string],
+        angle: 0,
+      },
+    ],
+    coastSlots: [],
+    edgeRotation: 0,
+  };
+
+  const exportTraits = __analyzeBoardTraitsForTest(exportBoard);
+  assert(
+    exportTraits.some((t) => t.id === 'port_export' && t.resource === 'brick'),
+    'Matching 2:1 port pairs with abundant resource, not scarce'
+  );
+  assert(
+    !exportTraits.some((t) => t.id === 'port_export' && t.resource === 'ore'),
+    'Port trait is not attached to scarce resources'
+  );
 }
 
 console.log('\nPlacement scoring');
