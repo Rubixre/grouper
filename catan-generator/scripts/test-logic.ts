@@ -517,6 +517,8 @@ if (board) {
   assert(story.narrative.includes('Catanøyriket'), 'Board story mentions Catanøyriket');
   assert(story.highlights.length >= 1, 'Board story highlights distinctive traits');
   assert(story.highlights.length <= 3, 'Board story keeps at most three highlights');
+  assert(story.stats.resources.length === 5, 'Board story includes resource stats');
+  assert(story.stats.totalExpectedProduction > 0, 'Board stats have total expected production');
 
   const again = createBoardStory(board);
   assert(again.islandName === story.islandName, 'Same board yields same island name');
@@ -524,8 +526,8 @@ if (board) {
   const traits = __analyzeBoardTraitsForTest(board);
   assert(traits.length >= 1, 'Trait analysis returns at least one trait');
   assert(
-    !traits.some((t) => t.id === 'scarce_resource' || t.id === 'abundant_resource'),
-    'Story no longer treats fixed tile counts as unique scarcity/abundance'
+    traits.every((t) => typeof t.lore === 'string' && t.lore.length > 10),
+    'Traits carry mythical lore fragments'
   );
 }
 
@@ -640,8 +642,8 @@ if (board) {
     harbors: [],
   });
   assert(
-    !boringCounts.some((t) => t.headline.includes('Lite') && t.headline.includes('tegl')),
-    'Does not call standard 3-brick boards uniquely brick-scarce'
+    !boringCounts.some((t) => t.id === 'low_production' && t.resource === 'brick' && t.strength > 0.5),
+    'Does not call evenly numbered brick uniquely production-weak from tile count alone'
   );
 }
 

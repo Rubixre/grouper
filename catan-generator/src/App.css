@@ -93,40 +93,91 @@ body {
 }
 
 .board-story-narrative {
-  margin: 0 0 0.85rem;
-  font-size: 0.92rem;
+  margin: 0 0 1rem;
+  font-size: 0.95rem;
   color: #2c3e50;
-  line-height: 1.55;
+  line-height: 1.65;
+  font-family: 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
 }
 
-.board-story-traits {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
+.board-stats {
+  border-top: 1px solid #dbe6ee;
+  padding-top: 0.85rem;
 }
 
-.board-story-traits li {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  padding: 0.45rem 0.55rem;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid #e4edf3;
-}
-
-.board-story-traits strong {
-  font-size: 0.84rem;
+.board-stats-title {
+  margin: 0 0 0.55rem;
+  font-size: 0.88rem;
   color: #1a5276;
 }
 
-.board-story-traits span {
+.board-stats-table {
+  width: 100%;
+  border-collapse: collapse;
   font-size: 0.8rem;
-  color: #556677;
-  line-height: 1.4;
+}
+
+.board-stats-table th,
+.board-stats-table td {
+  padding: 0.35rem 0.3rem;
+  text-align: left;
+  border-bottom: 1px solid #e8eef3;
+  vertical-align: middle;
+}
+
+.board-stats-table th {
+  color: #5a7183;
+  font-weight: 600;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.board-stats-swatch {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 2px;
+  margin-right: 0.4rem;
+  vertical-align: middle;
+}
+
+.board-stats-share {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.4rem;
+  align-items: center;
+  min-width: 5.5rem;
+}
+
+.board-stats-share-bar {
+  height: 0.4rem;
+  border-radius: 999px;
+  min-width: 2px;
+  max-width: 100%;
+}
+
+.board-stats-strength {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.board-stats-strength.is-sterk {
+  color: #1e7a46;
+}
+
+.board-stats-strength.is-svak {
+  color: #a94415;
+}
+
+.board-stats-strength.is-normal {
+  color: #6a7c8a;
+}
+
+.board-stats-footnote {
+  margin: 0.55rem 0 0;
 }
 
 .header-actions {
