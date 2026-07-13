@@ -61,8 +61,12 @@ export function PlacementScoreBreakdown({
       </p>
       {score.expectedPairScore !== undefined && score.immediateScore !== undefined && (
         <p className="score-breakdown-formula muted small">
-          Rangering = {Math.round((1 - PAIR_LOOKAHEAD_WEIGHT) * 100)} % lokal (
-          {fmt(score.immediateScore, 2)}) + {Math.round(PAIR_LOOKAHEAD_WEIGHT * 100)} %
+          Rangering ={' '}
+          {Math.round(
+            (1 - (score.pairLookaheadWeight ?? PAIR_LOOKAHEAD_WEIGHT)) * 100
+          )}{' '}
+          % lokal ({fmt(score.immediateScore, 2)}) +{' '}
+          {Math.round((score.pairLookaheadWeight ?? PAIR_LOOKAHEAD_WEIGHT) * 100)} %
           skalert forventet par ({fmt(score.expectedPairScore, 2)}; usikker). Blend:{' '}
           {fmt(score.total, 2)}. Under: lokal score for dette hjørnet.
         </p>

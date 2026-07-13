@@ -162,6 +162,11 @@ export interface SettlementScore {
   expectedSecondVertexId?: string;
   /** Umiddelbar lokale score før lookahead (kun første landsby) */
   immediateScore?: number;
+  /**
+   * Vekt (0–1) brukt for forventet par i blend, styrt av antall spillere
+   * (høyere med færre spillere).
+   */
+  pairLookaheadWeight?: number;
   breakdown: { resource: ResourceType; value: number }[];
 }
 

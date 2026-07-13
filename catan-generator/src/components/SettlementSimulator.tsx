@@ -253,8 +253,11 @@ export function SettlementSimulator({
             {(selectedOption.expectedPairScore !== undefined ||
               (selectedPath && isFirstHuman && isYourTurn)) && (
               <p className="second-preview-hint muted small">
-                Lookahead ({Math.round(PAIR_LOOKAHEAD_WEIGHT * 100)} % vekt, usikker):
-                parscore{' '}
+                Lookahead (
+                {Math.round(
+                  (selectedOption.pairLookaheadWeight ?? PAIR_LOOKAHEAD_WEIGHT) * 100
+                )}{' '}
+                % vekt, usikker · {state.playerCount} spillere): parscore{' '}
                 <strong>
                   {(
                     selectedOption.expectedPairScore ?? selectedPath?.pairScore ?? 0
@@ -265,7 +268,12 @@ export function SettlementSimulator({
                   <>
                     {' '}
                     · lokal {selectedOption.immediateScore.toFixed(2)} (
-                    {Math.round((1 - PAIR_LOOKAHEAD_WEIGHT) * 100)} %)
+                    {Math.round(
+                      (1 -
+                        (selectedOption.pairLookaheadWeight ?? PAIR_LOOKAHEAD_WEIGHT)) *
+                        100
+                    )}{' '}
+                    %)
                   </>
                 )}
               </p>
