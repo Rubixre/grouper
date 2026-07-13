@@ -95,7 +95,7 @@ export function SettlementSimulator({
     ? isSecond
       ? 'Andre landsby — hele paret vurderes'
       : isFirstHuman
-        ? 'Gull #1 er beste. Stiplet ring = forventet nr. 2'
+              ? 'Gull #1 er beste. Stiplet ring = forventet nr. 2 (motspillere: høy pip)'
         : 'Første landsby'
     : 'Velg hjørne på brettet eller i listen';
 
@@ -240,7 +240,7 @@ export function SettlementSimulator({
             </summary>
             {selectedPath && isFirstHuman && isYourTurn && (
               <p className="second-preview-hint muted small">
-                Forventet landsby nr. 2: parscore{' '}
+                  Forventet landsby nr. 2 (motspillere tar høy pip): parscore{' '}
                 <strong>{selectedPath.pairScore.toFixed(2)}</strong>
                 {secondPreviewVertex && ' — stiplet ring på brettet'}
               </p>

@@ -468,13 +468,41 @@ import { scoreFirstPlacement } from '../src/catan/placementModel.ts';
 }
 
 console.log('\nStrategy advisor');
-import { recommendStrategy } from '../src/catan/strategyAdvisor.ts';
+import { recommendStrategy, simulateToHumanSecondTurn } from '../src/catan/strategyAdvisor.ts';
+import { getValidVertices, pickGreedyOpponentVertex, vertexPipTotal } from '../src/catan/settlements.ts';
 if (board) {
   const config = createSimulationConfig(4, 0);
   const sim = createSimulation(board, config);
   const rec = recommendStrategy(board, sim.placements, config.humanPlayerIndex, 4);
   assert(rec.recommendedProfileId.length > 0, 'Strategy recommendation returns profile');
   assert(rec.suggestedPaths.length > 0, 'Strategy recommendation has suggested paths');
+
+  const valid = getValidVertices(sim.placements);
+  let bestPipVertex = valid[0];
+  let bestPip = -1;
+  for (const vertexId of valid) {
+    const pip = vertexPipTotal(vertexId, board);
+    if (pip > bestPip) {
+      bestPip = pip;
+      bestPipVertex = vertexId;
+    }
+  }
+  const greedyPick = pickGreedyOpponentVertex(board, sim.placements, 1);
+  assert(greedyPick === bestPipVertex, 'Greedy opponent picks highest pip for first settlement');
+
+  const humanFirst = valid[1] ?? valid[0];
+  const simulated = simulateToHumanSecondTurn(
+    board,
+    sim.placements,
+    config.humanPlayerIndex,
+    4,
+    humanFirst
+  );
+  assert(simulated !== null, 'Greedy simulation reaches human second settlement turn');
+  assert(
+    simulated!.filter((p) => p.player === config.humanPlayerIndex).length === 1,
+    'Simulation stops after human first settlement only'
+  );
 }
 
 console.log('\nPlacement scoring');

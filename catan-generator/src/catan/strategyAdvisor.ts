@@ -4,7 +4,7 @@ import {
   type StrategyProfile,
   type StrategyProfileId,
 } from './resourceWeights';
-import { rankVertices, getValidVertices, scoreSecondSettlement } from './settlements';
+import { rankVertices, scoreSecondSettlement, pickGreedyOpponentVertex } from './settlements';
 import { computeBoardEconomics } from './placementModel';
 import { getPlacementOrder } from './simulator';
 
@@ -29,14 +29,13 @@ export interface StrategyRecommendation {
   suggestedPaths: FirstSettlementPath[];
 }
 
-/** Simuler motspillere (toppvalg) til det er din andre landsby-tur */
+/** Simuler motspillere (høyest pip) til det er din andre landsby-tur */
 export function simulateToHumanSecondTurn(
   board: Board,
   placed: PlacedSettlement[],
   humanPlayer: number,
   playerCount: PlayerCount,
-  humanFirstVertex: string,
-  weights: ResourceWeights
+  humanFirstVertex: string
 ): PlacedSettlement[] | null {
   let simulated: PlacedSettlement[] = [
     ...placed,
@@ -54,12 +53,10 @@ export function simulateToHumanSecondTurn(
       return simulated;
     }
 
-    const options = rankVertices(board, simulated, weights, player);
-    const valid = new Set(getValidVertices(simulated));
-    const pick = options.find((o) => valid.has(o.vertexId));
-    if (!pick) return null;
+    const pickVertexId = pickGreedyOpponentVertex(board, simulated, player);
+    if (!pickVertexId) return null;
 
-    simulated = [...simulated, { vertexId: pick.vertexId, player, isCity: false }];
+    simulated = [...simulated, { vertexId: pickVertexId, player, isCity: false }];
     step++;
   }
 
@@ -79,8 +76,7 @@ export function evaluateFirstSettlementPath(
     placed,
     humanPlayer,
     playerCount,
-    firstVertexId,
-    weights
+    firstVertexId
   );
   if (!simulated) return null;
 
@@ -143,7 +139,7 @@ export function recommendStrategy(
 
   let reason = 'Ingen gyldige parplasseringer funnet – bruker balansert profil.';
   if (winnerPath) {
-    reason = `${recommendedProfile.label} gir best forventet parscore (${winnerPath.pairScore.toFixed(2)}) når motspillere tar toppvalg og du følger med landsby nr. 2 på ${describeSecondPreview(board, winnerPath, recommendedProfile.weights)}.`;
+    reason = `${recommendedProfile.label} gir best forventet parscore (${winnerPath.pairScore.toFixed(2)}) når motspillere velger høy produksjon (pip) og du følger med landsby nr. 2 på ${describeSecondPreview(board, winnerPath, recommendedProfile.weights)}.`;
   }
 
   const suggestedPaths: FirstSettlementPath[] = [];

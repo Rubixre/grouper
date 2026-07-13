@@ -299,6 +299,59 @@ export function getValidVertices(placed: PlacedSettlement[]): string[] {
   });
 }
 
+/** Sum av terningssannsynligheter på tilstøtende landhex (enkel produksjonsmodell) */
+export function vertexPipTotal(vertexId: string, board: Board): number {
+  const vertices = getVertices();
+  const vertex = vertices.get(vertexId);
+  if (!vertex) return 0;
+
+  let pip = 0;
+  for (const hex of vertex.hexes) {
+    const tile = board.hexes.find((h) => h.coord.q === hex.q && h.coord.r === hex.r);
+    if (!tile || tile.kind !== 'land' || !tile.number) continue;
+    pip += NUMBER_PROB[tile.number] ?? 0;
+  }
+  return pip;
+}
+
+/**
+ * Enkel motspillermodell: velg hjørne med høyest pip-produksjon.
+ * Første landsby = høyest pip; andre landsby = høyest pip-sum for paret.
+ */
+export function pickGreedyOpponentVertex(
+  board: Board,
+  placed: PlacedSettlement[],
+  player: number
+): string | null {
+  const valid = getValidVertices(placed);
+  if (valid.length === 0) return null;
+
+  const existing = placed.find((p) => p.player === player);
+  let bestId: string | null = null;
+  let bestScore = -1;
+
+  if (existing) {
+    const firstPip = vertexPipTotal(existing.vertexId, board);
+    for (const vertexId of valid) {
+      const score = firstPip + vertexPipTotal(vertexId, board);
+      if (score > bestScore || (score === bestScore && vertexId < (bestId ?? ''))) {
+        bestScore = score;
+        bestId = vertexId;
+      }
+    }
+    return bestId;
+  }
+
+  for (const vertexId of valid) {
+    const pip = vertexPipTotal(vertexId, board);
+    if (pip > bestScore || (pip === bestScore && vertexId < (bestId ?? ''))) {
+      bestScore = pip;
+      bestId = vertexId;
+    }
+  }
+  return bestId;
+}
+
 export function rankVertices(
   board: Board,
   placed: PlacedSettlement[],
