@@ -27,11 +27,13 @@ import {
   type SimulationState,
 } from './catan/simulator';
 import { BoardView } from './components/BoardView';
+import { BoardStoryPanel } from './components/BoardStoryPanel';
 import { MappingPanel } from './components/MappingPanel';
 import { PlayerSetupPanel, syncConfigPlayerCount } from './components/PlayerSetupPanel';
 import { SettingsModal } from './components/SettingsModal';
 import { SettlementSimulator } from './components/SettlementSimulator';
 import { SimulationSummaryPanel } from './components/SimulationSummary';
+import { createBoardStory, type BoardStory } from './catan/boardStory';
 import './App.css';
 
 function App() {
@@ -46,6 +48,7 @@ function App() {
   const [strategyProfile, setStrategyProfile] = useState<StrategyProfileId>('general');
   const [simulation, setSimulation] = useState<SimulationState | null>(null);
   const [selectedVertex, setSelectedVertex] = useState<string | null>(null);
+  const [boardStory, setBoardStory] = useState<BoardStory | null>(null);
   const [mode, setMode] = useState<'view' | 'simulate'>('view');
   const [mappingMode, setMappingMode] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -78,11 +81,13 @@ function App() {
         'Kunne ikke generere gyldig brett med valgte regler. Prøv igjen eller slakk på begrensningene.'
       );
       setBoard(null);
+      setBoardStory(null);
       setSimulation(null);
       return;
     }
     setError(null);
     setBoard(result);
+    setBoardStory(createBoardStory(result));
     setSimulation(null);
     setSelectedVertex(null);
     setMode('view');
@@ -157,8 +162,18 @@ function App() {
         <div>
           <h1>Catan Brettgenerator</h1>
           <p className="subtitle">
-            {BOARD_SIZE_CONFIG[boardSize].totalHexes} hex ·{' '}
-            {BOARD_SIZE_CONFIG[boardSize].label}
+            {boardStory ? (
+              <>
+                {boardStory.islandName}
+                <span className="subtitle-sep"> · </span>
+                {BOARD_SIZE_CONFIG[boardSize].label}
+              </>
+            ) : (
+              <>
+                {BOARD_SIZE_CONFIG[boardSize].totalHexes} hex ·{' '}
+                {BOARD_SIZE_CONFIG[boardSize].label}
+              </>
+            )}
           </p>
         </div>
         <div className="header-actions">
@@ -242,6 +257,10 @@ function App() {
             </div>
           ) : (
             <div className="empty-board">Genererer brett…</div>
+          )}
+
+          {boardStory && !mappingMode && !simPlacing && (
+            <BoardStoryPanel story={boardStory} />
           )}
 
           {simulation?.finished && (

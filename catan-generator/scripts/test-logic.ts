@@ -505,6 +505,22 @@ if (board) {
   );
 }
 
+console.log('\nBoard story');
+import { createBoardStory, __analyzeBoardTraitsForTest } from '../src/catan/boardStory.ts';
+if (board) {
+  const story = createBoardStory(board);
+  assert(story.islandName.length > 3, 'Board story has island name');
+  assert(story.narrative.includes('Catanøyriket'), 'Board story mentions Catanøyriket');
+  assert(story.highlights.length >= 1, 'Board story highlights distinctive traits');
+  assert(story.highlights.length <= 3, 'Board story keeps at most three highlights');
+
+  const again = createBoardStory(board);
+  assert(again.islandName === story.islandName, 'Same board yields same island name');
+
+  const traits = __analyzeBoardTraitsForTest(board);
+  assert(traits.length >= 1, 'Trait analysis returns at least one trait');
+}
+
 console.log('\nPlacement scoring');
 import { getHarborsForVertex } from '../src/catan/harbors.ts';
 import { computeBoardEconomics } from '../src/catan/placementModel.ts';

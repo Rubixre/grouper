@@ -20,3 +20,4 @@ export * from './playerConfig';
 export * from './strategyAdvisor';
 export * from './simulator';
 export * from './playerStats';
+export * from './boardStory';
