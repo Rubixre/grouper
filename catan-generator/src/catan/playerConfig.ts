@@ -1,26 +1,16 @@
 import type { PlayerCount } from './types';
 
-export const DEFAULT_PLAYER_COLORS = [
-  '#e74c3c',
-  '#3498db',
-  '#f39c12',
-  '#2ecc71',
-  '#9b59b6',
-  '#1abc9c',
+/** Spillernes valgfrie farger (Catan-typiske) */
+export const PLAYER_COLOR_PRESETS = [
+  '#c0392b', // Rød
+  '#e8d4b0', // Lys beige
+  '#1a3a6e', // Mørk blå
+  '#c9972a', // Okergul
+  '#1f8a7a', // Turkis-grønn
+  '#4a235a', // Mørk lilla
 ] as const;
 
-export const PLAYER_COLOR_PRESETS = [
-  '#e74c3c',
-  '#3498db',
-  '#f39c12',
-  '#2ecc71',
-  '#9b59b6',
-  '#1abc9c',
-  '#e91e63',
-  '#00bcd4',
-  '#ff5722',
-  '#795548',
-] as const;
+export const DEFAULT_PLAYER_COLORS = PLAYER_COLOR_PRESETS;
 
 export interface PlayerConfig {
   name: string;

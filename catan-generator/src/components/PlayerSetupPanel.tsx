@@ -35,9 +35,7 @@ export function PlayerSetupPanel({
     onConfigChange({ ...config, humanPlayerIndex });
   };
 
-  const visiblePresets = compact
-    ? PLAYER_COLOR_PRESETS.slice(0, 4)
-    : PLAYER_COLOR_PRESETS;
+  const visiblePresets = PLAYER_COLOR_PRESETS;
 
   return (
     <div className={`player-setup ${compact ? 'is-compact' : ''}`}>

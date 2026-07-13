@@ -26,12 +26,12 @@ export function getPlacementOrder(playerCount: PlayerCount): number[] {
 
 /** @deprecated Use SimulationConfig.players instead */
 export const PLAYER_COLORS = [
-  '#e74c3c',
-  '#3498db',
-  '#f39c12',
-  '#2ecc71',
-  '#9b59b6',
-  '#1abc9c',
+  '#c0392b',
+  '#e8d4b0',
+  '#1a3a6e',
+  '#c9972a',
+  '#1f8a7a',
+  '#4a235a',
 ];
 
 /** @deprecated Use SimulationConfig.players instead */
