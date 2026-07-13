@@ -26,6 +26,11 @@ import {
   placeSettlement,
   type SimulationState,
 } from './catan/simulator';
+import {
+  loadSession,
+  saveSession,
+  type AppMode,
+} from './catan/sessionPersistence';
 import { BoardView } from './components/BoardView';
 import { BoardStoryPanel } from './components/BoardStoryPanel';
 import { MappingPanel } from './components/MappingPanel';
@@ -36,24 +41,41 @@ import { SimulationSummaryPanel } from './components/SimulationSummary';
 import { createBoardStory, type BoardStory } from './catan/boardStory';
 import './App.css';
 
+const restoredSession = typeof window !== 'undefined' ? loadSession() : null;
+
 function App() {
-  const [settings, setSettings] = useState<GeneratorSettings>(DEFAULT_SETTINGS);
-  const [boardSize, setBoardSize] = useState<BoardSize>('base');
-  const [board, setBoard] = useState<Board | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [playerCount, setPlayerCount] = useState<PlayerCount>(4);
-  const [simulationConfig, setSimulationConfig] = useState<SimulationConfig>(() =>
-    createSimulationConfig(4, 0)
+  const [settings, setSettings] = useState<GeneratorSettings>(
+    () => restoredSession?.settings ?? DEFAULT_SETTINGS
   );
-  const [strategyProfile, setStrategyProfile] = useState<StrategyProfileId>('general');
-  const [simulation, setSimulation] = useState<SimulationState | null>(null);
-  const [selectedVertex, setSelectedVertex] = useState<string | null>(null);
-  const [boardStory, setBoardStory] = useState<BoardStory | null>(null);
-  const [mode, setMode] = useState<'view' | 'simulate'>('view');
+  const [boardSize, setBoardSize] = useState<BoardSize>(
+    () => restoredSession?.boardSize ?? 'base'
+  );
+  const [board, setBoard] = useState<Board | null>(() => restoredSession?.board ?? null);
+  const [error, setError] = useState<string | null>(null);
+  const [playerCount, setPlayerCount] = useState<PlayerCount>(
+    () => restoredSession?.playerCount ?? 4
+  );
+  const [simulationConfig, setSimulationConfig] = useState<SimulationConfig>(
+    () => restoredSession?.simulationConfig ?? createSimulationConfig(4, 0)
+  );
+  const [strategyProfile, setStrategyProfile] = useState<StrategyProfileId>(
+    () => restoredSession?.strategyProfile ?? 'general'
+  );
+  const [simulation, setSimulation] = useState<SimulationState | null>(
+    () => restoredSession?.simulation ?? null
+  );
+  const [selectedVertex, setSelectedVertex] = useState<string | null>(
+    () => restoredSession?.selectedVertex ?? null
+  );
+  const [boardStory, setBoardStory] = useState<BoardStory | null>(
+    () => restoredSession?.boardStory ?? null
+  );
+  const [mode, setMode] = useState<AppMode>(() => restoredSession?.mode ?? 'view');
   const [mappingMode, setMappingMode] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [highlightEdge, setHighlightEdge] = useState<string | null>(null);
   const [highlightCorner, setHighlightCorner] = useState<string | null>(null);
+  const [hydrated] = useState(() => restoredSession !== null);
 
   const boardMapping = useMemo(() => getBoardMapping(boardSize), [boardSize]);
   const activeStrategy = useMemo(() => getStrategyProfile(strategyProfile), [strategyProfile]);
@@ -94,8 +116,37 @@ function App() {
   }, [settings, boardSize]);
 
   useEffect(() => {
-    handleGenerate();
+    if (!hydrated && !board) {
+      handleGenerate();
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Persist session so refresh keeps board + simulation
+  useEffect(() => {
+    if (!board) return;
+    saveSession({
+      version: 1,
+      settings,
+      boardSize,
+      board,
+      playerCount,
+      simulationConfig,
+      strategyProfile,
+      simulation,
+      selectedVertex,
+      mode,
+    });
+  }, [
+    settings,
+    boardSize,
+    board,
+    playerCount,
+    simulationConfig,
+    strategyProfile,
+    simulation,
+    selectedVertex,
+    mode,
+  ]);
 
   const startSimulation = () => {
     if (!board) return;
