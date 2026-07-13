@@ -16,5 +16,7 @@ export {
 export * from './resourceWeights';
 export * from './extensionLayout';
 export * from './mapping';
+export * from './playerConfig';
+export * from './strategyAdvisor';
 export * from './simulator';
 export * from './playerStats';

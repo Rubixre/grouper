@@ -5,6 +5,7 @@ import type {
   ResourceWeights,
   SettlementScore,
 } from './types';
+import type { SimulationConfig } from './playerConfig';
 import { getValidVertices, rankVertices } from './settlements';
 
 /** Snake-draft placement order for initial settlements (2 per player) */
@@ -23,6 +24,7 @@ export function getPlacementOrder(playerCount: PlayerCount): number[] {
   }
 }
 
+/** @deprecated Use SimulationConfig.players instead */
 export const PLAYER_COLORS = [
   '#e74c3c',
   '#3498db',
@@ -31,6 +33,8 @@ export const PLAYER_COLORS = [
   '#9b59b6',
   '#1abc9c',
 ];
+
+/** @deprecated Use SimulationConfig.players instead */
 export const PLAYER_NAMES = [
   'Spiller 1',
   'Spiller 2',
@@ -43,6 +47,7 @@ export const PLAYER_NAMES = [
 export interface SimulationState {
   board: Board;
   playerCount: PlayerCount;
+  config: SimulationConfig;
   placements: PlacedSettlement[];
   placementOrder: number[];
   currentStep: number;
@@ -51,13 +56,14 @@ export interface SimulationState {
 
 export function createSimulation(
   board: Board,
-  playerCount: PlayerCount
+  config: SimulationConfig
 ): SimulationState {
   return {
     board,
-    playerCount,
+    playerCount: config.players.length as PlayerCount,
+    config,
     placements: [],
-    placementOrder: getPlacementOrder(playerCount),
+    placementOrder: getPlacementOrder(config.players.length as PlayerCount),
     currentStep: 0,
     finished: false,
   };
@@ -68,6 +74,11 @@ export function currentPlayer(state: SimulationState): number | null {
     return null;
   }
   return state.placementOrder[state.currentStep];
+}
+
+export function isHumanTurn(state: SimulationState): boolean {
+  const player = currentPlayer(state);
+  return player !== null && player === state.config.humanPlayerIndex;
 }
 
 /** Rangér gyldige plasseringer for spilleren som har tur */
@@ -104,6 +115,23 @@ export function placeSettlement(
     currentStep: nextStep,
     finished,
   };
+}
+
+/** Motspillere plasserer automatisk på toppvalg til det er din tur */
+export function advanceToHumanTurn(
+  state: SimulationState,
+  weights?: ResourceWeights
+): SimulationState {
+  const human = state.config.humanPlayerIndex;
+  let next = state;
+
+  while (!next.finished && currentPlayer(next) !== human) {
+    const options = getOptionsForCurrentTurn(next, weights);
+    if (options.length === 0) break;
+    next = placeSettlement(next, options[0].vertexId);
+  }
+
+  return next;
 }
 
 export function getPlayerSettlements(

@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 import type { SimulationState } from '../catan/simulator';
-import { PLAYER_COLORS } from '../catan/simulator';
+import { getPlayerConfig } from '../catan/playerConfig';
 import {
   PROD_RESOURCES,
   RESOURCE_COLORS,
@@ -22,15 +22,17 @@ const RANK_MEDALS = ['🥇', '🥈', '🥉'] as const;
 function ShareDonut({
   players,
   tableTotal,
+  config,
 }: {
   players: PlayerStats[];
   tableTotal: number;
+  config: SimulationState['config'];
 }) {
   let cursor = 0;
   const stops = players.map((p) => {
     const start = cursor;
     cursor += p.shareOfTable * 100;
-    return `${PLAYER_COLORS[p.player]} ${start}% ${cursor}%`;
+    return `${getPlayerConfig(config, p.player).color} ${start}% ${cursor}%`;
   });
 
   return (
@@ -49,7 +51,10 @@ function ShareDonut({
       <ul className="sim-share-legend">
         {players.map((p) => (
           <li key={p.player}>
-            <span className="sim-legend-swatch" style={{ background: PLAYER_COLORS[p.player] }} />
+            <span
+              className="sim-legend-swatch"
+              style={{ background: getPlayerConfig(config, p.player).color }}
+            />
             <span>{p.name}</span>
             <strong>{formatPercent(p.shareOfTable)}</strong>
           </li>
@@ -59,7 +64,13 @@ function ShareDonut({
   );
 }
 
-function Leaderboard({ players }: { players: PlayerStats[] }) {
+function Leaderboard({
+  players,
+  config,
+}: {
+  players: PlayerStats[];
+  config: SimulationState['config'];
+}) {
   const max = players[0]?.combined.totalPerRoll ?? 1;
 
   return (
@@ -75,7 +86,7 @@ function Leaderboard({ players }: { players: PlayerStats[] }) {
               <div className="sim-leaderboard-meta">
                 <span
                   className="player-stat-dot"
-                  style={{ backgroundColor: PLAYER_COLORS[p.player] }}
+                  style={{ backgroundColor: getPlayerConfig(config, p.player).color }}
                 />
                 <strong>{p.name}</strong>
                 <span>{formatPerRoll(p.combined.totalPerRoll)} / kast</span>
@@ -85,7 +96,7 @@ function Leaderboard({ players }: { players: PlayerStats[] }) {
                   className="sim-leaderboard-fill"
                   style={{
                     width: `${width}%`,
-                    background: `linear-gradient(90deg, ${PLAYER_COLORS[p.player]}, ${PLAYER_COLORS[p.player]}cc)`,
+                    background: `linear-gradient(90deg, ${getPlayerConfig(config, p.player).color}, ${getPlayerConfig(config, p.player).color}cc)`,
                   }}
                 />
               </div>
@@ -98,7 +109,13 @@ function Leaderboard({ players }: { players: PlayerStats[] }) {
   );
 }
 
-function HighlightCards({ players }: { players: PlayerStats[] }) {
+function HighlightCards({
+  players,
+  config,
+}: {
+  players: PlayerStats[];
+  config: SimulationState['config'];
+}) {
   const byProduction = [...players].sort(
     (a, b) => b.combined.totalPerRoll - a.combined.totalPerRoll
   );
@@ -133,10 +150,12 @@ function HighlightCards({ players }: { players: PlayerStats[] }) {
         <div
           key={card.title}
           className="sim-highlight-card"
-          style={{ borderColor: PLAYER_COLORS[card.player.player] }}
+          style={{ borderColor: getPlayerConfig(config, card.player.player).color }}
         >
           <span className="sim-highlight-title">{card.title}</span>
-          <strong style={{ color: PLAYER_COLORS[card.player.player] }}>{card.player.name}</strong>
+          <strong style={{ color: getPlayerConfig(config, card.player.player).color }}>
+            {card.player.name}
+          </strong>
           <span className="sim-highlight-detail">{card.detail}</span>
         </div>
       ))}
@@ -213,15 +232,17 @@ function NumberHeatmap({ stats }: { stats: PlayerStats }) {
 function PlayerCard({
   stats,
   rank,
+  config,
 }: {
   stats: PlayerStats;
   rank: number;
+  config: SimulationState['config'];
 }) {
   const startingTotal = PROD_RESOURCES.reduce(
     (s, r) => s + stats.startingResources[r],
     0
   );
-  const color = PLAYER_COLORS[stats.player];
+  const color = getPlayerConfig(config, stats.player).color;
 
   return (
     <article
@@ -294,20 +315,24 @@ export function SimulationSummaryPanel({ state }: SimulationSummaryProps) {
       </header>
 
       <div className="sim-summary-dashboard">
-        <ShareDonut players={summary.players} tableTotal={summary.tableTotalPerRoll} />
+        <ShareDonut
+          players={summary.players}
+          tableTotal={summary.tableTotalPerRoll}
+          config={state.config}
+        />
         <div className="sim-summary-main">
           <h3>Rangering</h3>
-          <Leaderboard players={ranked} />
+          <Leaderboard players={ranked} config={state.config} />
         </div>
       </div>
 
-      <HighlightCards players={summary.players} />
+      <HighlightCards players={summary.players} config={state.config} />
 
       <ResourceLegend />
 
       <div className="player-stat-grid">
         {ranked.map((p, index) => (
-          <PlayerCard key={p.player} stats={p} rank={index + 1} />
+          <PlayerCard key={p.player} stats={p} rank={index + 1} config={state.config} />
         ))}
       </div>
     </div>

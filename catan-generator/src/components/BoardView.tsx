@@ -1,9 +1,10 @@
 import type { Board, PlacedSettlement, SettlementScore } from '../catan/types';
 import type { BoardMapping } from '../catan/mapping';
+import type { SimulationConfig } from '../catan/playerConfig';
+import { getPlayerConfig } from '../catan/playerConfig';
 import { getEdgePieces, getSingleEdgePieces } from '../catan/edgePieces';
 import { hexCorner, hexToPixel } from '../catan/hex';
 import { getVertices } from '../catan/settlements';
-import { PLAYER_COLORS } from '../catan/simulator';
 import { BoardHex } from './BoardHex';
 import { EdgePieceShape } from './EdgePieceShape';
 import { BoardEdgeMasks } from './BoardEdgeMasks';
@@ -16,7 +17,9 @@ export const BOARD_HEX_SIZE = 34;
 interface BoardViewProps {
   board: Board;
   placements?: PlacedSettlement[];
+  playerConfig?: SimulationConfig;
   highlightedVertices?: SettlementScore[];
+  previewSecondVertex?: string | null;
   selectedVertex?: string | null;
   onVertexClick?: (vertexId: string) => void;
   interactive?: boolean;
@@ -74,7 +77,9 @@ function getVertexPixel(vertexId: string, size: number): { x: number; y: number 
 export function BoardView({
   board,
   placements = [],
+  playerConfig,
   highlightedVertices = [],
+  previewSecondVertex = null,
   selectedVertex,
   onVertexClick,
   interactive = false,
@@ -105,6 +110,15 @@ export function BoardView({
 
   const width = maxX - minX;
   const height = maxY - minY;
+
+  const playerColor = (playerIndex: number) =>
+    playerConfig
+      ? getPlayerConfig(playerConfig, playerIndex).color
+      : ['#e74c3c', '#3498db', '#f39c12', '#2ecc71', '#9b59b6', '#1abc9c'][playerIndex];
+
+  const previewPos = previewSecondVertex
+    ? getVertexPixel(previewSecondVertex, HEX_SIZE)
+    : null;
 
   return (
     <svg
@@ -197,7 +211,7 @@ export function BoardView({
               cx={pos.x}
               cy={pos.y}
               r={10}
-              fill={PLAYER_COLORS[p.player]}
+              fill={playerColor(p.player)}
               stroke="#fff"
               strokeWidth={2}
             />
@@ -307,6 +321,31 @@ export function BoardView({
             </g>
           );
         })}
+
+      {!mappingMode && previewPos && (
+        <g className="second-settlement-preview" aria-label="Forventet landsby nr. 2">
+          <circle
+            cx={previewPos.x}
+            cy={previewPos.y}
+            r={14}
+            fill="none"
+            stroke="#2ecc71"
+            strokeWidth={2.5}
+            strokeDasharray="5 4"
+            opacity={0.9}
+          />
+          <text
+            x={previewPos.x}
+            y={previewPos.y + 22}
+            textAnchor="middle"
+            fill="#eafaf1"
+            fontSize={9}
+            fontWeight={700}
+          >
+            #2?
+          </text>
+        </g>
+      )}
     </svg>
   );
 }

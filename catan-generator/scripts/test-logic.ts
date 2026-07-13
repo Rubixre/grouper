@@ -25,6 +25,7 @@ import {
   resetVertices,
   setBoardSize,
   createSimulation,
+  createSimulationConfig,
   placeSettlement,
   getOptionsForCurrentTurn,
   scoreSecondSettlement,
@@ -446,11 +447,23 @@ import { scoreFirstPlacement } from '../src/catan/placementModel.ts';
   );
 }
 
+console.log('\nStrategy advisor');
+import { recommendStrategy } from '../src/catan/strategyAdvisor.ts';
+import { advanceToHumanTurn, isHumanTurn } from '../src/catan/simulator.ts';
+if (board) {
+  const config = createSimulationConfig(4, 2);
+  const sim = advanceToHumanTurn(createSimulation(board, config));
+  assert(isHumanTurn(sim), 'Advance lands on human player turn');
+  const rec = recommendStrategy(board, sim.placements, config.humanPlayerIndex, 4);
+  assert(rec.recommendedProfileId.length > 0, 'Strategy recommendation returns profile');
+  assert(rec.suggestedPaths.length > 0, 'Strategy recommendation has suggested paths');
+}
+
 console.log('\nPlacement scoring');
 import { getHarborsForVertex } from '../src/catan/harbors.ts';
 import { computeBoardEconomics } from '../src/catan/placementModel.ts';
 if (board) {
-  const sim = createSimulation(board, 4);
+  const sim = createSimulation(board, createSimulationConfig(4));
   const options = getOptionsForCurrentTurn(sim);
   assert(options.length > 0, 'First turn has ranked placement options');
   assert(options[0].placementKind === 'first', 'First turn uses first-settlement scoring');
@@ -544,7 +557,7 @@ assert(
 assert(getPlacementOrder(5).length === 10, '5-player draft has 10 placements');
 assert(getPlacementOrder(6).length === 12, '6-player draft has 12 placements');
 if (board) {
-  const sim = createSimulation(board, 4);
+  const sim = createSimulation(board, createSimulationConfig(4));
   const options = getOptionsForCurrentTurn(sim);
   assert(options.length > 0, 'First player has placement options');
   if (options[0]) {
@@ -560,7 +573,7 @@ if (board) {
   }
 
   // Second settlement uses pair scoring for returning player
-  const sim4 = createSimulation(board, 4);
+  const sim4 = createSimulation(board, createSimulationConfig(4));
   let state = sim4;
   for (let i = 0; i < 7; i++) {
     const opts = getOptionsForCurrentTurn(state);
@@ -591,7 +604,7 @@ if (board) {
   );
 
   console.log('\nSimulation summary');
-  const finishedSim = createSimulation(board, 4);
+  const finishedSim = createSimulation(board, createSimulationConfig(4));
   let finishedState = finishedSim;
   for (let i = 0; i < finishedSim.placementOrder.length; i++) {
     const opts = getOptionsForCurrentTurn(finishedState);

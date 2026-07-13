@@ -5,6 +5,7 @@
 import { generateBoard } from '../src/catan/generator.ts';
 import { DEFAULT_SETTINGS } from '../src/catan/types.ts';
 import { explainPlacementScore, rankVertices } from '../src/catan/settlements.ts';
+import { createSimulationConfig } from '../src/catan/playerConfig.ts';
 import { createSimulation, getOptionsForCurrentTurn, placeSettlement } from '../src/catan/simulator.ts';
 import { RESOURCE_LABELS } from '../src/catan/playerStats.ts';
 import type { ProdResource } from '../src/catan/playerStats.ts';
@@ -40,7 +41,7 @@ const mid = options[Math.floor(options.length / 2)];
 printExplanation(`Eksempel 1 – Beste 1. landsby (#1, score ${best.total.toFixed(2)})`, explainPlacementScore(best, board));
 printExplanation(`Eksempel 2 – Middels plassering (#${Math.floor(options.length / 2) + 1}, score ${mid.total.toFixed(2)})`, explainPlacementScore(mid, board));
 
-let sim = createSimulation(board, 4);
+let sim = createSimulation(board, createSimulationConfig(4));
 for (let i = 0; i < 7; i++) {
   const opts = getOptionsForCurrentTurn(sim);
   sim = placeSettlement(sim, opts[0].vertexId);

@@ -11,24 +11,29 @@ import {
   type StrategyProfileId,
 } from './catan/resourceWeights';
 import {
+  createSimulationConfig,
+  type SimulationConfig,
+} from './catan/playerConfig';
+import {
+  getSecondSettlementPreview,
+  isHumanFirstSettlementTurn,
+  recommendStrategy,
+} from './catan/strategyAdvisor';
+import {
+  advanceToHumanTurn,
   createSimulation,
   getOptionsForCurrentTurn,
-  getPlacementOrder,
+  isHumanTurn,
   placeSettlement,
   type SimulationState,
 } from './catan/simulator';
 import { BoardView } from './components/BoardView';
 import { MappingPanel } from './components/MappingPanel';
+import { PlayerSetupPanel, syncConfigPlayerCount } from './components/PlayerSetupPanel';
 import { SettingsModal } from './components/SettingsModal';
 import { SettlementSimulator } from './components/SettlementSimulator';
 import { SimulationSummaryPanel } from './components/SimulationSummary';
 import './App.css';
-
-function formatDraftOrder(count: PlayerCount): string {
-  return getPlacementOrder(count)
-    .map((p) => p + 1)
-    .join(' → ');
-}
 
 function App() {
   const [settings, setSettings] = useState<GeneratorSettings>(DEFAULT_SETTINGS);
@@ -36,6 +41,9 @@ function App() {
   const [board, setBoard] = useState<Board | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [playerCount, setPlayerCount] = useState<PlayerCount>(4);
+  const [simulationConfig, setSimulationConfig] = useState<SimulationConfig>(() =>
+    createSimulationConfig(4, 0)
+  );
   const [strategyProfile, setStrategyProfile] = useState<StrategyProfileId>('general');
   const [simulation, setSimulation] = useState<SimulationState | null>(null);
   const [selectedVertex, setSelectedVertex] = useState<string | null>(null);
@@ -52,7 +60,16 @@ function App() {
 
   const handleBoardSizeChange = (size: BoardSize) => {
     setBoardSize(size);
-    if (size === 'base' && playerCount > 4) setPlayerCount(4);
+    if (size === 'base' && playerCount > 4) {
+      const nextCount = 4 as PlayerCount;
+      setPlayerCount(nextCount);
+      setSimulationConfig((cfg) => syncConfigPlayerCount(cfg, nextCount));
+    }
+  };
+
+  const handlePlayerCountChange = (count: PlayerCount) => {
+    setPlayerCount(count);
+    setSimulationConfig((cfg) => syncConfigPlayerCount(cfg, count));
   };
 
   const handleGenerate = useCallback(() => {
@@ -78,7 +95,11 @@ function App() {
 
   const startSimulation = () => {
     if (!board) return;
-    setSimulation(createSimulation(board, playerCount));
+    const sim = advanceToHumanTurn(
+      createSimulation(board, simulationConfig),
+      strategyWeights
+    );
+    setSimulation(sim);
     setSelectedVertex(null);
     setMode('simulate');
   };
@@ -89,12 +110,55 @@ function App() {
     setMode('view');
   };
 
+  const showHumanOptions = simulation && simActive && isHumanTurn(simulation);
+
   const rankedOptions =
-    simulation && simActive ? getOptionsForCurrentTurn(simulation, strategyWeights) : [];
+    showHumanOptions ? getOptionsForCurrentTurn(simulation, strategyWeights) : [];
+
+  const strategyRecommendation = useMemo(() => {
+    if (!board || !simulation || !showHumanOptions) return null;
+    const human = simulation.config.humanPlayerIndex;
+    if (!isHumanFirstSettlementTurn(simulation.placements, human)) return null;
+    return recommendStrategy(
+      board,
+      simulation.placements,
+      human,
+      simulation.playerCount
+    );
+  }, [board, simulation, showHumanOptions]);
+
+  const secondPreviewVertex = useMemo(() => {
+    if (!board || !simulation || !selectedVertex || !showHumanOptions) return null;
+    const human = simulation.config.humanPlayerIndex;
+    if (!isHumanFirstSettlementTurn(simulation.placements, human)) return null;
+    return getSecondSettlementPreview(
+      board,
+      simulation.placements,
+      human,
+      simulation.playerCount,
+      selectedVertex,
+      strategyWeights
+    );
+  }, [board, simulation, selectedVertex, showHumanOptions, strategyWeights]);
+
+  useEffect(() => {
+    if (!simulation || simulation.finished || !simActive) return;
+    if (isHumanTurn(simulation)) return;
+
+    const timer = window.setTimeout(() => {
+      setSimulation((prev) =>
+        prev ? advanceToHumanTurn(prev, strategyWeights) : prev
+      );
+    }, 450);
+
+    return () => window.clearTimeout(timer);
+  }, [simulation, simActive, strategyWeights]);
 
   const handleConfirm = () => {
     if (!simulation || !selectedVertex) return;
-    setSimulation(placeSettlement(simulation, selectedVertex));
+    let next = placeSettlement(simulation, selectedVertex);
+    next = advanceToHumanTurn(next, strategyWeights);
+    setSimulation(next);
     setSelectedVertex(null);
   };
 
@@ -154,18 +218,20 @@ function App() {
               <BoardView
                 board={board}
                 placements={simulation?.placements ?? []}
-                highlightedVertices={simActive ? rankedOptions : []}
+                playerConfig={simulation?.config ?? simulationConfig}
+                highlightedVertices={showHumanOptions ? rankedOptions : []}
+                previewSecondVertex={secondPreviewVertex}
                 selectedVertex={selectedVertex}
-                onVertexClick={setSelectedVertex}
-                interactive={simActive && !simulation?.finished}
+                onVertexClick={showHumanOptions ? setSelectedVertex : undefined}
+                interactive={Boolean(showHumanOptions && !simulation?.finished)}
                 mappingMode={mappingMode}
                 mapping={boardMapping}
                 highlightEdge={highlightEdge}
                 highlightCorner={highlightCorner}
               />
-              {simActive && !simulation?.finished && (
+              {simActive && !simulation?.finished && showHumanOptions && (
                 <div className="placement-heatmap-legend" aria-hidden>
-                  <strong>Anbefalte plasseringer</strong>
+                  <strong>Dine beste plasseringer</strong>
                   <div className="placement-legend-scale">
                     {['#f1c40f', '#2ecc71', '#58d68d', '#a9dfbf', '#d5f5e3'].map(
                       (color, i) => (
@@ -179,7 +245,7 @@ function App() {
                     )}
                   </div>
                   <span className="placement-legend-hint">
-                    #1 = best · lyse punkter = også gyldige
+                    #1 = best · stiplet ring = forventet landsby nr. 2
                   </span>
                 </div>
               )}
@@ -225,7 +291,7 @@ function App() {
                     value={playerCount}
                     disabled={simActive && !simulation?.finished}
                     onChange={(e) =>
-                      setPlayerCount(Number(e.target.value) as PlayerCount)
+                      handlePlayerCountChange(Number(e.target.value) as PlayerCount)
                     }
                   >
                     <option value={2}>2 spillere</option>
@@ -239,6 +305,13 @@ function App() {
                     )}
                   </select>
                 </label>
+
+                <PlayerSetupPanel
+                  playerCount={playerCount}
+                  config={simulation?.config ?? simulationConfig}
+                  disabled={simActive && !simulation?.finished}
+                  onConfigChange={setSimulationConfig}
+                />
 
                 <label className="field">
                   Strategiprofil
@@ -258,13 +331,9 @@ function App() {
 
                 <p className="muted small strategy-hint">{activeStrategy.description}</p>
 
-                <p className="muted small draft-order">
-                  Draft: {formatDraftOrder(playerCount)}
-                </p>
-
                 <p className="muted small scoring-hint">
                   Poeng: vektet produksjon + dekning + pip, justert for knapphet på
-                  brettet. Landsby nr. 2 vurderes som par med nr. 1.
+                  brettet. Ved første landsby foreslås strategi ut fra parpotensial.
                 </p>
 
                 {!simActive ? (
@@ -306,17 +375,20 @@ function App() {
                   selectedVertex={selectedVertex}
                   strategyProfile={activeStrategy}
                   strategyWeights={strategyWeights}
+                  strategyRecommendation={strategyRecommendation}
+                  secondPreviewVertex={secondPreviewVertex}
                   onSelectVertex={setSelectedVertex}
                   onConfirm={handleConfirm}
+                  onApplyRecommendedStrategy={setStrategyProfile}
                 />
               )}
 
               {!simActive && (
                 <div className="panel sim-placeholder">
                   <p className="muted small">
-                    Velg antall spillere og trykk <strong>Start plassering</strong>.
-                    De 8 beste plasseringene vises som nummererte markører på brettet
-                    (gull = #1). Du kan også klikke andre lyse punkter for fri plassering.
+                    Velg hvem du er, gi spillere navn og farger, og trykk{' '}
+                    <strong>Start plassering</strong>. Du får anbefalinger og ser forventet
+                    landsby nr. 2 på brettet.
                   </p>
                 </div>
               )}

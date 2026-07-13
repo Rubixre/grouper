@@ -2,7 +2,7 @@ import type { Board, PlacedSettlement } from './types';
 import { getHarborsForVertex, harborShortLabel } from './harbors';
 import { getVertices } from './settlements';
 import type { SimulationState } from './simulator';
-import { PLAYER_NAMES } from './simulator';
+import { getPlayerName } from './playerConfig';
 
 /** Terningsannsynlighet per tall (to terninger) */
 export const DICE_ROLL_PROB: Record<number, number> = {
@@ -205,7 +205,7 @@ export function computePlayerStats(
 
   return {
     player,
-    name: PLAYER_NAMES[player] ?? `Spiller ${player + 1}`,
+    name: getPlayerName(state.config, player),
     firstSettlement: first,
     secondSettlement: second,
     combined,
