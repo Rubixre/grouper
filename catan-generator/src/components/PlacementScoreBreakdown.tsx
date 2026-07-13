@@ -43,7 +43,14 @@ export function PlacementScoreBreakdown({
   strategyWeights,
   firstVertexId,
 }: PlacementScoreBreakdownProps) {
-  const explanation = explainPlacementScore(score, board, firstVertexId, strategyWeights);
+  const breakdownScore =
+    score.immediateScore !== undefined ? { ...score, total: score.immediateScore } : score;
+  const explanation = explainPlacementScore(
+    breakdownScore,
+    board,
+    firstVertexId,
+    strategyWeights
+  );
 
   return (
     <div className="score-breakdown">
@@ -51,9 +58,15 @@ export function PlacementScoreBreakdown({
       <p className="score-breakdown-profile muted small">
         Strategi: {strategyProfile.label}
       </p>
+      {score.expectedPairScore !== undefined && (
+        <p className="score-breakdown-formula muted small">
+          Rangering bruker forventet parscore {fmt(score.expectedPairScore, 2)} (etter
+          lookahead). Under: lokal score for dette hjørnet.
+        </p>
+      )}
       <p className="score-breakdown-formula muted small">
         {explanation.kind === 'first' ? (
-          <>Total = prod. + dekning + pip + havn − straff</>
+          <>Lokal = prod. + dekning + pip + havn − straff</>
         ) : (
           <>Total = par prod. + synergi + utfylling − overlapp + dekning + havn</>
         )}
