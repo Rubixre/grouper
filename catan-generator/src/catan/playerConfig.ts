@@ -4,10 +4,10 @@ import type { PlayerCount } from './types';
 export const PLAYER_COLOR_PRESETS = [
   '#c0392b', // Rød
   '#e8d4b0', // Lys beige
-  '#1a3a6e', // Mørk blå
-  '#c9972a', // Okergul
+  '#2f5fa8', // Mørk blå (litt lysere)
+  '#e6b800', // Okergul / skarp gul
   '#1f8a7a', // Turkis-grønn
-  '#4a235a', // Mørk lilla
+  '#6b3a8c', // Mørk lilla (litt lysere)
 ] as const;
 
 export const DEFAULT_PLAYER_COLORS = PLAYER_COLOR_PRESETS;
