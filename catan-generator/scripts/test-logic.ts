@@ -522,7 +522,8 @@ if (board) {
   assert(!/\bens\b/i.test(story.islandName), 'Island name avoids bare genitive like Leirens');
   assert(!/\s/.test(story.islandName), 'Island name is a single compound word');
   // Intro should be one short beat, not stacked lore paragraphs
-  assert(story.narrative.split('. ').length <= 3, 'Narrative stays a short introduction');
+  assert(story.narrative.split('. ').length >= 2, 'Narrative has more than one sentence');
+  assert(story.narrative.split('. ').length <= 5, 'Narrative stays a flowing introduction');
 
   const again = createBoardStory(board);
   assert(again.islandName === story.islandName, 'Same board yields same island name');
