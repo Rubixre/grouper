@@ -520,7 +520,14 @@ import {
   rankFirstSettlementsWithLookahead,
   evaluateFirstSettlementPath,
 } from '../src/catan/strategyAdvisor.ts';
-import { getValidVertices, pickGreedyOpponentVertex, vertexPipTotal } from '../src/catan/settlements.ts';
+import {
+  getValidVertices,
+  opponentPlacementScore,
+  pickGreedyOpponentVertex,
+  vertexPipTotal,
+  vertexResourceTypes,
+  OPPONENT_RESOURCE_BONUS,
+} from '../src/catan/settlements.ts';
 if (board) {
   const config = createSimulationConfig(4, 0);
   const sim = createSimulation(board, config);
@@ -529,17 +536,70 @@ if (board) {
   assert(rec.suggestedPaths.length > 0, 'Strategy recommendation has suggested paths');
 
   const valid = getValidVertices(sim.placements);
-  let bestPipVertex = valid[0]!;
-  let bestPip = -1;
+  let bestOpponentVertex = valid[0]!;
+  let bestOpponentScore = -Infinity;
   for (const vertexId of valid) {
-    const pip = vertexPipTotal(vertexId, board);
-    if (pip > bestPip || (pip === bestPip && vertexId < bestPipVertex)) {
-      bestPip = pip;
-      bestPipVertex = vertexId;
+    const score = opponentPlacementScore(vertexId, board);
+    if (score > bestOpponentScore || (score === bestOpponentScore && vertexId < bestOpponentVertex)) {
+      bestOpponentScore = score;
+      bestOpponentVertex = vertexId;
     }
   }
   const greedyPick = pickGreedyOpponentVertex(board, sim.placements, 1);
-  assert(greedyPick === bestPipVertex, 'Greedy opponent picks highest pip for first settlement');
+  assert(
+    greedyPick === bestOpponentVertex,
+    'Greedy opponent picks highest pip+resource-diversity for first settlement'
+  );
+  assert(OPPONENT_RESOURCE_BONUS > 0, 'Opponent resource bonus is positive');
+
+  // Sjekk at mangfold påvirker valet når pip er likt nok
+  let foundDiversityPreference = false;
+  for (const a of valid) {
+    for (const b of valid) {
+      if (a >= b) continue;
+      const pipA = vertexPipTotal(a, board);
+      const pipB = vertexPipTotal(b, board);
+      const resA = vertexResourceTypes(a, board).size;
+      const resB = vertexResourceTypes(b, board).size;
+      if (Math.abs(pipA - pipB) < 1e-12 && resA !== resB) {
+        const scoreA = opponentPlacementScore(a, board);
+        const scoreB = opponentPlacementScore(b, board);
+        assert(
+          (scoreA > scoreB) === (resA > resB),
+          'Equal pip: more unique resources scores higher for opponents'
+        );
+        foundDiversityPreference = true;
+        break;
+      }
+    }
+    if (foundDiversityPreference) break;
+  }
+
+  // Andre landsby: maksimerer pip + union av unike ressursyper
+  const opponentFirst = greedyPick!;
+  const afterOpponentFirst = [
+    ...sim.placements,
+    { vertexId: opponentFirst, player: 1, isCity: false as const },
+  ];
+  const secondPick = pickGreedyOpponentVertex(board, afterOpponentFirst, 1);
+  assert(secondPick !== null, 'Opponent finds a second settlement');
+  {
+    const firstRes = vertexResourceTypes(opponentFirst, board);
+    let bestId: string | null = null;
+    let best = -Infinity;
+    for (const vertexId of getValidVertices(afterOpponentFirst)) {
+      const ur = new Set([...firstRes, ...vertexResourceTypes(vertexId, board)]);
+      const s =
+        vertexPipTotal(opponentFirst, board) +
+        vertexPipTotal(vertexId, board) +
+        OPPONENT_RESOURCE_BONUS * ur.size;
+      if (s > best || (s === best && vertexId < (bestId ?? ''))) {
+        best = s;
+        bestId = vertexId;
+      }
+    }
+    assert(secondPick === bestId, 'Second settlement maximizes pip + union resources');
+  }
 
   const humanFirst = valid[1] ?? valid[0];
   const simulated = simulateToHumanSecondTurn(

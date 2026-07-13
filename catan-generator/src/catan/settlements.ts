@@ -314,9 +314,51 @@ export function vertexPipTotal(vertexId: string, board: Board): number {
   return pip;
 }
 
+/** Unike produktive ressursyper på et hjørne (ørken teller ikke) */
+export function vertexResourceTypes(vertexId: string, board: Board): Set<ProdResource> {
+  const vertices = getVertices();
+  const vertex = vertices.get(vertexId);
+  const resources = new Set<ProdResource>();
+  if (!vertex) return resources;
+
+  for (const hex of vertex.hexes) {
+    const tile = board.hexes.find((h) => h.coord.q === hex.q && h.coord.r === hex.r);
+    if (
+      !tile ||
+      tile.kind !== 'land' ||
+      !tile.resource ||
+      tile.resource === 'desert' ||
+      !tile.number
+    ) {
+      continue;
+    }
+    resources.add(tile.resource);
+  }
+  return resources;
+}
+
 /**
- * Enkel motspillermodell: velg hjørne med høyest pip-produksjon.
- * Første landsby = høyest pip; andre landsby = høyest pip-sum for paret.
+ * Motspillere maksimerer pip, men verdsetter også flere ressursyper.
+ * Én ekstra unik ressurs ≈ én pip (1/36) — svakt nok til at produksjon dominerer.
+ */
+export const OPPONENT_RESOURCE_BONUS = 1 / 36;
+
+/** Motspillerscore: pip + bonus for unike ressursyper (valgfritt union med eksisterende) */
+export function opponentPlacementScore(
+  vertexId: string,
+  board: Board,
+  existingResources?: ReadonlySet<ProdResource>
+): number {
+  const resources = vertexResourceTypes(vertexId, board);
+  if (existingResources) {
+    for (const r of existingResources) resources.add(r);
+  }
+  return vertexPipTotal(vertexId, board) + OPPONENT_RESOURCE_BONUS * resources.size;
+}
+
+/**
+ * Enkel motspillermodell: høy pip-produksjon med moderat preferanse for flere ressurser.
+ * Første landsby = beste pip+mangfold; andre = beste pip-sum med union av ressursyper.
  */
 export function pickGreedyOpponentVertex(
   board: Board,
@@ -328,12 +370,18 @@ export function pickGreedyOpponentVertex(
 
   const existing = placed.find((p) => p.player === player);
   let bestId: string | null = null;
-  let bestScore = -1;
+  let bestScore = -Infinity;
 
   if (existing) {
     const firstPip = vertexPipTotal(existing.vertexId, board);
+    const firstResources = vertexResourceTypes(existing.vertexId, board);
     for (const vertexId of valid) {
-      const score = firstPip + vertexPipTotal(vertexId, board);
+      const secondResources = vertexResourceTypes(vertexId, board);
+      const union = new Set([...firstResources, ...secondResources]);
+      const score =
+        firstPip +
+        vertexPipTotal(vertexId, board) +
+        OPPONENT_RESOURCE_BONUS * union.size;
       if (score > bestScore || (score === bestScore && vertexId < (bestId ?? ''))) {
         bestScore = score;
         bestId = vertexId;
@@ -343,9 +391,9 @@ export function pickGreedyOpponentVertex(
   }
 
   for (const vertexId of valid) {
-    const pip = vertexPipTotal(vertexId, board);
-    if (pip > bestScore || (pip === bestScore && vertexId < (bestId ?? ''))) {
-      bestScore = pip;
+    const score = opponentPlacementScore(vertexId, board);
+    if (score > bestScore || (score === bestScore && vertexId < (bestId ?? ''))) {
+      bestScore = score;
       bestId = vertexId;
     }
   }
