@@ -196,8 +196,9 @@ export function SettlementSimulator({
               </summary>
               <div className="harbor-strategy-card">
                 <p className="muted small">
-                  Når én ressurs har solid forventet produksjon og du kan knytte 2:1
-                  (eller 3:1) havn til den — et alternativ utenom vanlig rangering.
+                  Når én ressurs har solid forventet produksjon og 2:1 (eller 3:1)
+                  havn ligger innen to veier fra en landsby — et alternativ utenom
+                  vanlig rangering.
                 </p>
                 <ul className="harbor-strategy-list">
                   {harborOpportunities.map((opp) => (

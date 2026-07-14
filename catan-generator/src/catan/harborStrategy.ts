@@ -1,7 +1,7 @@
-import type { Board, HarborType, PlacedSettlement, PlayerCount } from './types';
-import { getHarborsForVertex } from './harbors';
+import type { Board, HarborType, PlacedHarbor, PlacedSettlement, PlayerCount } from './types';
 import {
   getValidVertices,
+  getVertices,
   pickGreedyOpponentVertex,
   vertexRawByResource,
 } from './settlements';
@@ -13,7 +13,10 @@ import { getPlacementOrder } from './draftOrder';
  * Minimum rå pip for én ressurs før havnstrategi vurderes som aktuell.
  * ≈ 6+4 (5/36+3/36) — solid produksjon, ikke bare én svak hex.
  */
-export const HARBOR_STRATEGY_PIP_THRESHOLD = (NUMBER_PROB[6]! + NUMBER_PROB[4]!);
+export const HARBOR_STRATEGY_PIP_THRESHOLD = NUMBER_PROB[6]! + NUMBER_PROB[4]!;
+
+/** Havn trenger ikke landsby oppå — ≤ denne avstanden i veier holder. */
+export const HARBOR_STRATEGY_MAX_ROADS = 2;
 
 export type HarborStrategyKind = 'resource' | 'generic';
 
@@ -24,8 +27,10 @@ export interface HarborStrategyOpportunity {
   resourcePip: number;
   firstVertexId: string;
   secondVertexId?: string;
-  /** true når produksjon og havn ligger på samme hjørne */
+  /** true når en landsby står direkte på havnen */
   sameSpot: boolean;
+  /** Korteste veiavstand (0–2) fra nærmeste landsby til havn */
+  harborRoadDistance: number;
   summary: string;
   strength: 'strong' | 'moderate';
 }
@@ -63,32 +68,78 @@ function harborMatchesResource(harbor: HarborType, resource: ProdResource): Harb
   return null;
 }
 
-function bestHarborKindOnVertex(
-  vertexId: string,
-  board: Board,
-  resource: ProdResource
-): HarborStrategyKind | null {
-  let best: HarborStrategyKind | null = null;
-  for (const placed of getHarborsForVertex(vertexId, board.harbors)) {
-    const kind = harborMatchesResource(placed.definition.harbor, resource);
-    if (kind === 'resource') return 'resource';
-    if (kind === 'generic') best = 'generic';
+/** Korteste veiavstand mellom to hjørner (ubegrenset BFS; null hvis frakoblet). */
+export function vertexRoadDistance(fromId: string, toId: string): number | null {
+  if (fromId === toId) return 0;
+  const vertices = getVertices();
+  if (!vertices.has(fromId) || !vertices.has(toId)) return null;
+
+  const queue: string[] = [fromId];
+  const dist = new Map<string, number>([[fromId, 0]]);
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const d = dist.get(current)!;
+    const vertex = vertices.get(current);
+    if (!vertex) continue;
+    for (const neighbor of vertex.neighbors) {
+      if (dist.has(neighbor)) continue;
+      const next = d + 1;
+      if (neighbor === toId) return next;
+      dist.set(neighbor, next);
+      queue.push(neighbor);
+    }
+  }
+  return null;
+}
+
+/** Minste veiavstand fra settet av landsbyer til nærmeste havn-node. */
+function harborDistanceFromSettlements(
+  settlementIds: string[],
+  harbor: PlacedHarbor
+): number | null {
+  let best: number | null = null;
+  for (const settlementId of settlementIds) {
+    for (const harborNode of harbor.nodeVertexIds) {
+      const d = vertexRoadDistance(settlementId, harborNode);
+      if (d === null) continue;
+      if (best === null || d < best) best = d;
+    }
   }
   return best;
 }
 
-function bestHarborKindOnVertices(
-  vertexIds: string[],
+/**
+ * Beste havn for ressursen som ligger innen `HARBOR_STRATEGY_MAX_ROADS` veier
+ * fra minst én landsby. 2:1 prioriteres over 3:1; nærmere prioriteres ved lik type.
+ */
+function bestReachableHarbor(
+  settlementIds: string[],
   board: Board,
   resource: ProdResource
-): { kind: HarborStrategyKind; onVertexId: string } | null {
-  let generic: { kind: HarborStrategyKind; onVertexId: string } | null = null;
-  for (const vertexId of vertexIds) {
-    const kind = bestHarborKindOnVertex(vertexId, board, resource);
-    if (kind === 'resource') return { kind, onVertexId: vertexId };
-    if (kind === 'generic' && !generic) generic = { kind, onVertexId: vertexId };
+): { kind: HarborStrategyKind; roadDistance: number } | null {
+  let best: { kind: HarborStrategyKind; roadDistance: number } | null = null;
+
+  for (const harbor of board.harbors) {
+    const kind = harborMatchesResource(harbor.definition.harbor, resource);
+    if (!kind) continue;
+
+    const distance = harborDistanceFromSettlements(settlementIds, harbor);
+    if (distance === null || distance > HARBOR_STRATEGY_MAX_ROADS) continue;
+
+    if (!best) {
+      best = { kind, roadDistance: distance };
+      continue;
+    }
+
+    const betterKind = kind === 'resource' && best.kind === 'generic';
+    const sameKindCloser = kind === best.kind && distance < best.roadDistance;
+    if (betterKind || sameKindCloser) {
+      best = { kind, roadDistance: distance };
+    }
   }
-  return generic;
+
+  return best;
 }
 
 function combineRaw(
@@ -107,23 +158,27 @@ function summarize(
   resource: ProdResource,
   harborKind: HarborStrategyKind,
   resourcePip: number,
-  sameSpot: boolean
+  roadDistance: number
 ): { summary: string; strength: 'strong' | 'moderate' } {
   const label = RESOURCE_LABELS[resource].toLowerCase();
   const pipTxt = (resourcePip * 36).toFixed(0);
+  const harborLabel = harborKind === 'resource' ? `2:1 ${label}havn` : '3:1-havn';
+  const reach =
+    roadDistance === 0
+      ? 'på landsbyen'
+      : roadDistance === 1
+        ? '1 vei unna'
+        : `${roadDistance} veier unna`;
+
   if (harborKind === 'resource') {
     return {
       strength: 'strong',
-      summary: sameSpot
-        ? `God ${label}-produksjon (~${pipTxt}/36) med 2:1 ${label}havn på samme hjørne — mulig spesialiseringsstrategi.`
-        : `God ${label}-produksjon (~${pipTxt}/36) kombinert med 2:1 ${label}havn på den andre landsbyen — alternativ til vanlig balansert scoring.`,
+      summary: `God ${label}-produksjon (~${pipTxt}/36) med ${harborLabel} ${reach} — mulig spesialiseringsstrategi (trenger ikke landsby direkte på havnen).`,
     };
   }
   return {
     strength: 'moderate',
-    summary: sameSpot
-      ? `Solid ${label}-produksjon (~${pipTxt}/36) ved 3:1-havn — svakere enn 2:1, men kan fungere som havnstrategi.`
-      : `Solid ${label}-produksjon (~${pipTxt}/36) med 3:1-havn i paret — moderat alternativ hvis 2:1 ikke er ledig.`,
+    summary: `Solid ${label}-produksjon (~${pipTxt}/36) med ${harborLabel} ${reach} — moderat alternativ hvis 2:1 ikke er tilgjengelig.`,
   };
 }
 
@@ -133,7 +188,7 @@ function opportunityKey(o: HarborStrategyOpportunity): string {
     o.harborKind,
     o.firstVertexId,
     o.secondVertexId ?? '',
-    o.sameSpot ? '1' : '0',
+    o.harborRoadDistance,
   ].join('|');
 }
 
@@ -155,28 +210,19 @@ function considerPlan(
   secondVertexId: string | undefined,
   combinedRaw: Partial<Record<ProdResource, number>>
 ): void {
-  const vertexIds = secondVertexId ? [firstVertexId, secondVertexId] : [firstVertexId];
+  const settlementIds = secondVertexId ? [firstVertexId, secondVertexId] : [firstVertexId];
   for (const resource of PROD_RESOURCES) {
     const resourcePip = combinedRaw[resource] ?? 0;
     if (resourcePip + 1e-12 < HARBOR_STRATEGY_PIP_THRESHOLD) continue;
 
-    const harbor = bestHarborKindOnVertices(vertexIds, board, resource);
+    const harbor = bestReachableHarbor(settlementIds, board, resource);
     if (!harbor) continue;
-
-    const firstRaw = vertexRawByResource(firstVertexId, board)[resource] ?? 0;
-    const firstHasMatchingHarbor =
-      bestHarborKindOnVertex(firstVertexId, board, resource) !== null;
-    const trulySameSpot =
-      !secondVertexId ||
-      (harbor.onVertexId === firstVertexId &&
-        firstHasMatchingHarbor &&
-        firstRaw + 1e-12 >= HARBOR_STRATEGY_PIP_THRESHOLD);
 
     const { summary, strength } = summarize(
       resource,
       harbor.kind,
       resourcePip,
-      trulySameSpot
+      harbor.roadDistance
     );
 
     addOpportunity(bag, {
@@ -185,7 +231,8 @@ function considerPlan(
       resourcePip,
       firstVertexId,
       secondVertexId,
-      sameSpot: trulySameSpot,
+      sameSpot: harbor.roadDistance === 0,
+      harborRoadDistance: harbor.roadDistance,
       summary,
       strength,
     });
@@ -194,7 +241,8 @@ function considerPlan(
 
 /**
  * Finn havnstrategier som alternativ til vanlig scoring.
- * Påvirker ikke rangering — kun forslag når produksjon + havn er sterk nok.
+ * Havn må ligge innen 2 veier fra minst én landsby (ikke nødvendigvis oppå).
+ * Påvirker ikke rangering.
  */
 export function findHarborStrategyOpportunities(
   board: Board,
@@ -208,12 +256,11 @@ export function findHarborStrategyOpportunities(
   const valid = getValidVertices(placed);
 
   if (own.length === 0) {
-    // Samme hjørne: produksjon + havn
     for (const vertexId of valid) {
       considerPlan(bag, board, vertexId, undefined, vertexRawByResource(vertexId, board));
     }
 
-    // Split: sterk produksjon + havn på landsby #2 (etter simulerte motspillere)
+    // Par: sterk produksjon + annen landsby som bringer havn innen 2 veier
     const productionCandidates = valid
       .map((vertexId) => {
         const raw = vertexRawByResource(vertexId, board);
@@ -243,17 +290,11 @@ export function findHarborStrategyOpportunities(
       if (!simulated) continue;
 
       for (const secondId of getValidVertices(simulated)) {
-        const harbor = bestHarborKindOnVertices(
-          [candidate.vertexId, secondId],
-          board,
-          candidate.bestResource!
-        );
-        if (!harbor) continue;
-        const combined = combineRaw(
-          candidate.raw,
-          vertexRawByResource(secondId, board)
-        );
+        const combined = combineRaw(candidate.raw, vertexRawByResource(secondId, board));
         if ((combined[candidate.bestResource!] ?? 0) + 1e-12 < HARBOR_STRATEGY_PIP_THRESHOLD) {
+          continue;
+        }
+        if (!bestReachableHarbor([candidate.vertexId, secondId], board, candidate.bestResource!)) {
           continue;
         }
         considerPlan(bag, board, candidate.vertexId, secondId, combined);
@@ -273,6 +314,9 @@ export function findHarborStrategyOpportunities(
       const strengthRank = (s: 'strong' | 'moderate') => (s === 'strong' ? 1 : 0);
       const d = strengthRank(b.strength) - strengthRank(a.strength);
       if (d !== 0) return d;
+      if (a.harborRoadDistance !== b.harborRoadDistance) {
+        return a.harborRoadDistance - b.harborRoadDistance;
+      }
       return b.resourcePip - a.resourcePip;
     })
     .slice(0, limit);
