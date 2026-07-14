@@ -8,6 +8,7 @@ import {
 import { NUMBER_PROB, PROD_RESOURCES, type ProdResource } from './placementModel';
 import { RESOURCE_LABELS } from './playerStats';
 import { getPlacementOrder } from './draftOrder';
+import { coordKey } from './hex';
 
 /**
  * Minimum rå pip for én ressurs før havnstrategi vurderes som aktuell.
@@ -17,6 +18,9 @@ export const HARBOR_STRATEGY_PIP_THRESHOLD = NUMBER_PROB[6]! + NUMBER_PROB[4]!;
 
 /** Gyldig veiavstand til havn: 0 (på havnen) eller 2 — aldri 1 (Catan-avstandsregel). */
 export const HARBOR_STRATEGY_VALID_ROAD_DISTANCES = [0, 2] as const;
+
+/** Vekt på øvrige ressurser vs. fokusressurs ved rangering. */
+export const HARBOR_STRATEGY_OTHER_WEIGHT = 0.55;
 
 export function isValidHarborRoadDistance(distance: number): boolean {
   return distance === 0 || distance === 2;
@@ -29,6 +33,16 @@ export interface HarborStrategyOpportunity {
   harborKind: HarborStrategyKind;
   /** Rå pip for fokusressursen i planen */
   resourcePip: number;
+  /** Rå pip for alle andre produktive ressurser */
+  otherPip: number;
+  /** Total rå pip for planen */
+  totalPip: number;
+  /** Antall produktive landhex i planen */
+  producingHexCount: number;
+  /** Sorted land-hex nøkler for 1. landsby (til dominans-sjekk) */
+  firstHexKeys: string[];
+  /** Sorted land-hex nøkler for 2. landsby */
+  secondHexKeys: string[];
   firstVertexId: string;
   secondVertexId?: string;
   /** true når en landsby står direkte på havnen */
@@ -112,7 +126,6 @@ export function vertexRoadDistance(fromId: string, toId: string): number | null 
   return null;
 }
 
-/** Minste veiavstand fra settet av landsbyer til nærmeste havn-node. */
 function harborDistanceFromSettlements(
   settlementIds: string[],
   harbor: PlacedHarbor
@@ -128,10 +141,6 @@ function harborDistanceFromSettlements(
   return best;
 }
 
-/**
- * Beste havn for ressursen som ligger 0 eller 2 veier fra minst én landsby
- * (avstand 1 er ugyldig — man kan ikke bygge der). 2:1 prioriteres over 3:1.
- */
 function bestReachableHarbor(
   settlementIds: string[],
   board: Board,
@@ -174,6 +183,39 @@ function combineRaw(
   return out;
 }
 
+function sumRaw(raw: Partial<Record<ProdResource, number>>): number {
+  let total = 0;
+  for (const r of PROD_RESOURCES) total += raw[r] ?? 0;
+  return total;
+}
+
+function landHexKeys(vertexId: string, board: Board): string[] {
+  const vertices = getVertices();
+  const vertex = vertices.get(vertexId);
+  if (!vertex) return [];
+  const keys: string[] = [];
+  for (const hex of vertex.hexes) {
+    const tile = board.hexes.find((h) => h.coord.q === hex.q && h.coord.r === hex.r);
+    if (
+      !tile ||
+      tile.kind !== 'land' ||
+      !tile.resource ||
+      tile.resource === 'desert' ||
+      !tile.number
+    ) {
+      continue;
+    }
+    keys.push(coordKey(hex));
+  }
+  return keys.sort();
+}
+
+function isSubsetHexKeys(subset: string[], set: string[]): boolean {
+  if (subset.length > set.length) return false;
+  const larger = new Set(set);
+  return subset.every((k) => larger.has(k));
+}
+
 function harborReachLabel(roadDistance: number): string {
   return roadDistance === 0 ? 'på havnen' : '2 veier unna';
 }
@@ -196,17 +238,98 @@ function summarize(
   };
 }
 
-function opportunityKey(o: HarborStrategyOpportunity): string {
-  return harborOpportunityKey(o);
+/** Sammenligningsverdi: fokusressurs først, deretter øvrige ressurser. */
+export function harborOpportunityScore(o: {
+  resourcePip: number;
+  otherPip: number;
+  producingHexCount: number;
+}): number {
+  return (
+    o.resourcePip +
+    HARBOR_STRATEGY_OTHER_WEIGHT * o.otherPip +
+    (1 / 36) * 0.15 * o.producingHexCount
+  );
+}
+
+export function compareHarborOpportunities(
+  a: HarborStrategyOpportunity,
+  b: HarborStrategyOpportunity
+): number {
+  const strengthRank = (s: 'strong' | 'moderate') => (s === 'strong' ? 1 : 0);
+  const strengthDiff = strengthRank(b.strength) - strengthRank(a.strength);
+  if (strengthDiff !== 0) return strengthDiff;
+
+  const scoreDiff = harborOpportunityScore(b) - harborOpportunityScore(a);
+  if (Math.abs(scoreDiff) > 1e-12) return scoreDiff;
+
+  if (b.resourcePip !== a.resourcePip) return b.resourcePip - a.resourcePip;
+  if (b.otherPip !== a.otherPip) return b.otherPip - a.otherPip;
+  if (b.producingHexCount !== a.producingHexCount) {
+    return b.producingHexCount - a.producingHexCount;
+  }
+  if (a.harborRoadDistance !== b.harborRoadDistance) {
+    return a.harborRoadDistance - b.harborRoadDistance;
+  }
+  return 0;
+}
+
+/**
+ * True hvis `dominator` er minst like bra på fokus + øvrig produksjon,
+ * samme/nærmere havn, og strengt bedre et sted — eller har hex-supersett
+ * med minst like god fokusproduksjon (f.eks. 3-hex vs. samme 2-hex).
+ */
+export function isHarborOpportunityDominatedBy(
+  candidate: HarborStrategyOpportunity,
+  dominator: HarborStrategyOpportunity
+): boolean {
+  if (candidate.resource !== dominator.resource) return false;
+  if (candidate.harborKind !== dominator.harborKind) return false;
+  if (candidate.harborName !== dominator.harborName) return false;
+  if ((candidate.secondVertexId ?? '') !== (dominator.secondVertexId ?? '')) return false;
+  if (candidate.firstVertexId === dominator.firstVertexId) return false;
+
+  if (dominator.harborRoadDistance > candidate.harborRoadDistance) return false;
+  if (dominator.resourcePip + 1e-12 < candidate.resourcePip) return false;
+
+  const hexSuperset =
+    isSubsetHexKeys(candidate.firstHexKeys, dominator.firstHexKeys) &&
+    candidate.firstHexKeys.length < dominator.firstHexKeys.length &&
+    isSubsetHexKeys(candidate.secondHexKeys, dominator.secondHexKeys);
+
+  const betterOrEqualElsewhere =
+    dominator.otherPip + 1e-12 >= candidate.otherPip &&
+    dominator.producingHexCount >= candidate.producingHexCount;
+
+  const strictlyBetter =
+    dominator.resourcePip > candidate.resourcePip + 1e-12 ||
+    dominator.otherPip > candidate.otherPip + 1e-12 ||
+    dominator.producingHexCount > candidate.producingHexCount ||
+    dominator.harborRoadDistance < candidate.harborRoadDistance ||
+    hexSuperset;
+
+  if (hexSuperset && dominator.resourcePip + 1e-12 >= candidate.resourcePip) {
+    return true;
+  }
+
+  return betterOrEqualElsewhere && strictlyBetter;
+}
+
+export function pruneDominatedHarborOpportunities(
+  opportunities: HarborStrategyOpportunity[]
+): HarborStrategyOpportunity[] {
+  return opportunities.filter(
+    (candidate) =>
+      !opportunities.some((other) => isHarborOpportunityDominatedBy(candidate, other))
+  );
 }
 
 function addOpportunity(
   bag: Map<string, HarborStrategyOpportunity>,
   opportunity: HarborStrategyOpportunity
 ): void {
-  const key = opportunityKey(opportunity);
+  const key = harborOpportunityKey(opportunity);
   const existing = bag.get(key);
-  if (!existing || opportunity.resourcePip > existing.resourcePip) {
+  if (!existing || harborOpportunityScore(opportunity) > harborOpportunityScore(existing)) {
     bag.set(key, opportunity);
   }
 }
@@ -219,6 +342,11 @@ function considerPlan(
   combinedRaw: Partial<Record<ProdResource, number>>
 ): void {
   const settlementIds = secondVertexId ? [firstVertexId, secondVertexId] : [firstVertexId];
+  const firstHexKeys = landHexKeys(firstVertexId, board);
+  const secondHexKeys = secondVertexId ? landHexKeys(secondVertexId, board) : [];
+  const producingHexCount = firstHexKeys.length + secondHexKeys.length;
+  const totalPip = sumRaw(combinedRaw);
+
   for (const resource of PROD_RESOURCES) {
     const resourcePip = combinedRaw[resource] ?? 0;
     if (resourcePip + 1e-12 < HARBOR_STRATEGY_PIP_THRESHOLD) continue;
@@ -226,6 +354,7 @@ function considerPlan(
     const harbor = bestReachableHarbor(settlementIds, board, resource);
     if (!harbor) continue;
 
+    const otherPip = totalPip - resourcePip;
     const { summary, strength } = summarize(
       resource,
       harbor.kind,
@@ -238,6 +367,11 @@ function considerPlan(
       resource,
       harborKind: harbor.kind,
       resourcePip,
+      otherPip,
+      totalPip,
+      producingHexCount,
+      firstHexKeys,
+      secondHexKeys,
       firstVertexId,
       secondVertexId,
       sameSpot: harbor.roadDistance === 0,
@@ -254,8 +388,8 @@ function considerPlan(
 
 /**
  * Finn havnstrategier som alternativ til vanlig scoring.
- * Havn må ligge 0 eller 2 veier fra minst én landsby (aldri 1).
- * Påvirker ikke rangering.
+ * Maksimerer fokusproduksjon først, deretter øvrige ressurser / hex-dekning.
+ * Dominerte planer (f.eks. 2-hex vs. samme 2 + én til) fjernes.
  */
 export function findHarborStrategyOpportunities(
   board: Board,
@@ -273,7 +407,6 @@ export function findHarborStrategyOpportunities(
       considerPlan(bag, board, vertexId, undefined, vertexRawByResource(vertexId, board));
     }
 
-    // Par: sterk produksjon + annen landsby som bringer havn 0 eller 2 veier unna
     const productionCandidates = valid
       .map((vertexId) => {
         const raw = vertexRawByResource(vertexId, board);
@@ -286,11 +419,22 @@ export function findHarborStrategyOpportunities(
             bestResource = r;
           }
         }
-        return { vertexId, raw, bestResource, bestPip };
+        return {
+          vertexId,
+          raw,
+          bestResource,
+          bestPip,
+          totalPip: sumRaw(raw),
+          hexCount: landHexKeys(vertexId, board).length,
+        };
       })
       .filter((c) => c.bestPip >= HARBOR_STRATEGY_PIP_THRESHOLD * 0.55)
-      .sort((a, b) => b.bestPip - a.bestPip)
-      .slice(0, 10);
+      .sort((a, b) => {
+        if (b.bestPip !== a.bestPip) return b.bestPip - a.bestPip;
+        if (b.totalPip !== a.totalPip) return b.totalPip - a.totalPip;
+        return b.hexCount - a.hexCount;
+      })
+      .slice(0, 14);
 
     for (const candidate of productionCandidates) {
       const simulated = simulateToHumanSecondTurn(
@@ -322,15 +466,7 @@ export function findHarborStrategyOpportunities(
     }
   }
 
-  return [...bag.values()]
-    .sort((a, b) => {
-      const strengthRank = (s: 'strong' | 'moderate') => (s === 'strong' ? 1 : 0);
-      const d = strengthRank(b.strength) - strengthRank(a.strength);
-      if (d !== 0) return d;
-      if (a.harborRoadDistance !== b.harborRoadDistance) {
-        return a.harborRoadDistance - b.harborRoadDistance;
-      }
-      return b.resourcePip - a.resourcePip;
-    })
+  return pruneDominatedHarborOpportunities([...bag.values()])
+    .sort(compareHarborOpportunities)
     .slice(0, limit);
 }

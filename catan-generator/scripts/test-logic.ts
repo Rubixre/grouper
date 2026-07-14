@@ -645,10 +645,15 @@ if (board) {
 console.log('\nHarbor strategy alternative');
 import {
   findHarborStrategyOpportunities,
+  HARBOR_STRATEGY_OTHER_WEIGHT,
   HARBOR_STRATEGY_PIP_THRESHOLD,
   HARBOR_STRATEGY_VALID_ROAD_DISTANCES,
+  harborOpportunityScore,
+  isHarborOpportunityDominatedBy,
   isValidHarborRoadDistance,
+  pruneDominatedHarborOpportunities,
   vertexRoadDistance,
+  type HarborStrategyOpportunity,
 } from '../src/catan/harborStrategy.ts';
 import { NUMBER_PROB } from '../src/catan/placementModel.ts';
 import { getVertices } from '../src/catan/settlements.ts';
@@ -662,6 +667,53 @@ assert(
 );
 assert(!isValidHarborRoadDistance(1), 'Distance 1 is invalid for harbor strategy');
 assert(isValidHarborRoadDistance(0) && isValidHarborRoadDistance(2), 'Distance 0 and 2 are valid');
+assert(HARBOR_STRATEGY_OTHER_WEIGHT > 0 && HARBOR_STRATEGY_OTHER_WEIGHT < 1, 'Other resources get partial weight');
+assert(
+  harborOpportunityScore({ resourcePip: 8 / 36, otherPip: 5 / 36, producingHexCount: 3 }) >
+    harborOpportunityScore({ resourcePip: 8 / 36, otherPip: 0, producingHexCount: 2 }),
+  'Same focus pip: more other production scores higher'
+);
+
+{
+  const twoHex: HarborStrategyOpportunity = {
+    resource: 'ore',
+    harborKind: 'resource',
+    resourcePip: 8 / 36,
+    otherPip: 0,
+    totalPip: 8 / 36,
+    producingHexCount: 2,
+    firstHexKeys: ['0,0', '1,0'],
+    secondHexKeys: [],
+    firstVertexId: 'two',
+    sameSpot: true,
+    harborRoadDistance: 0,
+    harborName: 'Malmhavn',
+    harborNodeLabels: 'H1–H2',
+    harborNodeVertexIds: ['a', 'b'],
+    harborReachLabel: 'på havnen',
+    summary: 'test',
+    strength: 'strong',
+  };
+  const threeHex: HarborStrategyOpportunity = {
+    ...twoHex,
+    otherPip: 3 / 36,
+    totalPip: 11 / 36,
+    producingHexCount: 3,
+    firstHexKeys: ['0,0', '1,0', '0,1'],
+    firstVertexId: 'three',
+  };
+  assert(
+    isHarborOpportunityDominatedBy(twoHex, threeHex),
+    '2-hex subset is dominated by same hexes + one more'
+  );
+  assert(
+    !isHarborOpportunityDominatedBy(threeHex, twoHex),
+    '3-hex is not dominated by its 2-hex subset'
+  );
+  const pruned = pruneDominatedHarborOpportunities([twoHex, threeHex]);
+  assert(pruned.length === 1 && pruned[0]!.firstVertexId === 'three', 'Prune keeps supersetted plan');
+}
+
 if (board) {
   const vertices = getVertices();
   const anyId = [...vertices.keys()][0];
@@ -705,6 +757,15 @@ if (board) {
     assert(opp.summary.length > 10, 'Harbor opportunity has readable summary');
     assert(opp.harborName.length > 0, 'Harbor opportunity names the harbor');
     assert(opp.harborNodeLabels.length > 0, 'Harbor opportunity shows harbor nodes');
+    assert(opp.totalPip + 1e-12 >= opp.resourcePip, 'Total pip includes focus resource');
+    assert(opp.producingHexCount >= 1, 'Harbor opportunity touches producing hexes');
+  }
+
+  // Ingen returnert plan skal være dominert av en annen returnert plan
+  for (const a of opportunities) {
+    for (const b of opportunities) {
+      assert(!isHarborOpportunityDominatedBy(a, b), 'Returned harbor plans are not dominated');
+    }
   }
 }
 
