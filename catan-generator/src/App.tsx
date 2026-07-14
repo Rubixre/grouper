@@ -19,7 +19,7 @@ import {
   isHumanFirstSettlementTurn,
   recommendStrategy,
 } from './catan/strategyAdvisor';
-import { findHarborStrategyOpportunities } from './catan/harborStrategy';
+import { findHarborStrategyOpportunities, harborOpportunityKey, type HarborStrategyOpportunity } from './catan/harborStrategy';
 import {
   createSimulation,
   getOptionsForCurrentTurn,
@@ -68,6 +68,7 @@ function App() {
   const [selectedVertex, setSelectedVertex] = useState<string | null>(
     () => restoredSession?.selectedVertex ?? null
   );
+  const [selectedHarborPlanKey, setSelectedHarborPlanKey] = useState<string | null>(null);
   const [boardStory, setBoardStory] = useState<BoardStory | null>(
     () => restoredSession?.boardStory ?? null
   );
@@ -113,6 +114,7 @@ function App() {
     setBoardStory(createBoardStory(result));
     setSimulation(null);
     setSelectedVertex(null);
+    setSelectedHarborPlanKey(null);
     setMode('view');
   }, [settings, boardSize]);
 
@@ -153,12 +155,14 @@ function App() {
     if (!board) return;
     setSimulation(createSimulation(board, simulationConfig));
     setSelectedVertex(null);
+    setSelectedHarborPlanKey(null);
     setMode('simulate');
   };
 
   const resetSimulation = () => {
     setSimulation(null);
     setSelectedVertex(null);
+    setSelectedHarborPlanKey(null);
     setMode('view');
   };
 
@@ -191,8 +195,17 @@ function App() {
     );
   }, [board, simulation, isYourTurn]);
 
+  const activeHarborPlan = useMemo(() => {
+    if (!selectedHarborPlanKey) return null;
+    return (
+      harborOpportunities.find((o) => harborOpportunityKey(o) === selectedHarborPlanKey) ??
+      null
+    );
+  }, [selectedHarborPlanKey, harborOpportunities]);
+
   const secondPreviewVertex = useMemo(() => {
     if (!board || !simulation || !selectedVertex || !isYourTurn) return null;
+    if (activeHarborPlan?.secondVertexId) return activeHarborPlan.secondVertexId;
     const human = simulation.config.humanPlayerIndex;
     if (!isHumanFirstSettlementTurn(simulation.placements, human)) return null;
     return getSecondSettlementPreview(
@@ -203,12 +216,47 @@ function App() {
       selectedVertex,
       strategyWeights
     );
-  }, [board, simulation, selectedVertex, isYourTurn, strategyWeights]);
+  }, [
+    board,
+    simulation,
+    selectedVertex,
+    isYourTurn,
+    strategyWeights,
+    activeHarborPlan,
+  ]);
+
+  const harborPlanHighlight = activeHarborPlan
+    ? {
+        firstVertexId: activeHarborPlan.firstVertexId,
+        secondVertexId: activeHarborPlan.secondVertexId,
+        harborNodeVertexIds: activeHarborPlan.harborNodeVertexIds,
+      }
+    : null;
+
+  const handleSelectVertex = (vertexId: string) => {
+    setSelectedVertex(vertexId);
+    if (
+      selectedHarborPlanKey &&
+      !harborOpportunities.some(
+        (o) =>
+          harborOpportunityKey(o) === selectedHarborPlanKey &&
+          o.firstVertexId === vertexId
+      )
+    ) {
+      setSelectedHarborPlanKey(null);
+    }
+  };
+
+  const handleSelectHarborPlan = (opp: HarborStrategyOpportunity) => {
+    setSelectedHarborPlanKey(harborOpportunityKey(opp));
+    setSelectedVertex(opp.firstVertexId);
+  };
 
   const handleConfirm = () => {
     if (!simulation || !selectedVertex) return;
     setSimulation(placeSettlement(simulation, selectedVertex));
     setSelectedVertex(null);
+    setSelectedHarborPlanKey(null);
   };
 
   const toggleMapping = () => {
@@ -283,7 +331,8 @@ function App() {
                 highlightedVertices={simPlacing ? rankedOptions : []}
                 previewSecondVertex={secondPreviewVertex}
                 selectedVertex={selectedVertex}
-                onVertexClick={simPlacing ? setSelectedVertex : undefined}
+                harborPlanHighlight={harborPlanHighlight}
+                onVertexClick={simPlacing ? handleSelectVertex : undefined}
                 interactive={Boolean(simPlacing)}
                 mappingMode={mappingMode}
                 mapping={boardMapping}
@@ -306,7 +355,9 @@ function App() {
                     )}
                   </div>
                   <span className="placement-legend-hint">
-                    #1 = best forventet par · stiplet ring = landsby nr. 2
+                    {activeHarborPlan
+                      ? 'Oransje 1 / turkis 2 = havnstrategi · blå = havn'
+                      : '#1 = best forventet par · stiplet ring = landsby nr. 2'}
                   </span>
                 </div>
               )}
@@ -417,14 +468,17 @@ function App() {
                 <SettlementSimulator
                   state={simulation}
                   board={board}
+                  boardSize={boardSize}
                   options={rankedOptions}
                   selectedVertex={selectedVertex}
+                  selectedHarborPlanKey={selectedHarborPlanKey}
                   strategyProfile={activeStrategy}
                   strategyWeights={strategyWeights}
                   strategyRecommendation={strategyRecommendation}
                   harborOpportunities={harborOpportunities}
                   secondPreviewVertex={secondPreviewVertex}
-                  onSelectVertex={setSelectedVertex}
+                  onSelectVertex={handleSelectVertex}
+                  onSelectHarborPlan={handleSelectHarborPlan}
                   onConfirm={handleConfirm}
                   onApplyRecommendedStrategy={setStrategyProfile}
                 />
@@ -512,14 +566,17 @@ function App() {
                 <SettlementSimulator
                   state={simulation}
                   board={board}
+                  boardSize={boardSize}
                   options={rankedOptions}
                   selectedVertex={selectedVertex}
+                  selectedHarborPlanKey={selectedHarborPlanKey}
                   strategyProfile={activeStrategy}
                   strategyWeights={strategyWeights}
                   strategyRecommendation={strategyRecommendation}
                   harborOpportunities={harborOpportunities}
                   secondPreviewVertex={secondPreviewVertex}
-                  onSelectVertex={setSelectedVertex}
+                  onSelectVertex={handleSelectVertex}
+                  onSelectHarborPlan={handleSelectHarborPlan}
                   onConfirm={handleConfirm}
                   onApplyRecommendedStrategy={setStrategyProfile}
                 />

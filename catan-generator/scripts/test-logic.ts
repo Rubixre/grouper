@@ -702,11 +702,9 @@ if (board) {
       isValidHarborRoadDistance(opp.harborRoadDistance),
       'Harbor opportunity is at distance 0 or 2 only'
     );
-    assert(opp.summary.length > 20, 'Harbor opportunity has readable summary');
-    assert(
-      opp.summary.includes('vei') || opp.summary.includes('havnen'),
-      'Harbor summary mentions reach'
-    );
+    assert(opp.summary.length > 10, 'Harbor opportunity has readable summary');
+    assert(opp.harborName.length > 0, 'Harbor opportunity names the harbor');
+    assert(opp.harborNodeLabels.length > 0, 'Harbor opportunity shows harbor nodes');
   }
 }
 

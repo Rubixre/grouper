@@ -1,13 +1,17 @@
 import type { CSSProperties } from 'react';
 import { useMemo, useState } from 'react';
-import type { SettlementScore, ResourceWeights } from '../catan/types';
+import type { SettlementScore, ResourceWeights, BoardSize } from '../catan/types';
 import type { Board } from '../catan/types';
 import type { SimulationState } from '../catan/simulator';
 import { currentPlayer, isHumanTurn } from '../catan/simulator';
 import type { StrategyProfile, StrategyProfileId } from '../catan/resourceWeights';
 import type { StrategyRecommendation } from '../catan/strategyAdvisor';
 import { isHumanFirstSettlementTurn } from '../catan/strategyAdvisor';
-import type { HarborStrategyOpportunity } from '../catan/harborStrategy';
+import {
+  harborOpportunityKey,
+  type HarborStrategyOpportunity,
+} from '../catan/harborStrategy';
+import { formatSettlementVertexLine } from '../catan/vertexLabels';
 import { getPlayerConfig } from '../catan/playerConfig';
 import { RESOURCE_LABELS } from '../catan/playerStats';
 import type { ProdResource } from '../catan/playerStats';
@@ -17,14 +21,17 @@ import { SimulationDraftBar } from './SimulationDraftBar';
 interface SettlementSimulatorProps {
   state: SimulationState;
   board: Board;
+  boardSize: BoardSize;
   options: SettlementScore[];
   selectedVertex: string | null;
+  selectedHarborPlanKey: string | null;
   strategyProfile: StrategyProfile;
   strategyWeights: ResourceWeights;
   strategyRecommendation: StrategyRecommendation | null;
   harborOpportunities: HarborStrategyOpportunity[];
   secondPreviewVertex: string | null;
   onSelectVertex: (vertexId: string) => void;
+  onSelectHarborPlan: (opp: HarborStrategyOpportunity) => void;
   onConfirm: () => void;
   onApplyRecommendedStrategy: (profileId: StrategyProfileId) => void;
 }
@@ -56,14 +63,17 @@ function optionMeta(
 export function SettlementSimulator({
   state,
   board,
+  boardSize,
   options,
   selectedVertex,
+  selectedHarborPlanKey,
   strategyProfile,
   strategyWeights,
   strategyRecommendation,
   harborOpportunities,
   secondPreviewVertex,
   onSelectVertex,
+  onSelectHarborPlan,
   onConfirm,
   onApplyRecommendedStrategy,
 }: SettlementSimulatorProps) {
@@ -99,6 +109,14 @@ export function SettlementSimulator({
     );
   }, [selectedVertex, strategyRecommendation, isFirstHuman, isYourTurn]);
 
+  const activeHarborPlan = useMemo(() => {
+    if (!selectedHarborPlanKey) return null;
+    return (
+      harborOpportunities.find((o) => harborOpportunityKey(o) === selectedHarborPlanKey) ??
+      null
+    );
+  }, [selectedHarborPlanKey, harborOpportunities]);
+
   const turnHint = isYourTurn
     ? isSecond
       ? 'Andre landsby — hele paret vurderes'
@@ -121,7 +139,11 @@ export function SettlementSimulator({
             {isYourTurn ? (
               <>
                 <strong>Din tur — {humanConfig.name}</strong>
-                <p className="muted small">{turnHint}</p>
+                <p className="muted small">
+                  {activeHarborPlan
+                    ? 'Havnstrategi valgt — se oransje 1 og turkis 2 på brettet'
+                    : turnHint}
+                </p>
               </>
             ) : (
               <>
@@ -196,28 +218,61 @@ export function SettlementSimulator({
               </summary>
               <div className="harbor-strategy-card">
                 <p className="muted small">
-                  Når én ressurs har solid forventet produksjon og 2:1 (eller 3:1)
-                  havn ligger på landsbyen eller nøyaktig 2 veier unna (aldri 1) —
-                  et alternativ utenom vanlig rangering.
+                  Klikk et forslag for å markere landsby 1 (oransje), evt. landsby 2
+                  (turkis) og havn (blå) på brettet. Påvirker ikke vanlig rangering.
                 </p>
                 <ul className="harbor-strategy-list">
-                  {harborOpportunities.map((opp) => (
-                    <li key={`${opp.firstVertexId}-${opp.secondVertexId ?? ''}-${opp.resource}`}>
-                      <button
-                        type="button"
-                        className={`harbor-strategy-item ${
-                          selectedVertex === opp.firstVertexId ? 'selected' : ''
-                        }`}
-                        onClick={() => onSelectVertex(opp.firstVertexId)}
-                      >
-                        <span className="harbor-strategy-badge" data-strength={opp.strength}>
-                          {opp.harborKind === 'resource' ? '2:1' : '3:1'}{' '}
-                          {RESOURCE_LABELS[opp.resource]}
-                        </span>
-                        <span className="harbor-strategy-text">{opp.summary}</span>
-                      </button>
-                    </li>
-                  ))}
+                  {harborOpportunities.map((opp, index) => {
+                    const planKey = harborOpportunityKey(opp);
+                    const isActive = selectedHarborPlanKey === planKey;
+                    const firstLine = formatSettlementVertexLine(
+                      board,
+                      boardSize,
+                      opp.firstVertexId,
+                      '1. landsby'
+                    );
+                    const secondLine =
+                      opp.secondVertexId != null
+                        ? formatSettlementVertexLine(
+                            board,
+                            boardSize,
+                            opp.secondVertexId,
+                            '2. landsby'
+                          )
+                        : null;
+                    return (
+                      <li key={planKey}>
+                        <button
+                          type="button"
+                          className={`harbor-strategy-item ${isActive ? 'selected' : ''}`}
+                          onClick={() => onSelectHarborPlan(opp)}
+                        >
+                          <div className="harbor-strategy-item-head">
+                            <span className="harbor-strategy-index">#{index + 1}</span>
+                            <span
+                              className="harbor-strategy-badge"
+                              data-strength={opp.strength}
+                            >
+                              {opp.harborKind === 'resource' ? '2:1' : '3:1'}{' '}
+                              {RESOURCE_LABELS[opp.resource]}
+                            </span>
+                            <span className="harbor-strategy-pip muted small">
+                              ~{(opp.resourcePip * 36).toFixed(0)}/36
+                            </span>
+                          </div>
+                          <ul className="harbor-strategy-plan">
+                            <li>{firstLine}</li>
+                            {secondLine && <li>{secondLine}</li>}
+                            <li>
+                              Havn: {opp.harborName} ({opp.harborNodeLabels}) ·{' '}
+                              {opp.harborReachLabel}
+                            </li>
+                          </ul>
+                          <p className="harbor-strategy-text muted small">{opp.summary}</p>
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             </details>
@@ -275,40 +330,82 @@ export function SettlementSimulator({
       )}
 
       <div className="sim-details-foot">
-        {selectedOption && !state.finished && (
-          <details className="sim-details-block score-breakdown-details">
+        {(selectedOption || activeHarborPlan) && !state.finished && (
+          <details className="sim-details-block score-breakdown-details" open={Boolean(activeHarborPlan)}>
             <summary>
-              Poengforklaring · #{selectedRank} (
-              {selectedOption.expectedPairScore !== undefined
-                ? `par ${selectedOption.expectedPairScore.toFixed(2)}`
-                : selectedOption.total.toFixed(2)}
-              )
+              {activeHarborPlan ? (
+                <>Havnstrategi valgt</>
+              ) : (
+                <>
+                  Poengforklaring · #{selectedRank} (
+                  {selectedOption!.expectedPairScore !== undefined
+                    ? `par ${selectedOption!.expectedPairScore.toFixed(2)}`
+                    : selectedOption!.total.toFixed(2)}
+                  )
+                </>
+              )}
             </summary>
-            {(selectedOption.expectedPairScore !== undefined ||
-              (selectedPath && isFirstHuman && isYourTurn)) && (
+            {(selectedOption?.expectedPairScore !== undefined ||
+              (selectedPath && isFirstHuman && isYourTurn) ||
+              activeHarborPlan) && (
               <p className="second-preview-hint muted small">
-                Forventet landsby nr. 2 (motspillere: høy pip): parscore{' '}
-                <strong>
-                  {(
-                    selectedOption.expectedPairScore ?? selectedPath?.pairScore ?? 0
-                  ).toFixed(2)}
-                </strong>
-                {secondPreviewVertex && ' — stiplet ring på brettet'}
-                {selectedOption.immediateScore !== undefined && (
-                  <> · lokal spot {selectedOption.immediateScore.toFixed(2)}</>
-                )}
+                {activeHarborPlan ? (
+                  <>
+                    Havnstrategi:{' '}
+                    <strong>
+                      {formatSettlementVertexLine(
+                        board,
+                        boardSize,
+                        activeHarborPlan.firstVertexId,
+                        '1.'
+                      )}
+                    </strong>
+                    {activeHarborPlan.secondVertexId && (
+                      <>
+                        {' '}
+                        →{' '}
+                        <strong>
+                          {formatSettlementVertexLine(
+                            board,
+                            boardSize,
+                            activeHarborPlan.secondVertexId,
+                            '2.'
+                          )}
+                        </strong>
+                      </>
+                    )}
+                    {' · '}
+                    {activeHarborPlan.harborName} ({activeHarborPlan.harborReachLabel}) ·
+                    havn {activeHarborPlan.harborNodeLabels}
+                  </>
+                ) : selectedOption ? (
+                  <>
+                    Forventet landsby nr. 2 (motspillere: høy pip): parscore{' '}
+                    <strong>
+                      {(
+                        selectedOption.expectedPairScore ?? selectedPath?.pairScore ?? 0
+                      ).toFixed(2)}
+                    </strong>
+                    {secondPreviewVertex && ' — stiplet ring på brettet'}
+                    {selectedOption.immediateScore !== undefined && (
+                      <> · lokal spot {selectedOption.immediateScore.toFixed(2)}</>
+                    )}
+                  </>
+                ) : null}
               </p>
             )}
-            <PlacementScoreBreakdown
-              score={selectedOption}
-              board={board}
-              rank={selectedRank}
-              strategyProfile={strategyProfile}
-              strategyWeights={strategyWeights}
-              firstVertexId={
-                selectedOption.placementKind === 'second' ? currentFirstVertex : undefined
-              }
-            />
+            {selectedOption && (
+              <PlacementScoreBreakdown
+                score={selectedOption}
+                board={board}
+                rank={selectedRank}
+                strategyProfile={strategyProfile}
+                strategyWeights={strategyWeights}
+                firstVertexId={
+                  selectedOption.placementKind === 'second' ? currentFirstVertex : undefined
+                }
+              />
+            )}
           </details>
         )}
 

@@ -35,8 +35,23 @@ export interface HarborStrategyOpportunity {
   sameSpot: boolean;
   /** Korteste veiavstand fra nærmeste landsby til havn (0 eller 2) */
   harborRoadDistance: number;
+  harborName: string;
+  harborNodeLabels: string;
+  harborNodeVertexIds: [string, string];
+  harborReachLabel: string;
   summary: string;
   strength: 'strong' | 'moderate';
+}
+
+export function harborOpportunityKey(o: HarborStrategyOpportunity): string {
+  return [
+    o.resource,
+    o.harborKind,
+    o.firstVertexId,
+    o.secondVertexId ?? '',
+    o.harborRoadDistance,
+    o.harborName,
+  ].join('|');
 }
 
 function simulateToHumanSecondTurn(
@@ -121,8 +136,9 @@ function bestReachableHarbor(
   settlementIds: string[],
   board: Board,
   resource: ProdResource
-): { kind: HarborStrategyKind; roadDistance: number } | null {
-  let best: { kind: HarborStrategyKind; roadDistance: number } | null = null;
+): { kind: HarborStrategyKind; roadDistance: number; harbor: PlacedHarbor } | null {
+  let best: { kind: HarborStrategyKind; roadDistance: number; harbor: PlacedHarbor } | null =
+    null;
 
   for (const harbor of board.harbors) {
     const kind = harborMatchesResource(harbor.definition.harbor, resource);
@@ -132,14 +148,14 @@ function bestReachableHarbor(
     if (distance === null || !isValidHarborRoadDistance(distance)) continue;
 
     if (!best) {
-      best = { kind, roadDistance: distance };
+      best = { kind, roadDistance: distance, harbor };
       continue;
     }
 
     const betterKind = kind === 'resource' && best.kind === 'generic';
     const sameKindCloser = kind === best.kind && distance < best.roadDistance;
     if (betterKind || sameKindCloser) {
-      best = { kind, roadDistance: distance };
+      best = { kind, roadDistance: distance, harbor };
     }
   }
 
@@ -158,44 +174,30 @@ function combineRaw(
   return out;
 }
 
+function harborReachLabel(roadDistance: number): string {
+  return roadDistance === 0 ? 'på havnen' : '2 veier unna';
+}
+
 function summarize(
   resource: ProdResource,
   harborKind: HarborStrategyKind,
   resourcePip: number,
-  roadDistance: number
+  roadDistance: number,
+  harborName: string
 ): { summary: string; strength: 'strong' | 'moderate' } {
   const label = RESOURCE_LABELS[resource].toLowerCase();
   const pipTxt = (resourcePip * 36).toFixed(0);
-  const harborLabel = harborKind === 'resource' ? `2:1 ${label}havn` : '3:1-havn';
-  const reach =
-    roadDistance === 0 ? 'på landsbyen (direkte på havnen)' : '2 veier unna';
-
-  if (harborKind === 'resource') {
-    return {
-      strength: 'strong',
-      summary:
-        roadDistance === 0
-          ? `God ${label}-produksjon (~${pipTxt}/36) med ${harborLabel} ${reach} — mulig spesialiseringsstrategi.`
-          : `God ${label}-produksjon (~${pipTxt}/36) med ${harborLabel} ${reach} — havn nås med to veier (avstand 1 er ikke spillbart).`,
-    };
-  }
+  const ratio = harborKind === 'resource' ? '2:1' : '3:1';
+  const reach = harborReachLabel(roadDistance);
+  const strength = harborKind === 'resource' ? 'strong' : 'moderate';
   return {
-    strength: 'moderate',
-    summary:
-      roadDistance === 0
-        ? `Solid ${label}-produksjon (~${pipTxt}/36) ved ${harborLabel} ${reach} — svakere enn 2:1, men kan fungere som havnstrategi.`
-        : `Solid ${label}-produksjon (~${pipTxt}/36) med ${harborLabel} ${reach} — moderat alternativ hvis 2:1 ikke er tilgjengelig.`,
+    strength,
+    summary: `Fokus ${label} (~${pipTxt}/36) · ${harborName} (${ratio}) ${reach}.`,
   };
 }
 
 function opportunityKey(o: HarborStrategyOpportunity): string {
-  return [
-    o.resource,
-    o.harborKind,
-    o.firstVertexId,
-    o.secondVertexId ?? '',
-    o.harborRoadDistance,
-  ].join('|');
+  return harborOpportunityKey(o);
 }
 
 function addOpportunity(
@@ -228,7 +230,8 @@ function considerPlan(
       resource,
       harbor.kind,
       resourcePip,
-      harbor.roadDistance
+      harbor.roadDistance,
+      harbor.harbor.definition.name
     );
 
     addOpportunity(bag, {
@@ -239,6 +242,10 @@ function considerPlan(
       secondVertexId,
       sameSpot: harbor.roadDistance === 0,
       harborRoadDistance: harbor.roadDistance,
+      harborName: harbor.harbor.definition.name,
+      harborNodeLabels: harbor.harbor.nodeLabels.join('–'),
+      harborNodeVertexIds: harbor.harbor.nodeVertexIds,
+      harborReachLabel: harborReachLabel(harbor.roadDistance),
       summary,
       strength,
     });
