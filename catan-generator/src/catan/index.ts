@@ -19,6 +19,7 @@ export * from './mapping';
 export * from './playerConfig';
 export * from './draftOrder';
 export * from './strategyAdvisor';
+export * from './harborStrategy';
 export * from './simulator';
 export * from './playerStats';
 export * from './boardStory';

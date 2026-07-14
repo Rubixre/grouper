@@ -31,7 +31,7 @@ import { resetVertices } from './settlements';
 import { coordKey, getNeighbors } from './hex';
 
 /** 19 landhexer – standard grunnspill */
-const RESOURCES_BASE: ResourceType[] = [
+export const RESOURCES_BASE: ResourceType[] = [
   'wood',
   'wood',
   'wood',
@@ -54,7 +54,7 @@ const RESOURCES_BASE: ResourceType[] = [
 ];
 
 /** +2 av hver ressurs + 1 ørken for 5–6 spillere */
-const RESOURCES_EXTENSION: ResourceType[] = [
+export const RESOURCES_EXTENSION: ResourceType[] = [
   'wood',
   'wood',
   'brick',
@@ -68,6 +68,12 @@ const RESOURCES_EXTENSION: ResourceType[] = [
   'desert',
 ];
 
+/** Full ressursbrikkepool for bonanza (grunnspill + utvidelse = 30) */
+export const RESOURCES_BONANZA_POOL: ResourceType[] = [
+  ...RESOURCES_BASE,
+  ...RESOURCES_EXTENSION,
+];
+
 const NUMBERS_BASE = [2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12];
 
 /** 10 ekstra tallbrikker – utvidelse har 2×2/12 og 3×(3–6, 8–11) totalt */
@@ -76,14 +82,43 @@ const NUMBERS_EXTENSION = [2, 3, 4, 5, 6, 8, 9, 10, 11, 12];
 /** Full tallbrikk-pool for 5–6 spillere (28 nummererte landhexer) */
 export const NUMBERS_EXTENSION_56 = [...NUMBERS_BASE, ...NUMBERS_EXTENSION];
 
-function resourcesForSize(size: BoardSize): ResourceType[] {
-  return size === 'base'
-    ? RESOURCES_BASE
-    : [...RESOURCES_BASE, ...RESOURCES_EXTENSION];
+function resourcesForBoard(
+  size: BoardSize,
+  settings: GeneratorSettings,
+  landCount: number
+): ResourceType[] {
+  if (size === 'extension56') {
+    return [...RESOURCES_BASE, ...RESOURCES_EXTENSION];
+  }
+  if (settings.bonanzaBoard) {
+    // Trekker tilfeldig landCount brikker fra 30 (grunn + utvidelse)
+    return shuffle(RESOURCES_BONANZA_POOL).slice(0, landCount);
+  }
+  return [...RESOURCES_BASE];
 }
 
-function numbersForSize(size: BoardSize): number[] {
-  return size === 'base' ? NUMBERS_BASE : NUMBERS_EXTENSION_56;
+function numbersForNonDesertCount(
+  size: BoardSize,
+  settings: GeneratorSettings,
+  nonDesertCount: number
+): number[] {
+  if (size === 'extension56') {
+    return [...NUMBERS_EXTENSION_56];
+  }
+
+  if (!settings.bonanzaBoard) {
+    return [...NUMBERS_BASE];
+  }
+
+  // Bonanza: antall ørkener (og dermed nummererte hexer) varierer
+  let pool = [...NUMBERS_BASE];
+  if (nonDesertCount > pool.length) {
+    const extras = shuffle([...NUMBERS_EXTENSION]);
+    pool = [...pool, ...extras.slice(0, nonDesertCount - pool.length)];
+  } else if (nonDesertCount < pool.length) {
+    pool = shuffle(pool).slice(0, nonDesertCount);
+  }
+  return pool;
 }
 
 function shuffle<T>(arr: T[]): T[] {
@@ -219,8 +254,6 @@ export function generateBoard(
   const landCoords = getLandHexCoords(boardSize);
   const landSet = getLandSet(boardSize);
   const coastSlots = buildCoastSlots(boardSize);
-  const resources = resourcesForSize(boardSize);
-  const numbers = numbersForSize(boardSize);
 
   if (landCoords.length !== getLandHexCount(boardSize)) {
     throw new Error(
@@ -229,8 +262,16 @@ export function generateBoard(
   }
 
   for (let attempt = 0; attempt < 300; attempt++) {
+    const resources = resourcesForBoard(boardSize, settings, landCoords.length);
     const landHexes = tryPlaceResources(landCoords, resources, settings, landSet);
     if (!landHexes) continue;
+
+    const desertCount = [...landHexes.values()].filter((h) => h.resource === 'desert').length;
+    const numbers = numbersForNonDesertCount(
+      boardSize,
+      settings,
+      landCoords.length - desertCount
+    );
     if (!tryPlaceNumbers(landHexes, numbers, settings, landSet)) continue;
 
     const extensionEdgeOrder =

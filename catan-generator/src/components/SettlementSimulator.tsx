@@ -7,6 +7,7 @@ import { currentPlayer, isHumanTurn } from '../catan/simulator';
 import type { StrategyProfile, StrategyProfileId } from '../catan/resourceWeights';
 import type { StrategyRecommendation } from '../catan/strategyAdvisor';
 import { isHumanFirstSettlementTurn } from '../catan/strategyAdvisor';
+import type { HarborStrategyOpportunity } from '../catan/harborStrategy';
 import { getPlayerConfig } from '../catan/playerConfig';
 import { RESOURCE_LABELS } from '../catan/playerStats';
 import type { ProdResource } from '../catan/playerStats';
@@ -21,6 +22,7 @@ interface SettlementSimulatorProps {
   strategyProfile: StrategyProfile;
   strategyWeights: ResourceWeights;
   strategyRecommendation: StrategyRecommendation | null;
+  harborOpportunities: HarborStrategyOpportunity[];
   secondPreviewVertex: string | null;
   onSelectVertex: (vertexId: string) => void;
   onConfirm: () => void;
@@ -59,6 +61,7 @@ export function SettlementSimulator({
   strategyProfile,
   strategyWeights,
   strategyRecommendation,
+  harborOpportunities,
   secondPreviewVertex,
   onSelectVertex,
   onConfirm,
@@ -182,6 +185,39 @@ export function SettlementSimulator({
                     ))}
                   </ul>
                 )}
+              </div>
+            </details>
+          )}
+
+          {harborOpportunities.length > 0 && isYourTurn && (
+            <details className="sim-details-block harbor-strategy-details" open>
+              <summary>
+                Havnstrategi — alternativ ({harborOpportunities.length})
+              </summary>
+              <div className="harbor-strategy-card">
+                <p className="muted small">
+                  Når én ressurs har solid forventet produksjon og du kan knytte 2:1
+                  (eller 3:1) havn til den — et alternativ utenom vanlig rangering.
+                </p>
+                <ul className="harbor-strategy-list">
+                  {harborOpportunities.map((opp) => (
+                    <li key={`${opp.firstVertexId}-${opp.secondVertexId ?? ''}-${opp.resource}`}>
+                      <button
+                        type="button"
+                        className={`harbor-strategy-item ${
+                          selectedVertex === opp.firstVertexId ? 'selected' : ''
+                        }`}
+                        onClick={() => onSelectVertex(opp.firstVertexId)}
+                      >
+                        <span className="harbor-strategy-badge" data-strength={opp.strength}>
+                          {opp.harborKind === 'resource' ? '2:1' : '3:1'}{' '}
+                          {RESOURCE_LABELS[opp.resource]}
+                        </span>
+                        <span className="harbor-strategy-text">{opp.summary}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               </div>
             </details>
           )}

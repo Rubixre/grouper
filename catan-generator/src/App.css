@@ -2073,6 +2073,58 @@ body {
   flex-wrap: wrap;
 }
 
+.harbor-strategy-card {
+  margin: 0;
+}
+
+.harbor-strategy-list {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.harbor-strategy-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--border, #c9b896) 70%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel, #fff8e7) 88%, #d4e8d0);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+.harbor-strategy-item:hover,
+.harbor-strategy-item.selected {
+  border-color: color-mix(in srgb, #3d6b4f 55%, #c9b896);
+  background: color-mix(in srgb, #d4e8d0 65%, #fff8e7);
+}
+
+.harbor-strategy-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #2f5a3d;
+}
+
+.harbor-strategy-badge[data-strength='moderate'] {
+  color: #6a5a2e;
+}
+
+.harbor-strategy-text {
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: color-mix(in srgb, currentColor 78%, transparent);
+}
+
 .strategy-pill {
   padding: 0.2rem 0.55rem;
   border-radius: 999px;

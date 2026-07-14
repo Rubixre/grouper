@@ -77,6 +77,8 @@ export function SettingsModal({
             </label>
             <p className="muted small">
               Utvidelse legger til 11 landhexer og 4 enkelt-hex kantbrikker (B7–B10).
+              Bonanzabrett gjelder kun grunnspill (trekker tilfeldig blant alle
+              ressursbrikkene).
             </p>
           </section>
 

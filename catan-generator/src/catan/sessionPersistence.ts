@@ -76,6 +76,7 @@ function sanitizeSettings(raw: unknown): GeneratorSettings {
       raw.allowAdjacentSameNumber ?? DEFAULT_SETTINGS.allowAdjacentSameNumber
     ),
     randomHarbors: Boolean(raw.randomHarbors ?? DEFAULT_SETTINGS.randomHarbors),
+    bonanzaBoard: Boolean(raw.bonanzaBoard ?? DEFAULT_SETTINGS.bonanzaBoard),
   };
 }
 

@@ -38,6 +38,12 @@ const SETTING_LABELS: {
     description:
       'Blander rekkefølgen på kantbrikkene (B1–B6). Hver brikke beholder sin relative havnplassering. Av = original rekkefølge.',
   },
+  {
+    key: 'bonanzaBoard',
+    label: 'Bonanzabrett (grunnspill)',
+    description:
+      'Trekker 19 av 30 ressursbrikker (grunn + 5–6-utvidelse). Kan gi to ørkener, mange av én type — eller ingen. Gjelder kun grunnspill.',
+  },
 ];
 
 export function SettingsPanel({ settings, onChange, embedded = false }: SettingsPanelProps) {

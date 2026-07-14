@@ -256,6 +256,55 @@ const randomOrders = new Set(
 );
 assert(randomOrders.size > 1, 'Random harbors shuffle piece order across boards');
 
+console.log('\nBonanza board');
+import { RESOURCES_BONANZA_POOL } from '../src/catan/generator.ts';
+assert(RESOURCES_BONANZA_POOL.length === 30, 'Bonanza pool has 30 resource tiles');
+const bonanzaSettings = { ...DEFAULT_SETTINGS, bonanzaBoard: true };
+const bonanzaBoard = generateBoard(bonanzaSettings, 'base');
+assert(bonanzaBoard !== null, 'Generates a bonanza base board');
+if (bonanzaBoard) {
+  const land = bonanzaBoard.hexes.filter((h) => h.kind === 'land');
+  assert(land.length === 19, 'Bonanza keeps 19 land hexes');
+  const deserts = land.filter((h) => h.resource === 'desert').length;
+  assert(deserts >= 0 && deserts <= 2, 'Bonanza deserts between 0 and 2');
+  const numbered = land.filter((h) => h.number !== null);
+  assert(numbered.length === 19 - deserts, 'Bonanza numbers match non-desert land');
+  assert(bonanzaBoard.harbors.length === 9, 'Bonanza keeps normal harbor count');
+}
+
+const bonanzaSamples = Array.from({ length: 40 }, () =>
+  generateBoard(bonanzaSettings, 'base')
+).filter((b): b is NonNullable<typeof b> => b !== null);
+assert(bonanzaSamples.length >= 30, 'Bonanza samples generate reliably');
+{
+  let sawZeroResource = false;
+  let sawManyOfOne = false;
+  let sawTwoDeserts = false;
+  for (const sample of bonanzaSamples) {
+    const land = sample.hexes.filter((h) => h.kind === 'land');
+    const counts: Record<string, number> = {
+      wood: 0,
+      brick: 0,
+      sheep: 0,
+      wheat: 0,
+      ore: 0,
+      desert: 0,
+    };
+    for (const tile of land) {
+      if (tile.resource) counts[tile.resource] = (counts[tile.resource] ?? 0) + 1;
+    }
+    if (counts.desert >= 2) sawTwoDeserts = true;
+    for (const r of ['wood', 'brick', 'sheep', 'wheat', 'ore'] as const) {
+      if (counts[r] === 0) sawZeroResource = true;
+      if (counts[r] >= 6) sawManyOfOne = true;
+    }
+  }
+  assert(
+    sawZeroResource || sawManyOfOne || sawTwoDeserts,
+    'Bonanza samples show non-standard resource counts'
+  );
+}
+
 const extBoard = generateBoard(DEFAULT_SETTINGS, 'extension56');
 assert(extBoard !== null, 'Generates valid 5–6 player board');
 if (extBoard) {
@@ -591,6 +640,40 @@ if (board) {
     turnOpts[0]?.expectedPairScore !== undefined,
     'getOptionsForCurrentTurn uses lookahead on first settlement'
   );
+}
+
+console.log('\nHarbor strategy alternative');
+import {
+  findHarborStrategyOpportunities,
+  HARBOR_STRATEGY_PIP_THRESHOLD,
+} from '../src/catan/harborStrategy.ts';
+import { NUMBER_PROB } from '../src/catan/placementModel.ts';
+assert(
+  Math.abs(HARBOR_STRATEGY_PIP_THRESHOLD - (NUMBER_PROB[6]! + NUMBER_PROB[4]!)) < 1e-12,
+  'Harbor strategy threshold is 6+4 pip (~8/36)'
+);
+if (board) {
+  const config = createSimulationConfig(4, 0);
+  const sim = createSimulation(board, config);
+  const opportunities = findHarborStrategyOpportunities(
+    board,
+    sim.placements,
+    config.humanPlayerIndex,
+    4
+  );
+  assert(Array.isArray(opportunities), 'Harbor opportunities returns a list');
+  assert(opportunities.length <= 4, 'Harbor opportunities are capped');
+  for (const opp of opportunities) {
+    assert(
+      opp.resourcePip + 1e-12 >= HARBOR_STRATEGY_PIP_THRESHOLD,
+      'Harbor opportunity meets production threshold'
+    );
+    assert(
+      opp.harborKind === 'resource' || opp.harborKind === 'generic',
+      'Harbor opportunity has 2:1 or 3:1 harbor'
+    );
+    assert(opp.summary.length > 20, 'Harbor opportunity has readable summary');
+  }
 }
 
 console.log('\nBoard story');

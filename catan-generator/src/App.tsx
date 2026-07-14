@@ -19,6 +19,7 @@ import {
   isHumanFirstSettlementTurn,
   recommendStrategy,
 } from './catan/strategyAdvisor';
+import { findHarborStrategyOpportunities } from './catan/harborStrategy';
 import {
   createSimulation,
   getOptionsForCurrentTurn,
@@ -180,6 +181,16 @@ function App() {
     );
   }, [board, simulation, isYourTurn]);
 
+  const harborOpportunities = useMemo(() => {
+    if (!board || !simulation || !isYourTurn) return [];
+    return findHarborStrategyOpportunities(
+      board,
+      simulation.placements,
+      simulation.config.humanPlayerIndex,
+      simulation.playerCount
+    );
+  }, [board, simulation, isYourTurn]);
+
   const secondPreviewVertex = useMemo(() => {
     if (!board || !simulation || !selectedVertex || !isYourTurn) return null;
     const human = simulation.config.humanPlayerIndex;
@@ -218,11 +229,13 @@ function App() {
                 {boardStory.islandName}
                 <span className="subtitle-sep"> · </span>
                 {BOARD_SIZE_CONFIG[boardSize].label}
+                {settings.bonanzaBoard && boardSize === 'base' ? ' · Bonanza' : ''}
               </>
             ) : (
               <>
                 {BOARD_SIZE_CONFIG[boardSize].totalHexes} hex ·{' '}
                 {BOARD_SIZE_CONFIG[boardSize].label}
+                {settings.bonanzaBoard && boardSize === 'base' ? ' · Bonanza' : ''}
               </>
             )}
           </p>
@@ -409,6 +422,7 @@ function App() {
                   strategyProfile={activeStrategy}
                   strategyWeights={strategyWeights}
                   strategyRecommendation={strategyRecommendation}
+                  harborOpportunities={harborOpportunities}
                   secondPreviewVertex={secondPreviewVertex}
                   onSelectVertex={setSelectedVertex}
                   onConfirm={handleConfirm}
@@ -503,6 +517,7 @@ function App() {
                   strategyProfile={activeStrategy}
                   strategyWeights={strategyWeights}
                   strategyRecommendation={strategyRecommendation}
+                  harborOpportunities={harborOpportunities}
                   secondPreviewVertex={secondPreviewVertex}
                   onSelectVertex={setSelectedVertex}
                   onConfirm={handleConfirm}
