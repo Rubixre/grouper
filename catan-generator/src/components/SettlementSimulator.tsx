@@ -35,6 +35,7 @@ interface SettlementSimulatorProps {
   onSelectVertex: (vertexId: string) => void;
   onSelectHarborPlan: (opp: HarborStrategyOpportunity) => void;
   onConfirm: () => void;
+  onUndo: () => void;
   onApplyRecommendedStrategy: (profileId: StrategyProfileId) => void;
 }
 
@@ -77,6 +78,7 @@ export function SettlementSimulator({
   onSelectVertex,
   onSelectHarborPlan,
   onConfirm,
+  onUndo,
   onApplyRecommendedStrategy,
 }: SettlementSimulatorProps) {
   const [showAllOptions, setShowAllOptions] = useState(false);
@@ -165,17 +167,27 @@ export function SettlementSimulator({
           <span className="sim-profile-chip muted small">{strategyProfile.label}</span>
         </div>
 
-        {!state.finished && (
+        <div className="sim-action-row">
           <button
             type="button"
-            className="btn primary btn-block sim-confirm-btn"
-            disabled={!selectedVertex}
-            onClick={onConfirm}
-            style={{ '--player-color': activeConfig.color } as CSSProperties}
+            className="btn btn-block sim-undo-btn"
+            disabled={state.placements.length === 0}
+            onClick={onUndo}
           >
-            Bekreft for {activeConfig.name}
+            Angre
           </button>
-        )}
+          {!state.finished && (
+            <button
+              type="button"
+              className="btn primary btn-block sim-confirm-btn"
+              disabled={!selectedVertex}
+              onClick={onConfirm}
+              style={{ '--player-color': activeConfig.color } as CSSProperties}
+            >
+              Bekreft for {activeConfig.name}
+            </button>
+          )}
+        </div>
 
         {!state.finished && (
           <div className="sim-tabs" role="tablist" aria-label="Simuleringsvisning">

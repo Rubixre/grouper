@@ -27,6 +27,7 @@ import {
   createSimulation,
   createSimulationConfig,
   placeSettlement,
+  undoLastPlacement,
   getOptionsForCurrentTurn,
   scoreSecondSettlement,
   DEFAULT_SETTINGS,
@@ -1072,6 +1073,14 @@ if (board) {
     const afterP1 = placeSettlement(sim, options[0].vertexId);
     assert(afterP1.placements.length === 1, 'Placement recorded');
     assert(afterP1.currentStep === 1, 'Advances to next player');
+    const undone = undoLastPlacement(afterP1);
+    assert(undone.placements.length === 0, 'Undo removes last placement');
+    assert(undone.currentStep === 0, 'Undo restores previous step');
+    assert(!undone.finished, 'Undo clears finished flag');
+    assert(
+      undoLastPlacement(sim).placements.length === 0,
+      'Undo on empty simulation is a no-op'
+    );
     const p2options = getOptionsForCurrentTurn(afterP1);
     assert(p2options.length > 0, 'Second player has options');
     assert(

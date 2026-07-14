@@ -25,6 +25,7 @@ import {
   getOptionsForCurrentTurn,
   isHumanTurn,
   placeSettlement,
+  undoLastPlacement,
   type SimulationState,
 } from './catan/simulator';
 import {
@@ -260,6 +261,13 @@ function App() {
     setSelectedHarborPlanKey(null);
   };
 
+  const handleUndo = () => {
+    if (!simulation || simulation.placements.length === 0) return;
+    setSimulation(undoLastPlacement(simulation));
+    setSelectedVertex(null);
+    setSelectedHarborPlanKey(null);
+  };
+
   const toggleMapping = () => {
     setMappingMode((on) => {
       if (!on) setMode('view');
@@ -405,7 +413,7 @@ function App() {
               onHighlightEdge={setHighlightEdge}
               onHighlightCorner={setHighlightCorner}
             />
-          ) : simPlacing ? (
+          ) : simActive && simulation ? (
             <>
               <details className="panel sim-setup-details">
                 <summary>
@@ -434,7 +442,7 @@ function App() {
 
                 <PlayerSetupPanel
                   playerCount={playerCount}
-                  config={simulation?.config ?? simulationConfig}
+                  config={simulation.config}
                   disabled
                   compact
                   onConfigChange={setSimulationConfig}
@@ -465,7 +473,7 @@ function App() {
                 </button>
               </details>
 
-              {simulation && board && (
+              {board && (
                 <SettlementSimulator
                   state={simulation}
                   board={board}
@@ -481,6 +489,7 @@ function App() {
                   onSelectVertex={handleSelectVertex}
                   onSelectHarborPlan={handleSelectHarborPlan}
                   onConfirm={handleConfirm}
+                  onUndo={handleUndo}
                   onApplyRecommendedStrategy={setStrategyProfile}
                 />
               )}
@@ -562,26 +571,6 @@ function App() {
                   </div>
                 )}
               </div>
-
-              {simActive && simulation?.finished && board && (
-                <SettlementSimulator
-                  state={simulation}
-                  board={board}
-                  boardSize={boardSize}
-                  options={rankedOptions}
-                  selectedVertex={selectedVertex}
-                  selectedHarborPlanKey={selectedHarborPlanKey}
-                  strategyProfile={activeStrategy}
-                  strategyWeights={strategyWeights}
-                  strategyRecommendation={strategyRecommendation}
-                  harborOpportunities={harborOpportunities}
-                  secondPreviewVertex={secondPreviewVertex}
-                  onSelectVertex={handleSelectVertex}
-                  onSelectHarborPlan={handleSelectHarborPlan}
-                  onConfirm={handleConfirm}
-                  onApplyRecommendedStrategy={setStrategyProfile}
-                />
-              )}
 
               {!simActive && (
                 <div className="panel sim-placeholder">
