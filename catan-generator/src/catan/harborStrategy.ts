@@ -15,8 +15,12 @@ import { getPlacementOrder } from './draftOrder';
  */
 export const HARBOR_STRATEGY_PIP_THRESHOLD = NUMBER_PROB[6]! + NUMBER_PROB[4]!;
 
-/** Havn trenger ikke landsby oppå — ≤ denne avstanden i veier holder. */
-export const HARBOR_STRATEGY_MAX_ROADS = 2;
+/** Gyldig veiavstand til havn: 0 (på havnen) eller 2 — aldri 1 (Catan-avstandsregel). */
+export const HARBOR_STRATEGY_VALID_ROAD_DISTANCES = [0, 2] as const;
+
+export function isValidHarborRoadDistance(distance: number): boolean {
+  return distance === 0 || distance === 2;
+}
 
 export type HarborStrategyKind = 'resource' | 'generic';
 
@@ -29,7 +33,7 @@ export interface HarborStrategyOpportunity {
   secondVertexId?: string;
   /** true når en landsby står direkte på havnen */
   sameSpot: boolean;
-  /** Korteste veiavstand (0–2) fra nærmeste landsby til havn */
+  /** Korteste veiavstand fra nærmeste landsby til havn (0 eller 2) */
   harborRoadDistance: number;
   summary: string;
   strength: 'strong' | 'moderate';
@@ -110,8 +114,8 @@ function harborDistanceFromSettlements(
 }
 
 /**
- * Beste havn for ressursen som ligger innen `HARBOR_STRATEGY_MAX_ROADS` veier
- * fra minst én landsby. 2:1 prioriteres over 3:1; nærmere prioriteres ved lik type.
+ * Beste havn for ressursen som ligger 0 eller 2 veier fra minst én landsby
+ * (avstand 1 er ugyldig — man kan ikke bygge der). 2:1 prioriteres over 3:1.
  */
 function bestReachableHarbor(
   settlementIds: string[],
@@ -125,7 +129,7 @@ function bestReachableHarbor(
     if (!kind) continue;
 
     const distance = harborDistanceFromSettlements(settlementIds, harbor);
-    if (distance === null || distance > HARBOR_STRATEGY_MAX_ROADS) continue;
+    if (distance === null || !isValidHarborRoadDistance(distance)) continue;
 
     if (!best) {
       best = { kind, roadDistance: distance };
@@ -164,21 +168,23 @@ function summarize(
   const pipTxt = (resourcePip * 36).toFixed(0);
   const harborLabel = harborKind === 'resource' ? `2:1 ${label}havn` : '3:1-havn';
   const reach =
-    roadDistance === 0
-      ? 'på landsbyen'
-      : roadDistance === 1
-        ? '1 vei unna'
-        : `${roadDistance} veier unna`;
+    roadDistance === 0 ? 'på landsbyen (direkte på havnen)' : '2 veier unna';
 
   if (harborKind === 'resource') {
     return {
       strength: 'strong',
-      summary: `God ${label}-produksjon (~${pipTxt}/36) med ${harborLabel} ${reach} — mulig spesialiseringsstrategi (trenger ikke landsby direkte på havnen).`,
+      summary:
+        roadDistance === 0
+          ? `God ${label}-produksjon (~${pipTxt}/36) med ${harborLabel} ${reach} — mulig spesialiseringsstrategi.`
+          : `God ${label}-produksjon (~${pipTxt}/36) med ${harborLabel} ${reach} — havn nås med to veier (avstand 1 er ikke spillbart).`,
     };
   }
   return {
     strength: 'moderate',
-    summary: `Solid ${label}-produksjon (~${pipTxt}/36) med ${harborLabel} ${reach} — moderat alternativ hvis 2:1 ikke er tilgjengelig.`,
+    summary:
+      roadDistance === 0
+        ? `Solid ${label}-produksjon (~${pipTxt}/36) ved ${harborLabel} ${reach} — svakere enn 2:1, men kan fungere som havnstrategi.`
+        : `Solid ${label}-produksjon (~${pipTxt}/36) med ${harborLabel} ${reach} — moderat alternativ hvis 2:1 ikke er tilgjengelig.`,
   };
 }
 
@@ -241,7 +247,7 @@ function considerPlan(
 
 /**
  * Finn havnstrategier som alternativ til vanlig scoring.
- * Havn må ligge innen 2 veier fra minst én landsby (ikke nødvendigvis oppå).
+ * Havn må ligge 0 eller 2 veier fra minst én landsby (aldri 1).
  * Påvirker ikke rangering.
  */
 export function findHarborStrategyOpportunities(
@@ -260,7 +266,7 @@ export function findHarborStrategyOpportunities(
       considerPlan(bag, board, vertexId, undefined, vertexRawByResource(vertexId, board));
     }
 
-    // Par: sterk produksjon + annen landsby som bringer havn innen 2 veier
+    // Par: sterk produksjon + annen landsby som bringer havn 0 eller 2 veier unna
     const productionCandidates = valid
       .map((vertexId) => {
         const raw = vertexRawByResource(vertexId, board);

@@ -645,8 +645,9 @@ if (board) {
 console.log('\nHarbor strategy alternative');
 import {
   findHarborStrategyOpportunities,
-  HARBOR_STRATEGY_MAX_ROADS,
   HARBOR_STRATEGY_PIP_THRESHOLD,
+  HARBOR_STRATEGY_VALID_ROAD_DISTANCES,
+  isValidHarborRoadDistance,
   vertexRoadDistance,
 } from '../src/catan/harborStrategy.ts';
 import { NUMBER_PROB } from '../src/catan/placementModel.ts';
@@ -655,7 +656,12 @@ assert(
   Math.abs(HARBOR_STRATEGY_PIP_THRESHOLD - (NUMBER_PROB[6]! + NUMBER_PROB[4]!)) < 1e-12,
   'Harbor strategy threshold is 6+4 pip (~8/36)'
 );
-assert(HARBOR_STRATEGY_MAX_ROADS === 2, 'Harbor strategy accepts harbors within 2 roads');
+assert(
+  HARBOR_STRATEGY_VALID_ROAD_DISTANCES.join(',') === '0,2',
+  'Harbor strategy only accepts distance 0 or 2'
+);
+assert(!isValidHarborRoadDistance(1), 'Distance 1 is invalid for harbor strategy');
+assert(isValidHarborRoadDistance(0) && isValidHarborRoadDistance(2), 'Distance 0 and 2 are valid');
 if (board) {
   const vertices = getVertices();
   const anyId = [...vertices.keys()][0];
@@ -693,13 +699,13 @@ if (board) {
       'Harbor opportunity has 2:1 or 3:1 harbor'
     );
     assert(
-      opp.harborRoadDistance >= 0 && opp.harborRoadDistance <= HARBOR_STRATEGY_MAX_ROADS,
-      'Harbor opportunity is within two roads'
+      isValidHarborRoadDistance(opp.harborRoadDistance),
+      'Harbor opportunity is at distance 0 or 2 only'
     );
     assert(opp.summary.length > 20, 'Harbor opportunity has readable summary');
     assert(
-      opp.summary.includes('vei') || opp.summary.includes('landsbyen'),
-      'Harbor summary mentions road reach'
+      opp.summary.includes('vei') || opp.summary.includes('havnen'),
+      'Harbor summary mentions reach'
     );
   }
 }
