@@ -12,7 +12,7 @@ import { HarborIcon } from './HarborIcon';
 import { HarborDock, harborPosition } from './HarborDock';
 import { MappingOverlay } from './MappingOverlay';
 
-export const BOARD_HEX_SIZE = 34;
+export const BOARD_HEX_SIZE = 42;
 
 interface BoardViewProps {
   board: Board;
