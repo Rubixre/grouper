@@ -26,6 +26,12 @@ export function formatSettlementVertexLine(
   return tiles ? `${prefix} ${label} · ${tiles}` : `${prefix} ${label}`;
 }
 
+/** Kort merkelapp for liste UI (H-node eller «indre»). */
+export function shortVertexLabel(boardSize: BoardSize, vertexId: string): string {
+  const mapping = getBoardMapping(boardSize);
+  return mapping.cornerByVertexId.get(vertexId)?.label ?? 'indre';
+}
+
 function adjacentTileSummary(board: Board, vertexId: string): string {
   const vertices = getVertices();
   const vertex = vertices.get(vertexId);
