@@ -191,9 +191,10 @@ function App() {
       board,
       simulation.placements,
       simulation.config.humanPlayerIndex,
-      simulation.playerCount
+      simulation.playerCount,
+      strategyWeights
     );
-  }, [board, simulation, isYourTurn]);
+  }, [board, simulation, isYourTurn, strategyWeights]);
 
   const activeHarborPlan = useMemo(() => {
     if (!selectedHarborPlanKey) return null;

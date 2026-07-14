@@ -648,15 +648,19 @@ import {
   HARBOR_STRATEGY_OTHER_WEIGHT,
   HARBOR_STRATEGY_PIP_THRESHOLD,
   HARBOR_STRATEGY_VALID_ROAD_DISTANCES,
+  buildHarborVsBalanced,
+  estimateHarborTradeBonus,
   harborOpportunityScore,
   isHarborOpportunityDominatedBy,
   isValidHarborRoadDistance,
   pruneDominatedHarborOpportunities,
+  verdictFromEffectiveRelative,
   vertexRoadDistance,
   type HarborStrategyOpportunity,
 } from '../src/catan/harborStrategy.ts';
 import { NUMBER_PROB } from '../src/catan/placementModel.ts';
 import { getVertices } from '../src/catan/settlements.ts';
+import { DEFAULT_RESOURCE_WEIGHTS } from '../src/catan/types.ts';
 assert(
   Math.abs(HARBOR_STRATEGY_PIP_THRESHOLD - (NUMBER_PROB[6]! + NUMBER_PROB[4]!)) < 1e-12,
   'Harbor strategy threshold is 6+4 pip (~8/36)'
@@ -673,6 +677,49 @@ assert(
     harborOpportunityScore({ resourcePip: 8 / 36, otherPip: 0, producingHexCount: 2 }),
   'Same focus pip: more other production scores higher'
 );
+assert(
+  estimateHarborTradeBonus({
+    resource: 'ore',
+    harborKind: 'resource',
+    resourcePip: 10 / 36,
+    otherPip: 2 / 36,
+  }) >
+    estimateHarborTradeBonus({
+      resource: 'ore',
+      harborKind: 'generic',
+      resourcePip: 10 / 36,
+      otherPip: 2 / 36,
+    }),
+  '2:1 harbor gets higher trade bonus than 3:1'
+);
+assert(verdictFromEffectiveRelative(1.05).verdict === 'stronger', 'Effective >103% is stronger');
+assert(verdictFromEffectiveRelative(0.8).verdict === 'weaker', 'Effective 80% is weaker');
+{
+  const sample: HarborStrategyOpportunity = {
+    resource: 'ore',
+    harborKind: 'resource',
+    resourcePip: 10 / 36,
+    otherPip: 4 / 36,
+    totalPip: 14 / 36,
+    producingHexCount: 3,
+    firstHexKeys: ['0,0'],
+    secondHexKeys: [],
+    firstVertexId: 'x',
+    sameSpot: true,
+    harborRoadDistance: 0,
+    harborName: 'Malmhavn',
+    harborNodeLabels: 'H1–H2',
+    harborNodeVertexIds: ['a', 'b'],
+    harborReachLabel: 'på havnen',
+    summary: 'test',
+    strength: 'strong',
+  };
+  const vs = buildHarborVsBalanced(sample, 1.0, 0.9, DEFAULT_RESOURCE_WEIGHTS);
+  assert(vs.planScore === 0.9, 'Comparison keeps plan score');
+  assert(vs.tradeBonus > 0, 'Comparison adds positive trade bonus for 2:1');
+  assert(vs.effectiveScore > vs.planScore, 'Effective score includes trade bonus');
+  assert(vs.effectiveRelative > vs.relative, 'Effective relative is above raw relative');
+}
 
 {
   const twoHex: HarborStrategyOpportunity = {
@@ -737,6 +784,8 @@ if (board) {
     board,
     sim.placements,
     config.humanPlayerIndex,
+    4,
+    DEFAULT_RESOURCE_WEIGHTS,
     4
   );
   assert(Array.isArray(opportunities), 'Harbor opportunities returns a list');
@@ -759,9 +808,11 @@ if (board) {
     assert(opp.harborNodeLabels.length > 0, 'Harbor opportunity shows harbor nodes');
     assert(opp.totalPip + 1e-12 >= opp.resourcePip, 'Total pip includes focus resource');
     assert(opp.producingHexCount >= 1, 'Harbor opportunity touches producing hexes');
+    assert(opp.vsBalanced !== undefined, 'Harbor opportunity includes balanced comparison');
+    assert(opp.vsBalanced!.bestBalancedScore > 0, 'Balanced reference score is positive');
+    assert(opp.vsBalanced!.effectiveRelative > 0, 'Effective relative is positive');
   }
 
-  // Ingen returnert plan skal være dominert av en annen returnert plan
   for (const a of opportunities) {
     for (const b of opportunities) {
       assert(!isHarborOpportunityDominatedBy(a, b), 'Returned harbor plans are not dominated');

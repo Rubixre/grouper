@@ -283,6 +283,9 @@ export function SettlementSimulator({
         </div>
       ) : (
         <div className="sim-main-scroll" role="tabpanel">
+          <p className="harbor-compare-legend muted small">
+            % = effektiv verdi vs beste balanserte (inkl. estimert handelsbonus)
+          </p>
           <ul className="harbor-strategy-list">
             {harborOpportunities.map((opp, index) => {
               const planKey = harborOpportunityKey(opp);
@@ -292,6 +295,7 @@ export function SettlementSimulator({
                 opp.secondVertexId != null
                   ? shortVertexLabel(boardSize, opp.secondVertexId)
                   : null;
+              const vs = opp.vsBalanced;
               return (
                 <li key={planKey}>
                   <button
@@ -307,21 +311,36 @@ export function SettlementSimulator({
                     <span className="harbor-strategy-spots">
                       {second ? `${first} → ${second}` : first}
                     </span>
-                    <span className="harbor-strategy-reach muted small">
-                      {opp.harborRoadDistance === 0 ? 'på havn' : '2 veier'}
-                    </span>
+                    {vs ? (
+                      <span
+                        className="harbor-strategy-vs"
+                        data-verdict={vs.verdict}
+                        title={`PSM ${vs.planScore.toFixed(2)} + handelsbonus ${vs.tradeBonus.toFixed(2)} = ${vs.effectiveScore.toFixed(2)} vs balansert ${vs.bestBalancedScore.toFixed(2)}`}
+                      >
+                        {Math.round(vs.effectiveRelative * 100)}%
+                      </span>
+                    ) : (
+                      <span className="harbor-strategy-reach muted small">
+                        {opp.harborRoadDistance === 0 ? 'på havn' : '2 veier'}
+                      </span>
+                    )}
                   </button>
                 </li>
               );
             })}
           </ul>
-          {activeHarborPlan && (
+          {activeHarborPlan?.vsBalanced && (
             <p className="harbor-active-hint muted small">
-              Valgt: {shortVertexLabel(boardSize, activeHarborPlan.firstVertexId)}
+              {shortVertexLabel(boardSize, activeHarborPlan.firstVertexId)}
               {activeHarborPlan.secondVertexId
                 ? ` → ${shortVertexLabel(boardSize, activeHarborPlan.secondVertexId)}`
                 : ''}{' '}
-              · {activeHarborPlan.harborName}
+              · {activeHarborPlan.vsBalanced.verdictLabel} enn balansert (
+              {Math.round(activeHarborPlan.vsBalanced.effectiveRelative * 100)}%
+              {activeHarborPlan.vsBalanced.tradeBonus > 0.01
+                ? ` · havn +${activeHarborPlan.vsBalanced.tradeBonus.toFixed(2)}`
+                : ''}
+              )
             </p>
           )}
         </div>

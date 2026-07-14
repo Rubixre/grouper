@@ -1,13 +1,29 @@
-import type { Board, HarborType, PlacedHarbor, PlacedSettlement, PlayerCount } from './types';
+import type {
+  Board,
+  HarborType,
+  PlacedHarbor,
+  PlacedSettlement,
+  PlayerCount,
+  ResourceWeights,
+} from './types';
+import { DEFAULT_RESOURCE_WEIGHTS } from './types';
 import {
   getValidVertices,
   getVertices,
   pickGreedyOpponentVertex,
+  scoreSecondSettlement,
+  scoreVertex,
   vertexRawByResource,
 } from './settlements';
-import { NUMBER_PROB, PROD_RESOURCES, type ProdResource } from './placementModel';
+import {
+  NUMBER_PROB,
+  PROD_RESOURCES,
+  computeBoardEconomics,
+  type ProdResource,
+} from './placementModel';
 import { RESOURCE_LABELS } from './playerStats';
 import { getPlacementOrder } from './draftOrder';
+import { evaluateFirstSettlementPath } from './strategyAdvisor';
 import { coordKey } from './hex';
 
 /**
@@ -21,6 +37,11 @@ export const HARBOR_STRATEGY_VALID_ROAD_DISTANCES = [0, 2] as const;
 
 /** Vekt på øvrige ressurser vs. fokusressurs ved rangering. */
 export const HARBOR_STRATEGY_OTHER_WEIGHT = 0.55;
+
+/** Merverdi for 2:1-spesialisering utover ordinary PSM-havnbonus. */
+export const HARBOR_TRADE_BONUS_RESOURCE = 0.42;
+/** Merverdi for 3:1. */
+export const HARBOR_TRADE_BONUS_GENERIC = 0.18;
 
 export function isValidHarborRoadDistance(distance: number): boolean {
   return distance === 0 || distance === 2;
@@ -55,6 +76,27 @@ export interface HarborStrategyOpportunity {
   harborReachLabel: string;
   summary: string;
   strength: 'strong' | 'moderate';
+  /** Sammenligning mot beste balanserte plassering (hvis beregnet) */
+  vsBalanced?: HarborVsBalanced;
+}
+
+export type HarborVerdict = 'weaker' | 'close' | 'even' | 'stronger';
+
+export interface HarborVsBalanced {
+  /** PSM-score for denne havnplanen */
+  planScore: number;
+  /** Beste balanserte alternativ samme tur */
+  bestBalancedScore: number;
+  /** planScore / bestBalancedScore */
+  relative: number;
+  /** Estimert ekstra handelsverdi fra 2:1/3:1 */
+  tradeBonus: number;
+  /** planScore + tradeBonus */
+  effectiveScore: number;
+  /** effectiveScore / bestBalancedScore */
+  effectiveRelative: number;
+  verdict: HarborVerdict;
+  verdictLabel: string;
 }
 
 export function harborOpportunityKey(o: HarborStrategyOpportunity): string {
@@ -390,12 +432,14 @@ function considerPlan(
  * Finn havnstrategier som alternativ til vanlig scoring.
  * Maksimerer fokusproduksjon først, deretter øvrige ressurser / hex-dekning.
  * Dominerte planer (f.eks. 2-hex vs. samme 2 + én til) fjernes.
+ * Hver plan får vsBalanced-sammneligning mot beste balanserte alternativ.
  */
 export function findHarborStrategyOpportunities(
   board: Board,
   placed: PlacedSettlement[],
   humanPlayer: number,
   playerCount: PlayerCount,
+  weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS,
   limit = 4
 ): HarborStrategyOpportunity[] {
   const bag = new Map<string, HarborStrategyOpportunity>();
@@ -466,7 +510,184 @@ export function findHarborStrategyOpportunities(
     }
   }
 
-  return pruneDominatedHarborOpportunities([...bag.values()])
+  const pruned = pruneDominatedHarborOpportunities([...bag.values()])
     .sort(compareHarborOpportunities)
     .slice(0, limit);
+
+  return attachHarborComparisons(
+    pruned,
+    board,
+    placed,
+    humanPlayer,
+    playerCount,
+    weights
+  );
+}
+
+export function estimateHarborTradeBonus(
+  opportunity: Pick<
+    HarborStrategyOpportunity,
+    'resource' | 'harborKind' | 'resourcePip' | 'otherPip'
+  >,
+  weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS
+): number {
+  const rate =
+    opportunity.harborKind === 'resource'
+      ? HARBOR_TRADE_BONUS_RESOURCE
+      : HARBOR_TRADE_BONUS_GENERIC;
+  // Mer surplus-fokus (relativt til øvrig) → mer handelsgevinst
+  const surplusRatio =
+    opportunity.resourcePip /
+    Math.max(opportunity.resourcePip + opportunity.otherPip, 1 / 36);
+  return opportunity.resourcePip * rate * surplusRatio * weights[opportunity.resource];
+}
+
+export function verdictFromEffectiveRelative(effectiveRelative: number): {
+  verdict: HarborVerdict;
+  verdictLabel: string;
+} {
+  if (effectiveRelative >= 1.03) return { verdict: 'stronger', verdictLabel: 'sterkere' };
+  if (effectiveRelative >= 0.97) return { verdict: 'even', verdictLabel: 'på nivå' };
+  if (effectiveRelative >= 0.88) return { verdict: 'close', verdictLabel: 'nesten' };
+  return { verdict: 'weaker', verdictLabel: 'svakere' };
+}
+
+function planBalancedScore(
+  opportunity: HarborStrategyOpportunity,
+  board: Board,
+  placed: PlacedSettlement[],
+  humanPlayer: number,
+  playerCount: PlayerCount,
+  weights: ResourceWeights
+): number {
+  const econ = computeBoardEconomics(board, weights);
+  const ownCount = placed.filter((p) => p.player === humanPlayer).length;
+
+  if (opportunity.secondVertexId) {
+    return scoreSecondSettlement(
+      opportunity.secondVertexId,
+      opportunity.firstVertexId,
+      board,
+      econ
+    ).total;
+  }
+
+  if (ownCount >= 1) {
+    return scoreVertex(opportunity.firstVertexId, board, econ).total;
+  }
+
+  const path = evaluateFirstSettlementPath(
+    board,
+    placed,
+    humanPlayer,
+    playerCount,
+    opportunity.firstVertexId,
+    weights
+  );
+  if (path) return path.pairScore;
+  return scoreVertex(opportunity.firstVertexId, board, econ).total;
+}
+
+function bestBalancedReferenceScore(
+  board: Board,
+  placed: PlacedSettlement[],
+  humanPlayer: number,
+  playerCount: PlayerCount,
+  weights: ResourceWeights
+): number {
+  const econ = computeBoardEconomics(board, weights);
+  const own = placed.filter((p) => p.player === humanPlayer);
+  const valid = getValidVertices(placed);
+  if (valid.length === 0) return 0;
+
+  if (own.length === 1) {
+    const firstId = own[0]!.vertexId;
+    let best = 0;
+    for (const secondId of valid) {
+      best = Math.max(best, scoreSecondSettlement(secondId, firstId, board, econ).total);
+    }
+    return best;
+  }
+
+  const shallow = valid
+    .map((id) => scoreVertex(id, board, econ))
+    .sort((a, b) => b.total - a.total);
+  let best = shallow[0]?.total ?? 0;
+  for (const spot of shallow.slice(0, 8)) {
+    const path = evaluateFirstSettlementPath(
+      board,
+      placed,
+      humanPlayer,
+      playerCount,
+      spot.vertexId,
+      weights
+    );
+    if (path) best = Math.max(best, path.pairScore);
+  }
+  return best;
+}
+
+export function buildHarborVsBalanced(
+  opportunity: HarborStrategyOpportunity,
+  bestBalancedScore: number,
+  planScore: number,
+  weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS
+): HarborVsBalanced {
+  const tradeBonus = estimateHarborTradeBonus(opportunity, weights);
+  const effectiveScore = planScore + tradeBonus;
+  const safeBest = Math.max(bestBalancedScore, 1e-6);
+  const relative = planScore / safeBest;
+  const effectiveRelative = effectiveScore / safeBest;
+  const { verdict, verdictLabel } = verdictFromEffectiveRelative(effectiveRelative);
+  return {
+    planScore,
+    bestBalancedScore,
+    relative,
+    tradeBonus,
+    effectiveScore,
+    effectiveRelative,
+    verdict,
+    verdictLabel,
+  };
+}
+
+function attachHarborComparisons(
+  opportunities: HarborStrategyOpportunity[],
+  board: Board,
+  placed: PlacedSettlement[],
+  humanPlayer: number,
+  playerCount: PlayerCount,
+  weights: ResourceWeights
+): HarborStrategyOpportunity[] {
+  if (opportunities.length === 0) return opportunities;
+
+  const bestBalancedScore = bestBalancedReferenceScore(
+    board,
+    placed,
+    humanPlayer,
+    playerCount,
+    weights
+  );
+
+  return opportunities
+    .map((opp) => {
+      const planScore = planBalancedScore(
+        opp,
+        board,
+        placed,
+        humanPlayer,
+        playerCount,
+        weights
+      );
+      return {
+        ...opp,
+        vsBalanced: buildHarborVsBalanced(opp, bestBalancedScore, planScore, weights),
+      };
+    })
+    .sort((a, b) => {
+      const er =
+        (b.vsBalanced?.effectiveRelative ?? 0) - (a.vsBalanced?.effectiveRelative ?? 0);
+      if (Math.abs(er) > 1e-9) return er;
+      return compareHarborOpportunities(a, b);
+    });
 }

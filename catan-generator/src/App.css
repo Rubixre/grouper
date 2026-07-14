@@ -253,7 +253,7 @@ body {
 
 .board-legend {
   width: 100%;
-  max-width: min(720px, 100%);
+  max-width: min(960px, 100%);
 }
 
 /* Modal */
@@ -773,7 +773,7 @@ body {
 
 .legend {
   width: 100%;
-  max-width: 720px;
+  max-width: 960px;
 }
 
 .harbor-legend-row {
@@ -2159,6 +2159,34 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.harbor-compare-legend {
+  margin: 0 0 0.45rem;
+}
+
+.harbor-strategy-vs {
+  font-size: 0.78rem;
+  font-weight: 800;
+  white-space: nowrap;
+  min-width: 2.4rem;
+  text-align: right;
+}
+
+.harbor-strategy-vs[data-verdict='stronger'] {
+  color: #1e8449;
+}
+
+.harbor-strategy-vs[data-verdict='even'] {
+  color: #1a5276;
+}
+
+.harbor-strategy-vs[data-verdict='close'] {
+  color: #b9770e;
+}
+
+.harbor-strategy-vs[data-verdict='weaker'] {
+  color: #922b21;
 }
 
 .harbor-strategy-reach {
