@@ -204,9 +204,16 @@ export function SettlementSimulator({
               type="button"
               role="tab"
               aria-selected={activeTab === 'harbor'}
-              className={`sim-tab ${activeTab === 'harbor' ? 'active' : ''}`}
+              className={`sim-tab ${activeTab === 'harbor' ? 'active' : ''} ${
+                harborAboveBalanced ? 'sim-tab-harbor-hot' : ''
+              }`}
               disabled={!showHarborTab}
               onClick={() => setTab('harbor')}
+              title={
+                harborAboveBalanced
+                  ? 'Havnstrategi ser sterkere ut enn beste balanserte'
+                  : undefined
+              }
             >
               Havn{showHarborTab ? ` (${harborOpportunities.length})` : ''}
             </button>
