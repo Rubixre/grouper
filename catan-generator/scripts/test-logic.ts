@@ -866,6 +866,9 @@ import {
   HARBOR_STRATEGY_VALID_ROAD_DISTANCES,
   buildHarborVsBalanced,
   estimateHarborTradeBonus,
+  harborTradeReliability,
+  HARBOR_SPECULATIVE_TRADE_FACTOR,
+  HARBOR_SAFE_SECOND_TRADE_FACTOR,
   harborOpportunityScore,
   isHarborOpportunityDominatedBy,
   isValidHarborRoadDistance,
@@ -974,6 +977,26 @@ assert(verdictFromEffectiveRelative(0.8).verdict === 'weaker', 'Effective 80% is
   assert(vs.tradeBonus > 0, 'Comparison adds positive trade bonus for 2:1');
   assert(vs.effectiveScore > vs.planScore, 'Effective score includes trade bonus');
   assert(vs.effectiveRelative > vs.relative, 'Effective relative is above raw relative');
+  const rawBonus = estimateHarborTradeBonus(sample, DEFAULT_RESOURCE_WEIGHTS);
+  const speculativeVs = buildHarborVsBalanced(
+    sample,
+    1.0,
+    0.9,
+    DEFAULT_RESOURCE_WEIGHTS,
+    HARBOR_SPECULATIVE_TRADE_FACTOR
+  );
+  assert(
+    Math.abs(speculativeVs.tradeBonus - rawBonus * HARBOR_SPECULATIVE_TRADE_FACTOR) < 1e-9,
+    'Speculative harbor plans get heavily discounted trade bonus'
+  );
+  assert(
+    speculativeVs.tradeBonus < vs.tradeBonus,
+    'Safe/default reliability beats speculative harbor credit'
+  );
+  assert(
+    HARBOR_SAFE_SECOND_TRADE_FACTOR > HARBOR_SPECULATIVE_TRADE_FACTOR,
+    'Safe #2 harbor outranks pure chance #2 harbor'
+  );
 }
 
 {

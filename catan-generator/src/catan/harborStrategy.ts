@@ -23,8 +23,23 @@ import {
 } from './placementModel';
 import { RESOURCE_LABELS } from './playerStats';
 import { getPlacementOrder } from './draftOrder';
-import { evaluateFirstSettlementPath } from './strategyAdvisor';
+import {
+  evaluateFirstSettlementPath,
+  occupyTopPipSpots,
+  opponentPlacementsUntilSecond,
+} from './strategyAdvisor';
 import { coordKey } from './hex';
+
+/**
+ * Handelsbonus når havnen først blir tilgjengelig via landsby #2 som
+ * sannsynligvis overlever topp-pip-blokkering.
+ */
+export const HARBOR_SAFE_SECOND_TRADE_FACTOR = 0.85;
+/**
+ * Handelsbonus når #2-havnen bare finnes i en optimistisk greedy-rest
+ * («ta sjansen») — nesten ingen kreditt.
+ */
+export const HARBOR_SPECULATIVE_TRADE_FACTOR = 0.12;
 
 /**
  * Minimum rå pip for én ressurs før havnstrategi vurderes som aktuell.
@@ -497,6 +512,15 @@ export function findHarborStrategyOpportunities(
       .slice(0, 14);
 
     for (const candidate of productionCandidates) {
+      const afterFirst: PlacedSettlement[] = [
+        ...placed,
+        { vertexId: candidate.vertexId, player: humanPlayer, isCity: false },
+      ];
+      const slots = opponentPlacementsUntilSecond(humanPlayer, playerCount);
+      // Trygge #2-kandidater (motstandere tar topp-pip) + greedy-rest (spekulativ)
+      const secondIds = new Set<string>(
+        getValidVertices(occupyTopPipSpots(board, afterFirst, slots))
+      );
       const simulated = simulateToHumanSecondTurn(
         board,
         placed,
@@ -504,9 +528,12 @@ export function findHarborStrategyOpportunities(
         playerCount,
         candidate.vertexId
       );
-      if (!simulated) continue;
+      if (simulated) {
+        for (const id of getValidVertices(simulated)) secondIds.add(id);
+      }
+      if (secondIds.size === 0) continue;
 
-      for (const secondId of getValidVertices(simulated)) {
+      for (const secondId of secondIds) {
         const combined = combineRaw(candidate.raw, vertexRawByResource(secondId, board));
         if ((combined[candidate.bestResource!] ?? 0) + 1e-12 < HARBOR_STRATEGY_PIP_THRESHOLD) {
           continue;
@@ -627,6 +654,48 @@ export function estimateHarborTradeBonus(
   return tradeUplift - buildingHaircut;
 }
 
+/**
+ * Hvor pålitelig er handelsbonusen gitt usikkerhet i motstandernes trekk?
+ * - Havn nåbar fra #1 alene → 1 (låst / ikke avhengig av #2)
+ * - #2 plasseres nå → 1
+ * - #2-havn i trygg pip-rest → høy, men ikke full
+ * - #2-havn bare i optimistisk rest → nesten ingen kreditt
+ */
+export function harborTradeReliability(
+  board: Board,
+  placed: PlacedSettlement[],
+  humanPlayer: number,
+  playerCount: PlayerCount,
+  opportunity: Pick<
+    HarborStrategyOpportunity,
+    'resource' | 'firstVertexId' | 'secondVertexId'
+  >
+): number {
+  const fromFirst = bestReachableHarbor(
+    [opportunity.firstVertexId],
+    board,
+    opportunity.resource
+  );
+  if (fromFirst) return 1;
+
+  const ownCount = placed.filter((p) => p.player === humanPlayer).length;
+  if (ownCount >= 1) return 1;
+
+  if (!opportunity.secondVertexId) return HARBOR_SPECULATIVE_TRADE_FACTOR;
+
+  const afterFirst: PlacedSettlement[] = [
+    ...placed,
+    { vertexId: opportunity.firstVertexId, player: humanPlayer, isCity: false },
+  ];
+  const slots = opponentPlacementsUntilSecond(humanPlayer, playerCount);
+  const safeBoard = occupyTopPipSpots(board, afterFirst, slots);
+  const safeSeconds = new Set(getValidVertices(safeBoard));
+  if (safeSeconds.has(opportunity.secondVertexId)) {
+    return HARBOR_SAFE_SECOND_TRADE_FACTOR;
+  }
+  return HARBOR_SPECULATIVE_TRADE_FACTOR;
+}
+
 export function verdictFromEffectiveRelative(effectiveRelative: number): {
   verdict: HarborVerdict;
   verdictLabel: string;
@@ -716,9 +785,12 @@ export function buildHarborVsBalanced(
   opportunity: HarborStrategyOpportunity,
   bestBalancedScore: number,
   planScore: number,
-  weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS
+  weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS,
+  /** 1 = sikker havn; lav = spekulativ #2-havn */
+  tradeReliability = 1
 ): HarborVsBalanced {
-  const tradeBonus = estimateHarborTradeBonus(opportunity, weights);
+  const rawTradeBonus = estimateHarborTradeBonus(opportunity, weights);
+  const tradeBonus = rawTradeBonus * Math.max(0, Math.min(1, tradeReliability));
   const effectiveScore = planScore + tradeBonus;
   const safeBest = Math.max(bestBalancedScore, 1e-6);
   const relative = planScore / safeBest;
@@ -764,9 +836,22 @@ function attachHarborComparisons(
         playerCount,
         weights
       );
+      const reliability = harborTradeReliability(
+        board,
+        placed,
+        humanPlayer,
+        playerCount,
+        opp
+      );
       return {
         ...opp,
-        vsBalanced: buildHarborVsBalanced(opp, bestBalancedScore, planScore, weights),
+        vsBalanced: buildHarborVsBalanced(
+          opp,
+          bestBalancedScore,
+          planScore,
+          weights,
+          reliability
+        ),
       };
     })
     .sort((a, b) => {
