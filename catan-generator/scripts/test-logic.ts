@@ -965,5 +965,76 @@ import {
   }
 }
 
+console.log('\nPhoto board import');
+import {
+  buildBoardFromLandDraft,
+  createEmptyLandDraft,
+  isLandHexComplete,
+  validateLandDraft,
+} from '../src/catan/boardFromPhoto.ts';
+import { NUMBERS_EXTENSION_56 } from '../src/catan/generator.ts';
+{
+  const empty = createEmptyLandDraft('base');
+  assert(empty.length === 19, 'Empty photo draft has 19 land hexes');
+  assert(empty.every((d) => d.resource === null && d.number === null), 'Empty draft is blank');
+  const emptyValidation = validateLandDraft(empty, 'base');
+  assert(!emptyValidation.complete, 'Empty draft is incomplete');
+  assert(emptyValidation.filledCount === 0, 'Empty draft filled count is 0');
+
+  const incomplete = empty.map((d, i) =>
+    i === 0 ? { ...d, resource: 'wood' as const, number: 6 } : d
+  );
+  assert(isLandHexComplete(incomplete[0]!), 'Wood+6 hex is complete');
+  assert(!validateLandDraft(incomplete, 'base').complete, 'Partial draft is incomplete');
+
+  const desertBad = empty.map((d, i) =>
+    i === 0 ? { ...d, resource: 'desert' as const, number: 8 } : d
+  );
+  assert(
+    validateLandDraft(desertBad, 'base').errors.some((e) => e.includes('Ørken')),
+    'Desert with number is an error'
+  );
+
+  // Bygg standard-lignende base-brett fra generator-ressurser/tall
+  const gen = generateBoard(DEFAULT_SETTINGS, 'base');
+  assert(gen !== null, 'Generator board available for photo rebuild');
+  if (gen) {
+    const draft = createEmptyLandDraft('base').map((d) => {
+      const tile = gen.hexes.find(
+        (h) => h.kind === 'land' && h.coord.q === d.coord.q && h.coord.r === d.coord.r
+      );
+      assert(tile?.resource != null, 'Generated land tile has resource');
+      return {
+        ...d,
+        resource: tile!.resource,
+        number: tile!.number,
+      };
+    });
+    const validation = validateLandDraft(draft, 'base');
+    assert(validation.complete, 'Draft cloned from generated board is complete');
+    assert(validation.warnings.length === 0, 'Standard counts produce no resource warnings');
+
+    const built = buildBoardFromLandDraft(draft, DEFAULT_SETTINGS, 'base');
+    assert(built.ok, 'Builds board from photo draft');
+    if (built.ok) {
+      assert(built.board.boardSize === 'base', 'Photo board is base size');
+      assert(
+        built.board.hexes.filter((h) => h.kind === 'land').length === 19,
+        'Photo board has 19 land hexes'
+      );
+      assert(built.board.harbors.length === 9, 'Photo board places harbors');
+      for (const d of draft) {
+        const tile = built.board.hexes.find(
+          (h) => h.kind === 'land' && h.coord.q === d.coord.q && h.coord.r === d.coord.r
+        );
+        assert(tile?.resource === d.resource, 'Photo board keeps resource');
+        assert(tile?.number === d.number, 'Photo board keeps number');
+      }
+    }
+  }
+
+  assert(NUMBERS_EXTENSION_56.length === 28, 'Extension number set still 28 for reference');
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

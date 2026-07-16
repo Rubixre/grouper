@@ -5,6 +5,7 @@ export * from './edgePieces';
 export * from './harborPorts';
 export * from './harbors';
 export * from './generator';
+export * from './boardFromPhoto';
 export * from './settlements';
 export {
   NUMBER_PROB,

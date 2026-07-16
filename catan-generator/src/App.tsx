@@ -36,6 +36,7 @@ import { BoardStoryPanel } from './components/BoardStoryPanel';
 import { MappingPanel } from './components/MappingPanel';
 import { PlayerSetupPanel, syncConfigPlayerCount } from './components/PlayerSetupPanel';
 import { SettingsModal } from './components/SettingsModal';
+import { PhotoBoardModal } from './components/PhotoBoardModal';
 import { SettlementSimulator } from './components/SettlementSimulator';
 import { SimulationSummaryPanel } from './components/SimulationSummary';
 import { createBoardStory, type BoardStory } from './catan/boardStory';
@@ -73,6 +74,7 @@ function App() {
   const [mode, setMode] = useState<AppMode>(() => restoredSession?.mode ?? 'view');
   const [mappingMode, setMappingMode] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [photoBoardOpen, setPhotoBoardOpen] = useState(false);
   const [highlightEdge, setHighlightEdge] = useState<string | null>(null);
   const [highlightCorner, setHighlightCorner] = useState<string | null>(null);
   const [hydrated] = useState(() => restoredSession !== null);
@@ -114,6 +116,17 @@ function App() {
     setSelectedVertex(null);
     setMode('view');
   }, [settings, boardSize]);
+
+  const handleApplyPhotoBoard = useCallback((next: Board) => {
+    setError(null);
+    setBoardSize(next.boardSize);
+    setBoard(next);
+    setBoardStory(createBoardStory(next));
+    setSimulation(null);
+    setSelectedVertex(null);
+    setMode('view');
+    setMappingMode(false);
+  }, []);
 
   useEffect(() => {
     if (!hydrated && !board) {
@@ -242,6 +255,13 @@ function App() {
           >
             Innstillinger
           </button>
+          <button
+            type="button"
+            className="btn header-btn"
+            onClick={() => setPhotoBoardOpen(true)}
+          >
+            Fra bilde
+          </button>
           <button type="button" className="btn primary" onClick={handleGenerate}>
             Generer brett
           </button>
@@ -255,6 +275,14 @@ function App() {
         onSettingsChange={setSettings}
         boardSize={boardSize}
         onBoardSizeChange={handleBoardSizeChange}
+      />
+
+      <PhotoBoardModal
+        open={photoBoardOpen}
+        onClose={() => setPhotoBoardOpen(false)}
+        boardSize={boardSize}
+        settings={settings}
+        onApply={handleApplyPhotoBoard}
       />
 
       {error && <div className="error-banner">{error}</div>}
