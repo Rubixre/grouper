@@ -74,13 +74,21 @@ export const RESOURCES_BONANZA_POOL: ResourceType[] = [
   ...RESOURCES_EXTENSION,
 ];
 
-const NUMBERS_BASE = [2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12];
+export const NUMBERS_BASE = [
+  2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12,
+];
 
 /** 10 ekstra tallbrikker – utvidelse har 2×2/12 og 3×(3–6, 8–11) totalt */
-const NUMBERS_EXTENSION = [2, 3, 4, 5, 6, 8, 9, 10, 11, 12];
+export const NUMBERS_EXTENSION = [2, 3, 4, 5, 6, 8, 9, 10, 11, 12];
 
 /** Full tallbrikk-pool for 5–6 spillere (28 nummererte landhexer) */
 export const NUMBERS_EXTENSION_56 = [...NUMBERS_BASE, ...NUMBERS_EXTENSION];
+
+/**
+ * Bonanza tallpool: alle 18 fra grunnspill + alle 10 fra utvidelsen = 28.
+ * Samme fysiske sett som 5–6-spillerbrettet.
+ */
+export const NUMBERS_BONANZA_POOL = [...NUMBERS_EXTENSION_56];
 
 function resourcesForBoard(
   size: BoardSize,
@@ -110,15 +118,8 @@ function numbersForNonDesertCount(
     return [...NUMBERS_BASE];
   }
 
-  // Bonanza: antall ørkener (og dermed nummererte hexer) varierer
-  let pool = [...NUMBERS_BASE];
-  if (nonDesertCount > pool.length) {
-    const extras = shuffle([...NUMBERS_EXTENSION]);
-    pool = [...pool, ...extras.slice(0, nonDesertCount - pool.length)];
-  } else if (nonDesertCount < pool.length) {
-    pool = shuffle(pool).slice(0, nonDesertCount);
-  }
-  return pool;
+  // Bonanza: trekk nonDesertCount tall fra samlet pool (18 grunn + 10 utvidelse)
+  return shuffle(NUMBERS_BONANZA_POOL).slice(0, nonDesertCount);
 }
 
 function shuffle<T>(arr: T[]): T[] {

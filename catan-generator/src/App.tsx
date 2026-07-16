@@ -87,6 +87,9 @@ function App() {
 
   const handleBoardSizeChange = (size: BoardSize) => {
     setBoardSize(size);
+    if (size !== 'base' && settings.bonanzaBoard) {
+      setSettings((prev) => ({ ...prev, bonanzaBoard: false }));
+    }
     if (size === 'base' && playerCount > 4) {
       const nextCount = 4 as PlayerCount;
       setPlayerCount(nextCount);
