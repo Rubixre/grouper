@@ -16,6 +16,7 @@ import {
   loadImageDataFromUrl,
   nudgeTransform,
   recognizeBoardFromImageData,
+  scaleTransformForRecognition,
   type ImageOverlayTransform,
 } from '../catan/photoRecognize';
 import { getLandHexCoords } from '../catan/boardLayout';
@@ -188,17 +189,23 @@ export function PhotoBoardModal({
     setRecognizeStatus(null);
     setApplyError(null);
     try {
-      const { imageData } = await loadImageDataFromUrl(imageUrl);
-      const result = recognizeBoardFromImageData(imageData, transform, boardSize);
+      const { imageData, scale } = await loadImageDataFromUrl(imageUrl);
+      const recogTransform = scaleTransformForRecognition(transform, scale);
+      const result = recognizeBoardFromImageData(
+        imageData,
+        recogTransform,
+        boardSize
+      );
       setDrafts((prev) =>
         applyRecognitionToDraft(prev, result, {
           overwriteResources: true,
-          overwriteNumbers: false,
+          overwriteNumbers: true,
         })
       );
       setRecognizeStatus(
-        `Gjenkjente ressurser på ${result.recognizedResources}/${result.hexes.length} hex. ` +
-          'Tall må fylles manuelt i denne versjonen — sjekk og rett farger ved behov.'
+        `Gjenkjente ${result.recognizedResources}/${result.hexes.length} ressurser og ` +
+          `${result.recognizedNumbers}/${result.hexes.length} tall. ` +
+          'Sjekk overlay-treff og rett feil i gridet før du bruker brettet.'
       );
     } catch (err) {
       setRecognizeStatus(
@@ -280,9 +287,10 @@ export function PhotoBoardModal({
 
         <div className="modal-body photo-board-body">
           <p className="muted small photo-board-intro">
-            Last opp et bilde ovenfra, juster hex-overlayet til brikkene, og kjør
-            gjenkjenning. Ressurser foreslås fra farge; tall fylles manuelt i
-            denne versjonen. Rett feil i gridet før du bruker brettet.
+            Last opp et bilde mest mulig rett ovenfra, juster hex-overlayet til
+            brikkene, og kjør gjenkjenning. Ressurser leses fra terrengfarge;
+            tall fra pip/siffer på tallskiven. Rett feil i gridet før du bruker
+            brettet.
           </p>
 
           <div className="photo-board-layout">
@@ -309,7 +317,7 @@ export function PhotoBoardModal({
                   onClick={handleRecognize}
                   disabled={!imageUrl || !transform || recognizing}
                 >
-                  {recognizing ? 'Gjenkjenner…' : 'Gjenkjenn ressurser'}
+                  {recognizing ? 'Gjenkjenner…' : 'Gjenkjenn brett'}
                 </button>
                 {imageUrl && (
                   <button

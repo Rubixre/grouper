@@ -1340,6 +1340,8 @@ import {
   axialToImagePixel,
   classifyResourceFromRgb,
   defaultOverlayTransform,
+  mapPipsToNumber,
+  preferFiveOverNine,
   recognizeBoardFromImageData,
 } from '../src/catan/photoRecognize.ts';
 import { getLandHexCoords } from '../src/catan/boardLayout.ts';
@@ -1364,6 +1366,26 @@ import { getLandHexCoords } from '../src/catan/boardLayout.ts';
     classifyResourceFromRgb({ r: 85, g: 90, b: 100 }).resource === 'ore',
     'Gray classifies as ore'
   );
+  // Washed-out photo tones must NOT all collapse to desert/ore
+  assert(
+    classifyResourceFromRgb({ r: 55, g: 110, b: 60 }).resource === 'wood',
+    'Muted forest green is wood, not ore'
+  );
+  assert(
+    classifyResourceFromRgb({ r: 150, g: 175, b: 90 }).resource === 'sheep',
+    'Muted pasture green is sheep, not desert'
+  );
+  assert(
+    classifyResourceFromRgb({ r: 190, g: 100, b: 55 }).resource === 'brick',
+    'Muted brick stays brick'
+  );
+  assert(mapPipsToNumber(5, true, false) === 6, '5 red pips → 6');
+  assert(mapPipsToNumber(5, false, false) === 8, '5 black pips → 8');
+  assert(mapPipsToNumber(1, false, false) === 2, '1 pip narrow → 2');
+  assert(mapPipsToNumber(1, false, true) === 12, '1 pip wide → 12');
+  assert(mapPipsToNumber(3, false, true) === 10, '3 pips wide → 10');
+  assert(preferFiveOverNine(0.9) === true, 'Bottom-heavy digit prefers 5');
+  assert(preferFiveOverNine(1.4) === false, 'Top-heavy digit prefers 9');
 
   const coords = getLandHexCoords('base');
   const transform = defaultOverlayTransform(800, 800, coords);
@@ -1409,10 +1431,32 @@ import { getLandHexCoords } from '../src/catan/boardLayout.ts';
     ore: { r: 85, g: 90, b: 100 },
     desert: { r: 200, g: 180, b: 125 },
   };
+  const numbersCycle = [6, 8, 5, 10, 3, null] as const; // null paired with desert slots
   coords.forEach((coord, i) => {
     const resource = resourcesCycle[i % resourcesCycle.length]!;
     const { x, y } = axialToImagePixel(coord, t);
     paintCircle(x, y, t.hexSize * 0.55, proto[resource]);
+    // Cream number token + dark pips for non-desert
+    if (resource !== 'desert') {
+      paintCircle(x, y, t.hexSize * 0.2, { r: 245, g: 240, b: 225 });
+      const n = numbersCycle[i % numbersCycle.length];
+      const pipTarget =
+        n === 6 || n === 8 ? 5 : n === 5 || n === 9 ? 4 : n === 10 || n === 4 ? 3 : n === 3 || n === 11 ? 2 : 1;
+      const isRed = n === 6;
+      for (let p = 0; p < pipTarget; p++) {
+        const ang = (p / pipTarget) * Math.PI * 2 - Math.PI / 2;
+        const pr = t.hexSize * 0.15;
+        const px = x + Math.cos(ang) * pr;
+        const py = y + Math.sin(ang) * pr;
+        paintCircle(px, py, Math.max(2, t.hexSize * 0.03), isRed ? { r: 180, g: 30, b: 30 } : { r: 20, g: 20, b: 20 });
+      }
+      // Digit ink in center (wide for 10)
+      const wide = n === 10;
+      paintCircle(x - (wide ? t.hexSize * 0.04 : 0), y, t.hexSize * 0.04, isRed ? { r: 180, g: 30, b: 30 } : { r: 25, g: 25, b: 25 });
+      if (wide) {
+        paintCircle(x + t.hexSize * 0.05, y, t.hexSize * 0.04, { r: 25, g: 25, b: 25 });
+      }
+    }
   });
 
   const imageData = { data, width: W, height: H };
@@ -1427,13 +1471,19 @@ import { getLandHexCoords } from '../src/catan/boardLayout.ts';
     if (hit?.resource?.resource === expected) matches += 1;
   });
   assert(matches >= 15, `Synthetic color board mostly correct (got ${matches}/19)`);
+  assert(recognized.recognizedNumbers >= 10, 'Recognizes numbers on most non-desert hexes');
 
   const draft = applyRecognitionToDraft(createEmptyLandDraft('base'), recognized, {
     overwriteResources: true,
+    overwriteNumbers: true,
   });
   assert(
     draft.filter((d) => d.resource !== null).length >= 15,
     'Recognition applied into draft'
+  );
+  assert(
+    draft.filter((d) => d.resource !== 'desert' && d.resource !== null && d.number !== null).length >= 8,
+    'Numbers applied into draft for many hexes'
   );
 }
 
