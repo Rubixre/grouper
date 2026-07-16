@@ -2389,4 +2389,201 @@ body {
   .header-actions .btn.primary {
     flex: 1;
   }
+
+  .photo-board-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .photo-board-modal {
+    max-height: min(94vh, 900px);
+  }
+}
+
+/* —— Brett fra bilde —— */
+.photo-board-modal {
+  max-width: min(960px, 100%);
+  max-height: min(92vh, 820px);
+}
+
+.photo-board-intro {
+  margin: 0 0 0.85rem;
+}
+
+.photo-board-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.photo-board-ref-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
+.photo-board-file {
+  display: none;
+}
+
+.photo-board-ref-frame {
+  min-height: 220px;
+  border: 1px solid #d9e0e6;
+  border-radius: 10px;
+  background:
+    linear-gradient(160deg, #f4f7f5 0%, #e7eef2 55%, #f7f3ea 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 0.5rem;
+}
+
+.photo-board-ref-frame.has-image {
+  position: relative;
+  padding: 0;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.photo-board-ref-frame.has-image:active {
+  cursor: grabbing;
+}
+
+.photo-board-ref-frame img {
+  max-width: 100%;
+  max-height: 360px;
+  width: 100%;
+  object-fit: contain;
+  border-radius: 6px;
+  display: block;
+  pointer-events: none;
+}
+
+.photo-overlay-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.photo-overlay-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+  align-items: center;
+  margin-top: 0.65rem;
+}
+
+.photo-overlay-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 140px;
+  flex: 1;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #35586e;
+}
+
+.photo-overlay-slider input {
+  width: 100%;
+}
+
+.photo-recognize-status {
+  margin: 0.55rem 0 0;
+}
+
+.photo-board-progress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.photo-board-hex-svg {
+  width: 100%;
+  max-height: 280px;
+  display: block;
+  background: #f7faf8;
+  border: 1px solid #d9e0e6;
+  border-radius: 10px;
+}
+
+.photo-hex-label,
+.photo-hex-number {
+  font-size: 9px;
+  font-weight: 700;
+  fill: #1a1a1a;
+  pointer-events: none;
+  user-select: none;
+}
+
+.photo-hex-number {
+  font-size: 11px;
+}
+
+.photo-board-palette {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.photo-board-palette-label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #35586e;
+  margin-bottom: 0.35rem;
+}
+
+.photo-board-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.photo-chip {
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: #fff;
+  color: #222;
+}
+
+.photo-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.photo-chip.active {
+  outline: 2px solid #1a5f4a;
+  outline-offset: 1px;
+}
+
+.photo-chip.number {
+  min-width: 2rem;
+  background: #fff8e7;
+}
+
+.photo-board-warning {
+  margin: 0.65rem 0 0;
+}
+
+.photo-board-error {
+  margin: 0.5rem 0 0;
+  color: #a93226;
+  font-size: 0.85rem;
+}
+
+.photo-board-footer {
+  justify-content: flex-end;
 }
