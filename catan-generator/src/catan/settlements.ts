@@ -314,6 +314,33 @@ export function vertexPipTotal(vertexId: string, board: Board): number {
   return pip;
 }
 
+/** Rå forventet produksjon (pip) per ressurs på et hjørne */
+export function vertexRawByResource(
+  vertexId: string,
+  board: Board
+): Partial<Record<ProdResource, number>> {
+  const vertices = getVertices();
+  const vertex = vertices.get(vertexId);
+  const raw: Partial<Record<ProdResource, number>> = {};
+  if (!vertex) return raw;
+
+  for (const hex of vertex.hexes) {
+    const tile = board.hexes.find((h) => h.coord.q === hex.q && h.coord.r === hex.r);
+    if (
+      !tile ||
+      tile.kind !== 'land' ||
+      !tile.resource ||
+      tile.resource === 'desert' ||
+      !tile.number
+    ) {
+      continue;
+    }
+    const resource = tile.resource as ProdResource;
+    raw[resource] = (raw[resource] ?? 0) + (NUMBER_PROB[tile.number] ?? 0);
+  }
+  return raw;
+}
+
 /**
  * Enkel motspillermodell: velg hjørne med høyest pip-produksjon.
  * Første landsby = høyest pip; andre landsby = høyest pip-sum for paret.

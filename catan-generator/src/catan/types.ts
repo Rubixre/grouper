@@ -75,6 +75,11 @@ export interface GeneratorSettings {
   allowAdjacentSameNumber: boolean;
   /** When true, edge pieces are randomly rotated; when false, original B1–B6 order */
   randomHarbors: boolean;
+  /**
+   * Bonanzabrett (kun grunnspill-layout): trekker 19 av 30 ressursbrikker og
+   * tallbrikker fra samlet pool (18 grunn + 28 utvidelse = 46). Ignoreres for utvidelse.
+   */
+  bonanzaBoard: boolean;
 }
 
 export const DEFAULT_SETTINGS: GeneratorSettings = {
@@ -83,6 +88,7 @@ export const DEFAULT_SETTINGS: GeneratorSettings = {
   allowAdjacentSameResource: true,
   allowAdjacentSameNumber: true,
   randomHarbors: true,
+  bonanzaBoard: false,
 };
 
 export interface Board {

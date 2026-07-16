@@ -5,6 +5,8 @@ export * from './edgePieces';
 export * from './harborPorts';
 export * from './harbors';
 export * from './generator';
+export * from './boardFromPhoto';
+export * from './photoRecognize';
 export * from './settlements';
 export {
   NUMBER_PROB,
@@ -19,6 +21,8 @@ export * from './mapping';
 export * from './playerConfig';
 export * from './draftOrder';
 export * from './strategyAdvisor';
+export * from './vertexLabels';
+export * from './harborStrategy';
 export * from './simulator';
 export * from './playerStats';
 export * from './boardStory';

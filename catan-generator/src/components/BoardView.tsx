@@ -12,7 +12,7 @@ import { HarborIcon } from './HarborIcon';
 import { HarborDock, harborPosition } from './HarborDock';
 import { MappingOverlay } from './MappingOverlay';
 
-export const BOARD_HEX_SIZE = 34;
+export const BOARD_HEX_SIZE = 42;
 
 interface BoardViewProps {
   board: Board;
@@ -21,6 +21,11 @@ interface BoardViewProps {
   highlightedVertices?: SettlementScore[];
   previewSecondVertex?: string | null;
   selectedVertex?: string | null;
+  harborPlanHighlight?: {
+    firstVertexId: string;
+    secondVertexId?: string;
+    harborNodeVertexIds: [string, string];
+  } | null;
   onVertexClick?: (vertexId: string) => void;
   interactive?: boolean;
   mappingMode?: boolean;
@@ -81,6 +86,7 @@ export function BoardView({
   highlightedVertices = [],
   previewSecondVertex = null,
   selectedVertex,
+  harborPlanHighlight = null,
   onVertexClick,
   interactive = false,
   mappingMode = false,
@@ -120,6 +126,19 @@ export function BoardView({
   const previewPos = previewSecondVertex
     ? getVertexPixel(previewSecondVertex, HEX_SIZE)
     : null;
+
+  const harborFirstPos = harborPlanHighlight
+    ? getVertexPixel(harborPlanHighlight.firstVertexId, HEX_SIZE)
+    : null;
+  const harborSecondPos =
+    harborPlanHighlight?.secondVertexId != null
+      ? getVertexPixel(harborPlanHighlight.secondVertexId, HEX_SIZE)
+      : null;
+  const selectedPos =
+    selectedVertex &&
+    !(harborPlanHighlight && selectedVertex === harborPlanHighlight.firstVertexId)
+      ? getVertexPixel(selectedVertex, HEX_SIZE)
+      : null;
 
   return (
     <svg
@@ -324,7 +343,7 @@ export function BoardView({
           );
         })}
 
-      {!mappingMode && previewPos && (
+      {!mappingMode && previewPos && !harborPlanHighlight?.secondVertexId && (
         <g className="second-settlement-preview" aria-label="Forventet landsby nr. 2">
           <circle
             cx={previewPos.x}
@@ -346,6 +365,114 @@ export function BoardView({
           >
             #2?
           </text>
+        </g>
+      )}
+
+      {!mappingMode && harborPlanHighlight && harborFirstPos && (
+        <g className="harbor-plan-markers" aria-label="Havnstrategi på brettet">
+          <circle
+            cx={harborFirstPos.x}
+            cy={harborFirstPos.y}
+            r={18}
+            fill="none"
+            stroke="#f39c12"
+            strokeWidth={3}
+            className="harbor-plan-pulse"
+          />
+          <circle
+            cx={harborFirstPos.x}
+            cy={harborFirstPos.y}
+            r={13}
+            fill="#f39c12"
+            fillOpacity={0.95}
+            stroke="#fff"
+            strokeWidth={2.5}
+          />
+          <text
+            x={harborFirstPos.x}
+            y={harborFirstPos.y + 1}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fill="#1a252f"
+            fontSize={11}
+            fontWeight={800}
+          >
+            1
+          </text>
+          {harborSecondPos && (
+            <>
+              <circle
+                cx={harborSecondPos.x}
+                cy={harborSecondPos.y}
+                r={14}
+                fill="none"
+                stroke="#1abc9c"
+                strokeWidth={2.5}
+                strokeDasharray="5 4"
+              />
+              <circle
+                cx={harborSecondPos.x}
+                cy={harborSecondPos.y}
+                r={9}
+                fill="#1abc9c"
+                fillOpacity={0.9}
+                stroke="#fff"
+                strokeWidth={2}
+              />
+              <text
+                x={harborSecondPos.x}
+                y={harborSecondPos.y + 1}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill="#0b3d2e"
+                fontSize={10}
+                fontWeight={800}
+              >
+                2
+              </text>
+            </>
+          )}
+          {harborPlanHighlight.harborNodeVertexIds.map((nodeId) => {
+            const nodePos = getVertexPixel(nodeId, HEX_SIZE);
+            if (!nodePos) return null;
+            return (
+              <g key={`harbor-node-${nodeId}`}>
+                <circle
+                  cx={nodePos.x}
+                  cy={nodePos.y}
+                  r={7}
+                  fill="#3498db"
+                  fillOpacity={0.85}
+                  stroke="#fff"
+                  strokeWidth={1.5}
+                />
+                <text
+                  x={nodePos.x}
+                  y={nodePos.y + 14}
+                  textAnchor="middle"
+                  fill="#eafaf1"
+                  fontSize={8}
+                  fontWeight={700}
+                >
+                  havn
+                </text>
+              </g>
+            );
+          })}
+        </g>
+      )}
+
+      {!mappingMode && selectedPos && (
+        <g className="selected-vertex-marker" aria-label="Valgt plassering">
+          <circle
+            cx={selectedPos.x}
+            cy={selectedPos.y}
+            r={16}
+            fill="none"
+            stroke="#fff"
+            strokeWidth={3}
+            opacity={0.95}
+          />
         </g>
       )}
     </svg>
