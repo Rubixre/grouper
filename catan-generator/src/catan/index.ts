@@ -12,7 +12,9 @@ export {
   scoreFirstPlacement,
   scorePairPlacement,
   harborBonusForProfile,
+  lowHexPenalty,
 } from './placementModel';
+export * from './placementExpansion';
 export * from './resourceWeights';
 export * from './extensionLayout';
 export * from './mapping';

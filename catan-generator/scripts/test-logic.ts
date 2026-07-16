@@ -506,10 +506,110 @@ import { scoreFirstPlacement } from '../src/catan/placementModel.ts';
     (monoScore.components.monoResourcePenalty ?? 0) > 0,
     'Single-resource placement gets mono-resource penalty'
   );
+  assert(
+    (monoScore.components.lowHexPenalty ?? 0) > 0,
+    '1-hex placement gets low-hex penalty (no longer skipped for mono)'
+  );
   assert(monoScore.components.redAnchorBonus === 0, 'Red anchor bonus requires resource diversity');
   assert(
     balancedScore.total > monoScore.total,
     'Balanced 3-resource spot outranks lone ore-6 edge gamble'
+  );
+
+  const weakTwoHex = {
+    ...balanced,
+    producingHexCount: 2,
+    pipTotal: 8 / 36,
+    resources: new Set(['wood', 'brick']),
+    total:
+      (4 / 36) * DEFAULT_RESOURCE_WEIGHTS.wood +
+      (4 / 36) * DEFAULT_RESOURCE_WEIGHTS.brick,
+  };
+  const weakTwo = scoreFirstPlacement(weakTwoHex as typeof balanced, DEFAULT_RESOURCE_WEIGHTS, 0);
+  assert(
+    (weakTwo.components.lowHexPenalty ?? 0) > 0,
+    'Weak 2-hex placement is penalized'
+  );
+  assert(
+    (weakTwo.components.lowHexPenalty ?? 0) < (monoScore.components.lowHexPenalty ?? 0),
+    '1-hex penalty is stricter than 2-hex penalty'
+  );
+}
+
+console.log('\nPSM expansion layer');
+import {
+  expansionPotentialScore,
+  expansionTargets,
+  pairSpacingPenalty,
+  vertexGraphDistance,
+  SPACING_CLOSE_PENALTY,
+} from '../src/catan/placementExpansion.ts';
+import { getVertices, scoreVertex } from '../src/catan/settlements.ts';
+import { lowHexPenalty, scorePairPlacement } from '../src/catan/placementModel.ts';
+if (board) {
+  const vertices = getVertices();
+  const valid = getValidVertices([]);
+  assert(valid.length > 0, 'Has valid vertices for expansion tests');
+  const from = valid[0]!;
+  const targets = expansionTargets(from, [], vertices, 3);
+  assert(targets.size > 0, 'Expansion finds targets within distance 3');
+  for (const d of targets.values()) {
+    assert(d >= 2 && d <= 3, 'Expansion targets are distance 2–3');
+  }
+  const expansion = expansionPotentialScore(from, [], vertices, () => 0.5);
+  assert(expansion > 0, 'Positive hotspot yields expansion score');
+
+  const neighbor = vertices.get(from)?.neighbors[0];
+  if (neighbor) {
+    assert(vertexGraphDistance(from, neighbor, vertices) === 1, 'Neighbor is distance 1');
+    assert(
+      pairSpacingPenalty(from, neighbor, vertices) === SPACING_CLOSE_PENALTY,
+      'Adjacent pair gets close spacing penalty'
+    );
+  }
+
+  const scored = scoreVertex(from, board);
+  assert(
+    (scored.expansionPotential ?? 0) > 0,
+    'scoreVertex includes expansion potential'
+  );
+
+  // Pair scoring includes low-hex penalties
+  const oneHexProfile = {
+    byResource: { wood: 0.1 },
+    byNumber: { 6: 0.1 },
+    rawByResource: { wood: 5 / 36 },
+    rawByNumber: { 6: 5 / 36 },
+    rawByResourceNumber: { wood: { 6: 5 / 36 } },
+    total: 0.1,
+    pipTotal: 5 / 36,
+    producingHexCount: 1,
+    desertNeighbors: 0,
+    hasRedNumber: true,
+    resources: new Set(['wood']),
+    breakdown: [],
+  };
+  const threeHexProfile = {
+    ...oneHexProfile,
+    producingHexCount: 3,
+    pipTotal: 13 / 36,
+    resources: new Set(['wood', 'brick', 'sheep']),
+    rawByResource: { wood: 5 / 36, brick: 4 / 36, sheep: 4 / 36 },
+    total: 0.4,
+  };
+  const pairWithWeak = scorePairPlacement(
+    threeHexProfile as never,
+    oneHexProfile as never,
+    DEFAULT_RESOURCE_WEIGHTS,
+    0
+  );
+  assert(
+    pairWithWeak.components.lowHexPenalty === lowHexPenalty(oneHexProfile as never),
+    'Pair scoring applies low-hex penalty from weak second settlement'
+  );
+  assert(
+    (pairWithWeak.components.monoResourcePenalty ?? 0) > 0,
+    'Pair scoring applies mono penalty'
   );
 }
 
@@ -783,8 +883,12 @@ if (board) {
         o.harbor +
         (o.buildingSynergy ?? 0) +
         (o.coordination ?? 0) +
-        (o.pairPipBonus ?? 0) -
-        (o.desertPenalty ?? 0);
+        (o.pairPipBonus ?? 0) +
+        (o.expansionPotential ?? 0) -
+        (o.desertPenalty ?? 0) -
+        (o.lowHexPenalty ?? 0) -
+        (o.monoResourcePenalty ?? 0) -
+        (o.spacingPenalty ?? 0);
       return Math.abs(recomposed - o.total) < 1e-6;
     }),
     'Second settlement score components sum to total'
@@ -812,7 +916,13 @@ if (board) {
 
   const firstId = state.placements.find((p) => p.player === 0)!.vertexId;
   const ranked = secondOpts[0];
-  const direct = scoreSecondSettlement(ranked.vertexId, firstId, board);
+  const direct = scoreSecondSettlement(
+    ranked.vertexId,
+    firstId,
+    board,
+    undefined,
+    state.placements
+  );
   assert(
     Math.abs(direct.total - ranked.total) < 1e-9,
     'Second settlement score matches scoreSecondSettlement'
@@ -877,7 +987,9 @@ if (board) {
   const direct = scoreSecondSettlement(
     ranked.vertexId,
     firstPlacement.vertexId,
-    board
+    board,
+    undefined,
+    state.placements
   );
   assert(
     Math.abs(direct.total - ranked.total) < 1e-9,

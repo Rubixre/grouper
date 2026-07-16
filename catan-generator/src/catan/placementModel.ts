@@ -65,6 +65,15 @@ export interface PlacementComponents {
   coordination: number;
   portfolio: number;
   overlap: number;
+  /** Positional: fremtidige landsbyplasser innen veiavstand */
+  expansionPotential: number;
+  /** Positional: #1+#2 for nærme / overlappende ekspansjonssone */
+  spacingPenalty: number;
+}
+
+export interface PositionalBonuses {
+  expansionPotential?: number;
+  spacingPenalty?: number;
 }
 
 // Kalibrert mot turnerings-/pip-litteratur (settlersboard.com, BGA)
@@ -74,11 +83,13 @@ const PIP_PAIR_STRONG = 16 / 36;
 const PIP_QUALITY_SCALE = 0.12;
 const PAIR_PIP_BONUS_SCALE = 0.2;
 const RED_ANCHOR_BONUS = 0.03;
-const MONO_RESOURCE_PENALTY = 0.12;
-const MONO_SINGLE_HEX_EXTRA = 0.06;
+const MONO_RESOURCE_PENALTY = 0.14;
+const MONO_SINGLE_HEX_EXTRA = 0.08;
 const DESERT_PENALTY_PER_HEX = 0.04;
-const LOW_HEX_PIP_THRESHOLD = 10 / 36;
-const LOW_HEX_PENALTY = 0.03;
+/** 2-hex kan unntas low-hex-straff bare ved svært sterk pip + ≥2 ressurser */
+const LOW_HEX_STRONG_PIP = 12 / 36;
+const LOW_HEX_PENALTY_1 = 0.16;
+const LOW_HEX_PENALTY_2 = 0.1;
 const PAIR_DIVERSITY_SCALE = 0.25;
 const ROAD_SYNERGY_SCALE = 0.35;
 const CITY_SYNERGY_SCALE = 0.3;
@@ -295,11 +306,25 @@ function desertPenalty(profile: ProductionProfile): number {
   return profile.desertNeighbors * DESERT_PENALTY_PER_HEX;
 }
 
-function lowHexPenalty(profile: ProductionProfile): number {
-  if (profile.producingHexCount >= 3) return 0;
-  if (profile.resources.size === 1 && profile.producingHexCount === 1) return 0;
-  if (profile.pipTotal >= LOW_HEX_PIP_THRESHOLD) return 0;
-  return LOW_HEX_PENALTY;
+/**
+ * 1–2 produktive hex er nesten alltid svake plasseringer.
+ * Unntak: 2-hex med svært høy pip og minst to ressurser (sjelden god kyst).
+ * Mono 1-hex får både denne straffen og monoResourcePenalty.
+ */
+export function lowHexPenalty(profile: ProductionProfile): number {
+  const n = profile.producingHexCount;
+  if (n >= 3) return 0;
+  if (n <= 0) return LOW_HEX_PENALTY_1;
+  if (n === 1) return LOW_HEX_PENALTY_1;
+  // n === 2
+  if (profile.resources.size >= 2 && profile.pipTotal >= LOW_HEX_STRONG_PIP) {
+    return 0;
+  }
+  return LOW_HEX_PENALTY_2;
+}
+
+export function monoResourcePenaltyFor(profile: ProductionProfile): number {
+  return monoResourcePenalty(profile);
 }
 
 function pairRaw(profile: ProductionProfile, resource: ProdResource): number {
@@ -416,7 +441,8 @@ function pairPipBonus(first: ProductionProfile, second: ProductionProfile): numb
 export function scoreFirstPlacement(
   profile: ProductionProfile,
   weights: ResourceWeights,
-  harbor: number
+  harbor: number,
+  positional: PositionalBonuses = {}
 ): { total: number; components: PlacementComponents } {
   const diversity = coverageBonus(profile.resources, weights);
   const pipBonus = pipQualityBonus(profile.pipTotal);
@@ -424,6 +450,8 @@ export function scoreFirstPlacement(
   const desertPen = desertPenalty(profile);
   const lowHexPen = lowHexPenalty(profile);
   const monoPen = monoResourcePenalty(profile);
+  const expansion = positional.expansionPotential ?? 0;
+  const spacing = positional.spacingPenalty ?? 0;
 
   const components: PlacementComponents = {
     production: profile.total,
@@ -440,6 +468,8 @@ export function scoreFirstPlacement(
     coordination: 0,
     portfolio: 0,
     overlap: 0,
+    expansionPotential: expansion,
+    spacingPenalty: spacing,
   };
 
   const total =
@@ -447,10 +477,12 @@ export function scoreFirstPlacement(
     diversity +
     harbor +
     pipBonus +
-    redAnchor -
+    redAnchor +
+    expansion -
     desertPen -
     lowHexPen -
-    monoPen;
+    monoPen -
+    spacing;
 
   return { total, components };
 }
@@ -459,7 +491,8 @@ export function scorePairPlacement(
   first: ProductionProfile,
   second: ProductionProfile,
   weights: ResourceWeights,
-  harbor: number
+  harbor: number,
+  positional: PositionalBonuses = {}
 ): { total: number; components: PlacementComponents } {
   const { portfolio, overlap } = portfolioSynergy(first, second, weights);
   const combinedResources = new Set([...first.resources, ...second.resources]);
@@ -469,6 +502,11 @@ export function scorePairPlacement(
   const complement = complementScore(first, second, weights);
   const pairPip = pairPipBonus(first, second);
   const desertPen = desertPenalty(first) + desertPenalty(second);
+  // Low-hex / mono må følge med i par — ellers overlever svake kysthex i lookahead
+  const lowHexPen = lowHexPenalty(first) + lowHexPenalty(second);
+  const monoPen = monoResourcePenalty(first) + monoResourcePenalty(second);
+  const expansion = positional.expansionPotential ?? 0;
+  const spacing = positional.spacingPenalty ?? 0;
   const pairProduction = first.total + second.total;
 
   const components: PlacementComponents = {
@@ -478,14 +516,16 @@ export function scorePairPlacement(
     pipBonus: 0,
     redAnchorBonus: 0,
     desertPenalty: desertPen,
-    lowHexPenalty: 0,
-    monoResourcePenalty: 0,
+    lowHexPenalty: lowHexPen,
+    monoResourcePenalty: monoPen,
     buildingSynergy: building,
     pairPipBonus: pairPip,
     complementScore: complement,
     coordination,
     portfolio: portfolio + complement,
     overlap,
+    expansionPotential: expansion,
+    spacingPenalty: spacing,
   };
 
   const total =
@@ -496,9 +536,13 @@ export function scorePairPlacement(
     coordination +
     pairPip +
     portfolio +
-    complement -
+    complement +
+    expansion -
     overlap -
-    desertPen;
+    desertPen -
+    lowHexPen -
+    monoPen -
+    spacing;
 
   return { total, components };
 }

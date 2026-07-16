@@ -152,6 +152,10 @@ export interface SettlementScore {
   pairPipBonus?: number;
   complementScore?: number;
   coordination?: number;
+  /** Fremtidige landsbyplasser i veiavstand 2–3 */
+  expansionPotential?: number;
+  /** Straff for #1+#2 for nærme eller svært langt fra hverandre */
+  spacingPenalty?: number;
   placementKind?: 'first' | 'second';
   /**
    * Ved første landsby med lookahead: forventet parscore etter simulerte

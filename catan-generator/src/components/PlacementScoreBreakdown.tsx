@@ -66,9 +66,12 @@ export function PlacementScoreBreakdown({
       )}
       <p className="score-breakdown-formula muted small">
         {explanation.kind === 'first' ? (
-          <>Lokal = prod. + dekning + pip + havn − straff</>
+          <>Lokal = prod. + dekning + pip + havn + ekspansjon − straff</>
         ) : (
-          <>Total = par prod. + synergi + utfylling − overlapp + dekning + havn</>
+          <>
+            Total = par prod. + synergi + utfylling + ekspansjon − overlapp −
+            low-hex/mono − spacing + dekning + havn
+          </>
         )}
       </p>
 
@@ -125,6 +128,8 @@ export function PlacementScoreBreakdown({
         <BonusLine label="Ørken-straff" value={explanation.desertPenalty} negative />
         <BonusLine label="Få prod. hex" value={explanation.lowHexPenalty} negative />
         <BonusLine label="Ensidig ressurs" value={explanation.monoResourcePenalty} negative />
+        <BonusLine label="Ekspansjonspotensial" value={explanation.expansionPotential} />
+        <BonusLine label="Avstand #1–#2" value={explanation.spacingPenalty} negative />
         {explanation.kind === 'second' && (
           <>
             <BonusLine label="Byggepakker (vei/by/landsby)" value={explanation.buildingSynergy} />
