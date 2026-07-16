@@ -75,6 +75,11 @@ export interface GeneratorSettings {
   allowAdjacentSameNumber: boolean;
   /** When true, edge pieces are randomly rotated; when false, original B1–B6 order */
   randomHarbors: boolean;
+  /**
+   * Bonanzabrett (kun grunnspill-layout): trekker 19 av 30 ressursbrikker og
+   * tallbrikker fra samlet pool (18 grunn + 28 utvidelse = 46). Ignoreres for utvidelse.
+   */
+  bonanzaBoard: boolean;
 }
 
 export const DEFAULT_SETTINGS: GeneratorSettings = {
@@ -83,6 +88,7 @@ export const DEFAULT_SETTINGS: GeneratorSettings = {
   allowAdjacentSameResource: true,
   allowAdjacentSameNumber: true,
   randomHarbors: true,
+  bonanzaBoard: false,
 };
 
 export interface Board {
@@ -152,6 +158,10 @@ export interface SettlementScore {
   pairPipBonus?: number;
   complementScore?: number;
   coordination?: number;
+  /** Fremtidige landsbyplasser i veiavstand 2–3 */
+  expansionPotential?: number;
+  /** Straff for #1+#2 for nærme eller svært langt fra hverandre */
+  spacingPenalty?: number;
   placementKind?: 'first' | 'second';
   /**
    * Ved første landsby med lookahead: forventet parscore etter simulerte
