@@ -38,10 +38,26 @@ export const HARBOR_STRATEGY_VALID_ROAD_DISTANCES = [0, 2] as const;
 /** Vekt på øvrige ressurser vs. fokusressurs ved rangering. */
 export const HARBOR_STRATEGY_OTHER_WEIGHT = 0.55;
 
-/** Merverdi for 2:1-spesialisering utover ordinary PSM-havnbonus. */
-export const HARBOR_TRADE_BONUS_RESOURCE = 0.42;
-/** Merverdi for 3:1. */
-export const HARBOR_TRADE_BONUS_GENERIC = 0.18;
+/**
+ * Konverteringsrate ved handel (kort ut → nyttig kort inn).
+ * Sammenlignes mot bank 4:1 (0.25) for å isolere havnens merverdi.
+ */
+export const HARBOR_TRADE_CONVERSION_RESOURCE = 0.5; // 2:1
+export const HARBOR_TRADE_CONVERSION_GENERIC = 1 / 3; // 3:1
+export const HARBOR_BANK_CONVERSION = 0.25; // 4:1
+
+/**
+ * Skalerer handelsjusteringen til samme størrelsesorden som PSM-score.
+ * (Uplift × pip × tradedFraction × receiveWeight er ellers for lite alene.)
+ */
+export const HARBOR_TRADE_VALUE_SCALE = 2.85;
+
+/** @deprecated Bruk HARBOR_TRADE_CONVERSION_* — beholdt for eventuelle eksterne imports. */
+export const HARBOR_TRADE_BONUS_RESOURCE =
+  (HARBOR_TRADE_CONVERSION_RESOURCE - HARBOR_BANK_CONVERSION) * HARBOR_TRADE_VALUE_SCALE;
+/** @deprecated */
+export const HARBOR_TRADE_BONUS_GENERIC =
+  (HARBOR_TRADE_CONVERSION_GENERIC - HARBOR_BANK_CONVERSION) * HARBOR_TRADE_VALUE_SCALE;
 
 export function isValidHarborRoadDistance(distance: number): boolean {
   return distance === 0 || distance === 2;
@@ -89,7 +105,7 @@ export interface HarborVsBalanced {
   bestBalancedScore: number;
   /** planScore / bestBalancedScore */
   relative: number;
-  /** Estimert ekstra handelsverdi fra 2:1/3:1 */
+  /** Netto handelsjustering (inn-verdi via havn − delvis PSM-dobbelttelling) */
   tradeBonus: number;
   /** planScore + tradeBonus */
   effectiveScore: number;
@@ -524,6 +540,69 @@ export function findHarborStrategyOpportunities(
   );
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+/** Gjennomsnittlig strategivekt for ressursene du typisk kjøper inn (ikke fokus). */
+export function meanReceiveWeight(
+  focus: ProdResource,
+  weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS
+): number {
+  let sum = 0;
+  let count = 0;
+  for (const resource of PROD_RESOURCES) {
+    if (resource === focus) continue;
+    sum += weights[resource];
+    count += 1;
+  }
+  return count > 0 ? sum / count : 1;
+}
+
+export function meanStrategyWeight(
+  weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS
+): number {
+  let sum = 0;
+  for (const resource of PROD_RESOURCES) sum += weights[resource];
+  return sum / PROD_RESOURCES.length;
+}
+
+/**
+ * Andel av fokusproduksjon som behandles som handels-surplus (selges),
+ * ikke som bygningsvarer man holder på.
+ *
+ * - Høy konsentrasjon (surplusRatio) → mer selges.
+ * - Lav bygningsvekt på fokusressursen → lettere å dumpe (ofte en fordel).
+ *
+ * Handelsressursens egen strategivekt skal IKKE øke verdien av å selge den.
+ */
+export function harborTradedFraction(
+  opportunity: Pick<HarborStrategyOpportunity, 'resource' | 'resourcePip' | 'otherPip'>,
+  weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS
+): number {
+  const totalPip = opportunity.resourcePip + opportunity.otherPip;
+  const surplusRatio = opportunity.resourcePip / Math.max(totalPip, 1 / 36);
+  const avgWeight = meanStrategyWeight(weights);
+  const focusWeight = weights[opportunity.resource];
+  // 1.0 når fokus er «billig» å dumpe, lavere når fokus er ettertraktet til bygg
+  const dumpEase = clamp(0.55 + 0.45 * ((avgWeight - focusWeight) / avgWeight), 0.4, 1);
+  return clamp(0.35 * dumpEase + 0.55 * surplusRatio, 0.35, 0.92);
+}
+
+/**
+ * Andel av fokus-pip×vekt som trekkes fra for å unngå dobbelttelling mot PSM
+ * (PSM-total ≠ ren produksjonssum, derfor delvis haircut).
+ */
+export const HARBOR_TRADE_BUILDING_HAIRCUT = 0.28;
+
+/**
+ * Estimert netto merverdi av havnhandel vs. balansert PSM-lesning.
+ *
+ * - Verdsetter det du FÅR inn (snitt av ikke-fokus), ikke bygningsvekten av
+ *   det du selger.
+ * - Overflod/konsentrasjon av handelsressursen øker justeringen.
+ * - Trekker delvis fra PSM sin «bygningsverdi» for andelen som selges.
+ */
 export function estimateHarborTradeBonus(
   opportunity: Pick<
     HarborStrategyOpportunity,
@@ -531,15 +610,21 @@ export function estimateHarborTradeBonus(
   >,
   weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS
 ): number {
-  const rate =
+  const conversion =
     opportunity.harborKind === 'resource'
-      ? HARBOR_TRADE_BONUS_RESOURCE
-      : HARBOR_TRADE_BONUS_GENERIC;
-  // Mer surplus-fokus (relativt til øvrig) → mer handelsgevinst
-  const surplusRatio =
-    opportunity.resourcePip /
-    Math.max(opportunity.resourcePip + opportunity.otherPip, 1 / 36);
-  return opportunity.resourcePip * rate * surplusRatio * weights[opportunity.resource];
+      ? HARBOR_TRADE_CONVERSION_RESOURCE
+      : HARBOR_TRADE_CONVERSION_GENERIC;
+  const conversionUplift = conversion - HARBOR_BANK_CONVERSION;
+  const receiveWeight = meanReceiveWeight(opportunity.resource, weights);
+  const tradedFraction = harborTradedFraction(opportunity, weights);
+  const tradedPip = opportunity.resourcePip * tradedFraction;
+
+  const tradeUplift =
+    tradedPip * conversionUplift * receiveWeight * HARBOR_TRADE_VALUE_SCALE;
+  const buildingHaircut =
+    tradedPip * weights[opportunity.resource] * HARBOR_TRADE_BUILDING_HAIRCUT;
+
+  return tradeUplift - buildingHaircut;
 }
 
 export function verdictFromEffectiveRelative(effectiveRelative: number): {

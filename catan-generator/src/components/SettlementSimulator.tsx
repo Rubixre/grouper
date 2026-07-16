@@ -131,6 +131,9 @@ export function SettlementSimulator({
     : 'Velg hjørne på brettet eller i listen';
 
   const showHarborTab = harborOpportunities.length > 0 && isYourTurn;
+  const harborAboveBalanced = harborOpportunities.some(
+    (o) => (o.vsBalanced?.effectiveRelative ?? 0) > 1
+  );
   const activeTab: SimTab =
     tab === 'harbor' && showHarborTab ? 'harbor' : 'placement';
 
@@ -334,7 +337,7 @@ export function SettlementSimulator({
                       <span
                         className="harbor-strategy-vs"
                         data-verdict={vs.verdict}
-                        title={`PSM ${vs.planScore.toFixed(2)} + handelsbonus ${vs.tradeBonus.toFixed(2)} = ${vs.effectiveScore.toFixed(2)} vs balansert ${vs.bestBalancedScore.toFixed(2)}`}
+                        title={`PSM ${vs.planScore.toFixed(2)} + handelsjustering ${vs.tradeBonus.toFixed(2)} (inn-verdi via havn, ikke vekt på det som selges) = ${vs.effectiveScore.toFixed(2)} vs balansert ${vs.bestBalancedScore.toFixed(2)}`}
                       >
                         {Math.round(vs.effectiveRelative * 100)}%
                       </span>

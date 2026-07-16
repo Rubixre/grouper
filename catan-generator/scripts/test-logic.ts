@@ -693,6 +693,45 @@ assert(
     }),
   '2:1 harbor gets higher trade bonus than 3:1'
 );
+assert(
+  estimateHarborTradeBonus({
+    resource: 'brick',
+    harborKind: 'resource',
+    resourcePip: 10 / 36,
+    otherPip: 2 / 36,
+  }) >
+    estimateHarborTradeBonus({
+      resource: 'ore',
+      harborKind: 'resource',
+      resourcePip: 10 / 36,
+      otherPip: 2 / 36,
+    }),
+  'Surplus of lower-value dump resource beats same surplus of high-value ore'
+);
+assert(
+  estimateHarborTradeBonus({
+    resource: 'sheep',
+    harborKind: 'resource',
+    resourcePip: 12 / 36,
+    otherPip: 2 / 36,
+  }) >
+    estimateHarborTradeBonus({
+      resource: 'sheep',
+      harborKind: 'resource',
+      resourcePip: 12 / 36,
+      otherPip: 10 / 36,
+    }),
+  'Higher focus concentration yields higher trade bonus'
+);
+assert(
+  estimateHarborTradeBonus({
+    resource: 'wood',
+    harborKind: 'resource',
+    resourcePip: 10 / 36,
+    otherPip: 3 / 36,
+  }) > 0,
+  '2:1 trade adjustment stays positive for dump resources'
+);
 assert(verdictFromEffectiveRelative(1.05).verdict === 'stronger', 'Effective >103% is stronger');
 assert(verdictFromEffectiveRelative(0.8).verdict === 'weaker', 'Effective 80% is weaker');
 {
