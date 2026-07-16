@@ -965,5 +965,179 @@ import {
   }
 }
 
+console.log('\nPhoto board import');
+import {
+  buildBoardFromLandDraft,
+  createEmptyLandDraft,
+  isLandHexComplete,
+  validateLandDraft,
+} from '../src/catan/boardFromPhoto.ts';
+import { NUMBERS_EXTENSION_56 } from '../src/catan/generator.ts';
+{
+  const empty = createEmptyLandDraft('base');
+  assert(empty.length === 19, 'Empty photo draft has 19 land hexes');
+  assert(empty.every((d) => d.resource === null && d.number === null), 'Empty draft is blank');
+  const emptyValidation = validateLandDraft(empty, 'base');
+  assert(!emptyValidation.complete, 'Empty draft is incomplete');
+  assert(emptyValidation.filledCount === 0, 'Empty draft filled count is 0');
+
+  const incomplete = empty.map((d, i) =>
+    i === 0 ? { ...d, resource: 'wood' as const, number: 6 } : d
+  );
+  assert(isLandHexComplete(incomplete[0]!), 'Wood+6 hex is complete');
+  assert(!validateLandDraft(incomplete, 'base').complete, 'Partial draft is incomplete');
+
+  const desertBad = empty.map((d, i) =>
+    i === 0 ? { ...d, resource: 'desert' as const, number: 8 } : d
+  );
+  assert(
+    validateLandDraft(desertBad, 'base').errors.some((e) => e.includes('Ørken')),
+    'Desert with number is an error'
+  );
+
+  // Bygg standard-lignende base-brett fra generator-ressurser/tall
+  const gen = generateBoard(DEFAULT_SETTINGS, 'base');
+  assert(gen !== null, 'Generator board available for photo rebuild');
+  if (gen) {
+    const draft = createEmptyLandDraft('base').map((d) => {
+      const tile = gen.hexes.find(
+        (h) => h.kind === 'land' && h.coord.q === d.coord.q && h.coord.r === d.coord.r
+      );
+      assert(tile?.resource != null, 'Generated land tile has resource');
+      return {
+        ...d,
+        resource: tile!.resource,
+        number: tile!.number,
+      };
+    });
+    const validation = validateLandDraft(draft, 'base');
+    assert(validation.complete, 'Draft cloned from generated board is complete');
+    assert(validation.warnings.length === 0, 'Standard counts produce no resource warnings');
+
+    const built = buildBoardFromLandDraft(draft, DEFAULT_SETTINGS, 'base');
+    assert(built.ok, 'Builds board from photo draft');
+    if (built.ok) {
+      assert(built.board.boardSize === 'base', 'Photo board is base size');
+      assert(
+        built.board.hexes.filter((h) => h.kind === 'land').length === 19,
+        'Photo board has 19 land hexes'
+      );
+      assert(built.board.harbors.length === 9, 'Photo board places harbors');
+      for (const d of draft) {
+        const tile = built.board.hexes.find(
+          (h) => h.kind === 'land' && h.coord.q === d.coord.q && h.coord.r === d.coord.r
+        );
+        assert(tile?.resource === d.resource, 'Photo board keeps resource');
+        assert(tile?.number === d.number, 'Photo board keeps number');
+      }
+    }
+  }
+
+  assert(NUMBERS_EXTENSION_56.length === 28, 'Extension number set still 28 for reference');
+}
+
+console.log('\nPhoto recognition');
+import {
+  applyRecognitionToDraft,
+  axialToImagePixel,
+  classifyResourceFromRgb,
+  defaultOverlayTransform,
+  recognizeBoardFromImageData,
+} from '../src/catan/photoRecognize.ts';
+import { getLandHexCoords } from '../src/catan/boardLayout.ts';
+{
+  assert(
+    classifyResourceFromRgb({ r: 40, g: 95, b: 48 }).resource === 'wood',
+    'Dark green classifies as wood'
+  );
+  assert(
+    classifyResourceFromRgb({ r: 175, g: 75, b: 42 }).resource === 'brick',
+    'Orange-red classifies as brick'
+  );
+  assert(
+    classifyResourceFromRgb({ r: 215, g: 185, b: 65 }).resource === 'wheat',
+    'Yellow classifies as wheat'
+  );
+  assert(
+    classifyResourceFromRgb({ r: 200, g: 180, b: 125 }).resource === 'desert',
+    'Tan classifies as desert'
+  );
+  assert(
+    classifyResourceFromRgb({ r: 85, g: 90, b: 100 }).resource === 'ore',
+    'Gray classifies as ore'
+  );
+
+  const coords = getLandHexCoords('base');
+  const transform = defaultOverlayTransform(800, 800, coords);
+  assert(transform.hexSize > 0, 'Default overlay has positive hex size');
+  assert(transform.centerX > 0 && transform.centerY > 0, 'Default overlay centered');
+
+  // Synthetic board image: paint each land hex ring with a known resource color
+  const W = 600;
+  const H = 600;
+  const data = new Uint8ClampedArray(W * H * 4);
+  // sea blue background
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = 40;
+    data[i + 1] = 110;
+    data[i + 2] = 170;
+    data[i + 3] = 255;
+  }
+  const resourcesCycle = ['wood', 'brick', 'sheep', 'wheat', 'ore', 'desert'] as const;
+  const t = defaultOverlayTransform(W, H, coords, 0.1);
+  const paintCircle = (cx: number, cy: number, radius: number, rgb: { r: number; g: number; b: number }) => {
+    const r2 = radius * radius;
+    const x0 = Math.max(0, Math.floor(cx - radius));
+    const x1 = Math.min(W - 1, Math.ceil(cx + radius));
+    const y0 = Math.max(0, Math.floor(cy - radius));
+    const y1 = Math.min(H - 1, Math.ceil(cy + radius));
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const dx = x - cx;
+        const dy = y - cy;
+        if (dx * dx + dy * dy > r2) continue;
+        const idx = (y * W + x) * 4;
+        data[idx] = rgb.r;
+        data[idx + 1] = rgb.g;
+        data[idx + 2] = rgb.b;
+      }
+    }
+  };
+  const proto: Record<(typeof resourcesCycle)[number], { r: number; g: number; b: number }> = {
+    wood: { r: 40, g: 95, b: 48 },
+    brick: { r: 175, g: 75, b: 42 },
+    sheep: { r: 130, g: 175, b: 75 },
+    wheat: { r: 215, g: 185, b: 65 },
+    ore: { r: 85, g: 90, b: 100 },
+    desert: { r: 200, g: 180, b: 125 },
+  };
+  coords.forEach((coord, i) => {
+    const resource = resourcesCycle[i % resourcesCycle.length]!;
+    const { x, y } = axialToImagePixel(coord, t);
+    paintCircle(x, y, t.hexSize * 0.55, proto[resource]);
+  });
+
+  const imageData = { data, width: W, height: H };
+  const recognized = recognizeBoardFromImageData(imageData, t, 'base');
+  assert(recognized.hexes.length === 19, 'Recognition returns 19 hexes');
+  assert(recognized.recognizedResources >= 15, 'Most synthetic hexes recognized');
+
+  let matches = 0;
+  coords.forEach((coord, i) => {
+    const expected = resourcesCycle[i % resourcesCycle.length]!;
+    const hit = recognized.hexes.find((h) => h.coord.q === coord.q && h.coord.r === coord.r);
+    if (hit?.resource?.resource === expected) matches += 1;
+  });
+  assert(matches >= 15, `Synthetic color board mostly correct (got ${matches}/19)`);
+
+  const draft = applyRecognitionToDraft(createEmptyLandDraft('base'), recognized, {
+    overwriteResources: true,
+  });
+  assert(
+    draft.filter((d) => d.resource !== null).length >= 15,
+    'Recognition applied into draft'
+  );
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
