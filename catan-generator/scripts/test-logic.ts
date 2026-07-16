@@ -745,8 +745,35 @@ import {
   simulateToHumanSecondTurn,
   rankFirstSettlementsWithLookahead,
   evaluateFirstSettlementPath,
+  blendSafeAndOptimisticPairScore,
+  occupyTopPipSpots,
+  opponentPlacementsUntilSecond,
+  PAIR_UPSIDE_CREDIT,
+  HARBOR_UPSIDE_CREDIT,
 } from '../src/catan/strategyAdvisor.ts';
 import { getValidVertices, pickGreedyOpponentVertex, vertexPipTotal } from '../src/catan/settlements.ts';
+
+{
+  const first = 1.0;
+  const safe = 1.6;
+  const opt = 2.0;
+  const blended = blendSafeAndOptimisticPairScore(first, safe, 0, opt, 0.1);
+  const safeLift = safe - first;
+  const optLiftCore = opt - first - 0.1;
+  const expected =
+    first +
+    (1 - PAIR_UPSIDE_CREDIT) * safeLift +
+    PAIR_UPSIDE_CREDIT * Math.max(safeLift, optLiftCore) +
+    HARBOR_UPSIDE_CREDIT * 0.1;
+  assert(
+    Math.abs(blended - expected) < 1e-9,
+    'Robust pair blend keeps #1 secured and downweights optimistic harbor'
+  );
+  assert(blended < opt, 'Robust score stays below pure optimistic pair total');
+  assert(blended > safe - 0.05, 'Robust score stays near safe plan');
+  assert(opponentPlacementsUntilSecond(0, 4) === 6, '4p seat 0 has 6 opponent placements before #2');
+}
+
 if (board) {
   const config = createSimulationConfig(4, 0);
   const sim = createSimulation(board, config);
@@ -809,7 +836,19 @@ if (board) {
   assert(topPath !== null, 'Lookahead top option has a valid path');
   assert(
     Math.abs((lookaheadOpts[0]!.expectedPairScore ?? 0) - (topPath?.pairScore ?? -1)) < 1e-9,
-    'Lookahead total matches evaluateFirstSettlementPath pair score'
+    'Lookahead expectedPairScore matches evaluateFirstSettlementPath pair score'
+  );
+  assert(topPath?.safePairScore !== undefined, 'Path exposes safe pair score');
+  assert(topPath?.optimisticPairScore !== undefined, 'Path exposes optimistic pair score');
+  const slots = opponentPlacementsUntilSecond(config.humanPlayerIndex, 4);
+  const afterFirst = [
+    ...sim.placements,
+    { vertexId: lookaheadOpts[0]!.vertexId, player: config.humanPlayerIndex, isCity: false },
+  ];
+  const blocked = occupyTopPipSpots(board, afterFirst, slots);
+  assert(
+    blocked.length === afterFirst.length + slots,
+    'Safe board occupies one pip spot per opponent placement until #2'
   );
 
   const turnOpts = getOptionsForCurrentTurn(sim);
