@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Board, BoardSize, GeneratorSettings, ResourceType } from '../catan/types';
 import {
   PHOTO_BOARD_NUMBERS,
@@ -9,6 +9,16 @@ import {
   validateLandDraft,
   type LandHexDraft,
 } from '../catan/boardFromPhoto';
+import {
+  applyRecognitionToDraft,
+  axialToImagePixel,
+  defaultOverlayTransform,
+  loadImageDataFromUrl,
+  nudgeTransform,
+  recognizeBoardFromImageData,
+  type ImageOverlayTransform,
+} from '../catan/photoRecognize';
+import { getLandHexCoords } from '../catan/boardLayout';
 import { hexCorner, hexToPixel } from '../catan/hex';
 import { RESOURCE_COLORS, RESOURCE_LABELS } from '../catan/playerStats';
 
@@ -45,10 +55,12 @@ function resourceLabel(resource: ResourceType | null): string {
 }
 
 function hexPath(coord: { q: number; r: number }, size: number): string {
-  return Array.from({ length: 6 }, (_, i) => {
-    const { x, y } = hexCorner(coord, i, size);
-    return `${i === 0 ? 'M' : 'L'}${x.toFixed(2)},${y.toFixed(2)}`;
-  }).join(' ') + ' Z';
+  return (
+    Array.from({ length: 6 }, (_, i) => {
+      const { x, y } = hexCorner(coord, i, size);
+      return `${i === 0 ? 'M' : 'L'}${x.toFixed(2)},${y.toFixed(2)}`;
+    }).join(' ') + ' Z'
+  );
 }
 
 export function PhotoBoardModal({
@@ -59,18 +71,32 @@ export function PhotoBoardModal({
   onApply,
 }: PhotoBoardModalProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ x: number; y: number; cx: number; cy: number } | null>(
+    null
+  );
+
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageSize, setImageSize] = useState<{ w: number; h: number } | null>(
+    null
+  );
+  const [transform, setTransform] = useState<ImageOverlayTransform | null>(null);
   const [drafts, setDrafts] = useState<LandHexDraft[]>(() =>
     createEmptyLandDraft(boardSize)
   );
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [applyError, setApplyError] = useState<string | null>(null);
+  const [recognizeStatus, setRecognizeStatus] = useState<string | null>(null);
+  const [recognizing, setRecognizing] = useState(false);
+
+  const landCoords = useMemo(() => getLandHexCoords(boardSize), [boardSize]);
 
   useEffect(() => {
     if (!open) return;
     setDrafts(createEmptyLandDraft(boardSize));
     setSelectedKey(null);
     setApplyError(null);
+    setRecognizeStatus(null);
   }, [open, boardSize]);
 
   useEffect(() => {
@@ -115,7 +141,26 @@ export function PhotoBoardModal({
     };
   }, [drafts]);
 
-  if (!open) return null;
+  const initTransformForImage = useCallback(
+    (w: number, h: number) => {
+      setImageSize({ w, h });
+      setTransform(defaultOverlayTransform(w, h, landCoords));
+    },
+    [landCoords]
+  );
+
+  const handleFile = (file: File | undefined) => {
+    if (!file) return;
+    if (imageUrl) URL.revokeObjectURL(imageUrl);
+    const url = URL.createObjectURL(file);
+    setImageUrl(url);
+    setRecognizeStatus(null);
+    const img = new Image();
+    img.onload = () => {
+      initTransformForImage(img.naturalWidth || img.width, img.naturalHeight || img.height);
+    };
+    img.src = url;
+  };
 
   const updateSelected = (patch: Partial<Pick<LandHexDraft, 'resource' | 'number'>>) => {
     if (!selectedKey) return;
@@ -126,7 +171,6 @@ export function PhotoBoardModal({
         if (next.resource === 'desert') {
           next.number = null;
         } else if (patch.resource && d.resource === 'desert') {
-          // Byttet bort fra ørken — tall må velges på nytt
           next.number = null;
         }
         return next;
@@ -135,10 +179,34 @@ export function PhotoBoardModal({
     setApplyError(null);
   };
 
-  const handleFile = (file: File | undefined) => {
-    if (!file) return;
-    if (imageUrl) URL.revokeObjectURL(imageUrl);
-    setImageUrl(URL.createObjectURL(file));
+  const handleRecognize = async () => {
+    if (!imageUrl || !transform) {
+      setRecognizeStatus('Last opp bilde og juster overlay først.');
+      return;
+    }
+    setRecognizing(true);
+    setRecognizeStatus(null);
+    setApplyError(null);
+    try {
+      const { imageData } = await loadImageDataFromUrl(imageUrl);
+      const result = recognizeBoardFromImageData(imageData, transform, boardSize);
+      setDrafts((prev) =>
+        applyRecognitionToDraft(prev, result, {
+          overwriteResources: true,
+          overwriteNumbers: false,
+        })
+      );
+      setRecognizeStatus(
+        `Gjenkjente ressurser på ${result.recognizedResources}/${result.hexes.length} hex. ` +
+          'Tall må fylles manuelt i denne versjonen — sjekk og rett farger ved behov.'
+      );
+    } catch (err) {
+      setRecognizeStatus(
+        err instanceof Error ? err.message : 'Gjenkjenning feilet.'
+      );
+    } finally {
+      setRecognizing(false);
+    }
   };
 
   const handleApply = () => {
@@ -155,7 +223,39 @@ export function PhotoBoardModal({
     setDrafts(createEmptyLandDraft(boardSize));
     setSelectedKey(null);
     setApplyError(null);
+    setRecognizeStatus(null);
   };
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (!transform) return;
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    dragRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      cx: transform.centerX,
+      cy: transform.centerY,
+    };
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!dragRef.current || !transform || !imageSize || !overlayRef.current) return;
+    const rect = overlayRef.current.getBoundingClientRect();
+    const scaleX = imageSize.w / rect.width;
+    const scaleY = imageSize.h / rect.height;
+    const dx = (e.clientX - dragRef.current.x) * scaleX;
+    const dy = (e.clientY - dragRef.current.y) * scaleY;
+    setTransform({
+      ...transform,
+      centerX: dragRef.current.cx + dx,
+      centerY: dragRef.current.cy + dy,
+    });
+  };
+
+  const onPointerUp = () => {
+    dragRef.current = null;
+  };
+
+  if (!open) return null;
 
   return (
     <div className="modal-backdrop" onClick={onClose} role="presentation">
@@ -180,9 +280,9 @@ export function PhotoBoardModal({
 
         <div className="modal-body photo-board-body">
           <p className="muted small photo-board-intro">
-            Last opp et bilde av brettet og fyll inn ressurs + tall for hver
-            landhex. Havner settes automatisk (som ved generering). Første
-            versjon er halvautomatisk — du retter/fyller gridet selv.
+            Last opp et bilde ovenfra, juster hex-overlayet til brikkene, og kjør
+            gjenkjenning. Ressurser foreslås fra farge; tall fylles manuelt i
+            denne versjonen. Rett feil i gridet før du bruker brettet.
           </p>
 
           <div className="photo-board-layout">
@@ -203,6 +303,14 @@ export function PhotoBoardModal({
                   className="photo-board-file"
                   onChange={(e) => handleFile(e.target.files?.[0])}
                 />
+                <button
+                  type="button"
+                  className="btn primary"
+                  onClick={handleRecognize}
+                  disabled={!imageUrl || !transform || recognizing}
+                >
+                  {recognizing ? 'Gjenkjenner…' : 'Gjenkjenn ressurser'}
+                </button>
                 {imageUrl && (
                   <button
                     type="button"
@@ -210,22 +318,139 @@ export function PhotoBoardModal({
                     onClick={() => {
                       if (imageUrl) URL.revokeObjectURL(imageUrl);
                       setImageUrl(null);
+                      setImageSize(null);
+                      setTransform(null);
+                      setRecognizeStatus(null);
                     }}
                   >
                     Fjern bilde
                   </button>
                 )}
               </div>
-              <div className="photo-board-ref-frame">
-                {imageUrl ? (
-                  <img src={imageUrl} alt="Opplastet Catan-brett" />
+
+              <div
+                ref={overlayRef}
+                className={`photo-board-ref-frame photo-overlay-frame ${
+                  imageUrl ? 'has-image' : ''
+                }`}
+                onPointerDown={imageUrl ? onPointerDown : undefined}
+                onPointerMove={imageUrl ? onPointerMove : undefined}
+                onPointerUp={onPointerUp}
+                onPointerLeave={onPointerUp}
+              >
+                {imageUrl && transform && imageSize ? (
+                  <>
+                    <img
+                      src={imageUrl}
+                      alt="Opplastet Catan-brett"
+                      draggable={false}
+                    />
+                    <svg
+                      className="photo-overlay-svg"
+                      viewBox={`0 0 ${imageSize.w} ${imageSize.h}`}
+                      preserveAspectRatio="xMidYMid meet"
+                    >
+                      {landCoords.map((coord) => {
+                        const center = axialToImagePixel(coord, transform);
+                        const rad = (transform.rotationDeg * Math.PI) / 180;
+                        const pts = Array.from({ length: 6 }, (_, i) => {
+                          const angle = ((60 * i - 30) * Math.PI) / 180 + rad;
+                          return {
+                            x: center.x + transform.hexSize * Math.cos(angle),
+                            y: center.y + transform.hexSize * Math.sin(angle),
+                          };
+                        });
+                        const d =
+                          pts
+                            .map(
+                              (p, i) =>
+                                `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`
+                            )
+                            .join(' ') + ' Z';
+                        return (
+                          <g key={`${coord.q},${coord.r}`}>
+                            <path
+                              d={d}
+                              className="photo-overlay-hex"
+                              fill="rgba(26, 95, 74, 0.12)"
+                              stroke="rgba(26, 95, 74, 0.85)"
+                              strokeWidth={Math.max(1.5, transform.hexSize * 0.04)}
+                            />
+                            <circle
+                              cx={center.x}
+                              cy={center.y}
+                              r={Math.max(2, transform.hexSize * 0.06)}
+                              fill="rgba(255, 255, 255, 0.7)"
+                            />
+                          </g>
+                        );
+                      })}
+                    </svg>
+                  </>
                 ) : (
                   <p className="muted small">
-                    Ingen bilde ennå — valgfritt, men nyttig som referanse mens
-                    du fyller hexene.
+                    Last opp et bilde tatt mest mulig rett ovenfra. Dra for å
+                    flytte overlay, bruk skyverne under for størrelse og
+                    rotasjon.
                   </p>
                 )}
               </div>
+
+              {transform && imageUrl && (
+                <div className="photo-overlay-controls">
+                  <label className="photo-overlay-slider">
+                    <span>Størrelse</span>
+                    <input
+                      type="range"
+                      min={Math.max(8, (imageSize?.w ?? 400) * 0.02)}
+                      max={(imageSize?.w ?? 400) * 0.2}
+                      step={0.5}
+                      value={transform.hexSize}
+                      onChange={(e) =>
+                        setTransform(
+                          nudgeTransform(transform, {
+                            hexSize: Number(e.target.value),
+                          })
+                        )
+                      }
+                    />
+                  </label>
+                  <label className="photo-overlay-slider">
+                    <span>Rotasjon</span>
+                    <input
+                      type="range"
+                      min={-30}
+                      max={30}
+                      step={0.5}
+                      value={transform.rotationDeg}
+                      onChange={(e) =>
+                        setTransform(
+                          nudgeTransform(transform, {
+                            rotationDeg: Number(e.target.value),
+                          })
+                        )
+                      }
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => {
+                      if (imageSize) {
+                        setTransform(
+                          defaultOverlayTransform(imageSize.w, imageSize.h, landCoords)
+                        );
+                      }
+                    }}
+                  >
+                    Nullstill overlay
+                  </button>
+                </div>
+              )}
+
+              {recognizeStatus && (
+                <p className="photo-recognize-status muted small">{recognizeStatus}</p>
+              )}
             </section>
 
             <section className="photo-board-editor">
@@ -262,7 +487,9 @@ export function PhotoBoardModal({
                       <path
                         d={hexPath(draft.coord, hexSize)}
                         fill={resourceFill(draft.resource)}
-                        stroke={active ? '#1a5f4a' : complete ? '#2d6a4f' : '#8a8174'}
+                        stroke={
+                          active ? '#1a5f4a' : complete ? '#2d6a4f' : '#8a8174'
+                        }
                         strokeWidth={active ? 3.2 : 1.4}
                       />
                       <text
@@ -310,7 +537,10 @@ export function PhotoBoardModal({
                         }`}
                         style={{
                           background: resourceFill(resource),
-                          color: resource === 'wheat' || resource === 'sheep' ? '#1a1a1a' : '#fff',
+                          color:
+                            resource === 'wheat' || resource === 'sheep'
+                              ? '#1a1a1a'
+                              : '#fff',
                         }}
                         disabled={!selected}
                         onClick={() => updateSelected({ resource })}
@@ -331,7 +561,11 @@ export function PhotoBoardModal({
                         className={`photo-chip number ${
                           selected?.number === n ? 'active' : ''
                         }`}
-                        disabled={!selected || selected.resource === 'desert' || !selected.resource}
+                        disabled={
+                          !selected ||
+                          selected.resource === 'desert' ||
+                          !selected.resource
+                        }
                         onClick={() => updateSelected({ number: n })}
                       >
                         {n}
@@ -343,7 +577,8 @@ export function PhotoBoardModal({
 
               {validation.warnings.length > 0 && (
                 <p className="photo-board-warning muted small">
-                  Avvik fra standardsett: {validation.warnings.slice(0, 4).join(' · ')}
+                  Avvik fra standardsett:{' '}
+                  {validation.warnings.slice(0, 4).join(' · ')}
                   {validation.warnings.length > 4 ? ' …' : ''}
                 </p>
               )}

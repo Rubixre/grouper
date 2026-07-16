@@ -6,6 +6,7 @@ export * from './harborPorts';
 export * from './harbors';
 export * from './generator';
 export * from './boardFromPhoto';
+export * from './photoRecognize';
 export * from './settlements';
 export {
   NUMBER_PROB,
