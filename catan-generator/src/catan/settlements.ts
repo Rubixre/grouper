@@ -22,6 +22,11 @@ import {
   scoreFirstPlacement,
   scorePairPlacement,
 } from './placementModel';
+import {
+  expansionPotentialScore,
+  pairExpansionPotentialScore,
+  pairSpacingPenalty,
+} from './placementExpansion';
 
 export { NUMBER_PROB } from './placementModel';
 
@@ -243,21 +248,48 @@ function scoreToResult(
     pairPipBonus: c.pairPipBonus,
     complementScore: c.complementScore,
     coordination: c.coordination,
+    expansionPotential: c.expansionPotential,
+    spacingPenalty: c.spacingPenalty,
     placementKind,
     breakdown: profile.breakdown,
   };
 }
 
+/** Billig hotspot-proxy til ekspansjonslag (ikke full PSM — unngår rekursjon). */
+function hotspotValue(
+  vertexId: string,
+  board: Board,
+  economics: BoardEconomics
+): number {
+  const profile = buildProductionProfile(vertexId, board, economics.dynamicWeights);
+  // Produksjon + lett pip-kvalitet; low-hex dempes allerede i selve kandidaten
+  return profile.total + profile.pipTotal * 0.35;
+}
+
 export function scoreVertex(
   vertexId: string,
   board: Board,
-  economics?: BoardEconomics
+  economics?: BoardEconomics,
+  placed: PlacedSettlement[] = []
 ): SettlementScore {
   const econ = economics ?? computeBoardEconomics(board);
   const profile = buildProductionProfile(vertexId, board, econ.dynamicWeights);
   const harbors = getHarborsForVertex(vertexId, board.harbors);
   const harbor = harborBonusForProfile(profile, harbors);
-  const scored = scoreFirstPlacement(profile, econ.strategyWeights, harbor);
+  const vertices = getVertices();
+  const hypothetical: PlacedSettlement[] = [
+    ...placed,
+    { vertexId, player: -1, isCity: false },
+  ];
+  const expansion = expansionPotentialScore(
+    vertexId,
+    hypothetical,
+    vertices,
+    (id) => hotspotValue(id, board, econ)
+  );
+  const scored = scoreFirstPlacement(profile, econ.strategyWeights, harbor, {
+    expansionPotential: expansion,
+  });
   return scoreToResult(vertexId, 'first', profile, scored);
 }
 
@@ -266,7 +298,8 @@ export function scoreSecondSettlement(
   secondVertexId: string,
   firstVertexId: string,
   board: Board,
-  economics?: BoardEconomics
+  economics?: BoardEconomics,
+  placed: PlacedSettlement[] = []
 ): SettlementScore {
   const econ = economics ?? computeBoardEconomics(board);
   const first = buildProductionProfile(firstVertexId, board, econ.dynamicWeights);
@@ -281,7 +314,20 @@ export function scoreSecondSettlement(
       combinedResources.size
     );
 
-  const scored = scorePairPlacement(first, second, econ.strategyWeights, harbor);
+  const vertices = getVertices();
+  const expansion = pairExpansionPotentialScore(
+    firstVertexId,
+    secondVertexId,
+    placed,
+    vertices,
+    (id) => hotspotValue(id, board, econ)
+  );
+  const spacing = pairSpacingPenalty(firstVertexId, secondVertexId, vertices);
+
+  const scored = scorePairPlacement(first, second, econ.strategyWeights, harbor, {
+    expansionPotential: expansion,
+    spacingPenalty: spacing,
+  });
   return scoreToResult(secondVertexId, 'second', second, scored, {
     firstProduction: first.total,
     secondProduction: second.total,
@@ -392,13 +438,13 @@ export function rankVertices(
     if (playerSettlements.length === 1) {
       const firstVertexId = playerSettlements[0].vertexId;
       return getValidVertices(placed)
-        .map((id) => scoreSecondSettlement(id, firstVertexId, board, econ))
+        .map((id) => scoreSecondSettlement(id, firstVertexId, board, econ, placed))
         .sort((a, b) => b.total - a.total);
     }
   }
 
   return getValidVertices(placed)
-    .map((id) => scoreVertex(id, board, econ))
+    .map((id) => scoreVertex(id, board, econ, placed))
     .sort((a, b) => b.total - a.total);
 }
 
@@ -429,6 +475,8 @@ export interface ScoreExplanation {
   coordination?: number;
   portfolio?: number;
   overlap?: number;
+  expansionPotential?: number;
+  spacingPenalty?: number;
   netPortfolio?: number;
   total: number;
   coveredResources: string[];
@@ -487,6 +535,8 @@ export function explainPlacementScore(
     pairPipBonus: score.pairPipBonus,
     complementScore: score.complementScore,
     coordination: score.coordination,
+    expansionPotential: score.expansionPotential,
+    spacingPenalty: score.spacingPenalty,
     total: score.total,
   };
 

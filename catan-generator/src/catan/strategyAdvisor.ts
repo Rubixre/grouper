@@ -93,12 +93,12 @@ export function evaluateFirstSettlementPath(
 
   const econ = computeBoardEconomics(board, weights);
   const secondOptions = getValidVertices(simulated)
-    .map((id) => scoreSecondSettlement(id, firstVertexId, board, econ))
+    .map((id) => scoreSecondSettlement(id, firstVertexId, board, econ, simulated))
     .sort((a, b) => b.total - a.total);
   if (secondOptions.length === 0) return null;
 
   const bestSecond = secondOptions[0]!;
-  const firstScore = scoreVertex(firstVertexId, board, econ);
+  const firstScore = scoreVertex(firstVertexId, board, econ, placed);
 
   return {
     firstVertexId,
@@ -124,7 +124,7 @@ export function rankFirstSettlementsWithLookahead(
 ): SettlementScore[] {
   const econ = computeBoardEconomics(board, weights);
   const shallow = getValidVertices(placed)
-    .map((id) => scoreVertex(id, board, econ))
+    .map((id) => scoreVertex(id, board, econ, placed))
     .sort((a, b) => b.total - a.total);
 
   if (shallow.length === 0) return [];
@@ -187,7 +187,7 @@ export function recommendStrategy(
     const weights = profile.weights;
     const econ = computeBoardEconomics(board, weights);
     const firstOptions = getValidVertices(placed)
-      .map((id) => scoreVertex(id, board, econ))
+      .map((id) => scoreVertex(id, board, econ, placed))
       .sort((a, b) => b.total - a.total)
       .slice(0, lookaheadCount);
 
@@ -225,7 +225,7 @@ export function recommendStrategy(
   const winnerWeights = recommendedProfile.weights;
   const winnerEcon = computeBoardEconomics(board, winnerWeights);
   const topFirst = getValidVertices(placed)
-    .map((id) => scoreVertex(id, board, winnerEcon))
+    .map((id) => scoreVertex(id, board, winnerEcon, placed))
     .sort((a, b) => b.total - a.total)
     .slice(0, lookaheadCount);
   for (const option of topFirst) {
