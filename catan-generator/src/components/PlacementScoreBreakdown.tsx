@@ -66,11 +66,11 @@ export function PlacementScoreBreakdown({
       )}
       <p className="score-breakdown-formula muted small">
         {explanation.kind === 'first' ? (
-          <>Lokal = prod. + dekning + pip + havn + ekspansjon − straff</>
+          <>Lokal = prod. + dekning + pip + røde tall + havn + ekspansjon − straff</>
         ) : (
           <>
-            Total = par prod. + synergi + utfylling + ekspansjon − overlapp −
-            low-hex/mono − spacing + dekning + havn
+            Total = par prod. + synergi + pip/røde + utfylling + ekspansjon −
+            overlapp − low-hex/mono − spacing + dekning + havn
           </>
         )}
       </p>

@@ -15,6 +15,7 @@ import {
   pickGreedyOpponentVertex,
   scoreSecondSettlement,
   scoreVertex,
+  vertexPipTotal,
 } from './settlements';
 import { computeBoardEconomics } from './placementModel';
 import { getPlacementOrder } from './draftOrder';
@@ -109,10 +110,18 @@ export function evaluateFirstSettlementPath(
 }
 
 const DEFAULT_LOOKAHEAD_CANDIDATES = 12;
+/** Alltid vurder også topp-N etter rå pip (ikke bare lokal PSM) */
+const LOOKAHEAD_PIP_CANDIDATES = 6;
+/**
+ * Bland umiddelbar score inn i lookahead-rangering.
+ * Ren pairScore lot ofte svakere 1. landsby vinne fordi #2 kompenserte —
+ * mens elite-spots (f.eks. 3 røde) ble gitt til motstanderen.
+ */
+export const LOOKAHEAD_IMMEDIATE_BLEND = 0.55;
 
 /**
- * Rangér første-landsbyer etter forventet parscore:
- * toppskårere lokalt → simuler greedy-motspillere → beste landsby #2.
+ * Rangér første-landsbyer etter forventet par + lokal styrke:
+ * topp lokal PSM ∪ topp pip → simuler greedy-motspillere → blend score.
  */
 export function rankFirstSettlementsWithLookahead(
   board: Board,
@@ -129,7 +138,18 @@ export function rankFirstSettlementsWithLookahead(
 
   if (shallow.length === 0) return [];
 
-  const candidates = shallow.slice(0, Math.min(candidateCount, shallow.length));
+  const byPip = [...shallow].sort(
+    (a, b) => vertexPipTotal(b.vertexId, board) - vertexPipTotal(a.vertexId, board)
+  );
+
+  const candidateMap = new Map<string, SettlementScore>();
+  for (const spot of shallow.slice(0, Math.min(candidateCount, shallow.length))) {
+    candidateMap.set(spot.vertexId, spot);
+  }
+  for (const spot of byPip.slice(0, Math.min(LOOKAHEAD_PIP_CANDIDATES, byPip.length))) {
+    candidateMap.set(spot.vertexId, spot);
+  }
+  const candidates = [...candidateMap.values()];
   const candidateIds = new Set(candidates.map((c) => c.vertexId));
 
   const withLookahead = candidates.map((spot) => {
@@ -148,18 +168,22 @@ export function rankFirstSettlementsWithLookahead(
         expectedPairScore: spot.total,
       };
     }
+    const blended =
+      path.pairScore + LOOKAHEAD_IMMEDIATE_BLEND * spot.total;
     return {
       ...spot,
       immediateScore: spot.total,
       expectedPairScore: path.pairScore,
       expectedSecondVertexId: path.bestSecondVertexId,
-      // Rangér og vis hovedsakelig på forventet par
-      total: path.pairScore,
+      // Blend: ikke la liten pair-gevinst ofre åpenbart sterkere 1. landsby
+      total: blended,
     };
   });
 
   withLookahead.sort((a, b) => {
-    const pairDiff = (b.expectedPairScore ?? b.total) - (a.expectedPairScore ?? a.total);
+    const totalDiff = b.total - a.total;
+    if (Math.abs(totalDiff) > 1e-9) return totalDiff;
+    const pairDiff = (b.expectedPairScore ?? 0) - (a.expectedPairScore ?? 0);
     if (Math.abs(pairDiff) > 1e-9) return pairDiff;
     return (b.immediateScore ?? 0) - (a.immediateScore ?? 0);
   });

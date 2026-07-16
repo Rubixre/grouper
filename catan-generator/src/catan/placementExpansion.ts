@@ -6,8 +6,8 @@ export const EXPANSION_MAX_DIST = 3;
 /** Decay per steg utover dist=2 */
 export const EXPANSION_DECAY = 0.55;
 
-/** Skalerer summert hotspot-verdi inn i PSM-skalaen */
-export const EXPANSION_SCALE = 0.16;
+/** Skalerer summert hotspot-verdi inn i PSM-skalaen (holdes under produksjonsgap) */
+export const EXPANSION_SCALE = 0.1;
 
 /** Straff når #1 og #2 ligger for nærme (overlappende sone) */
 export const SPACING_CLOSE_PENALTY = 0.07;

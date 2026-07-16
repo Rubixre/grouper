@@ -171,6 +171,7 @@ function buildProductionProfile(
   let producingHexCount = 0;
   let desertNeighbors = 0;
   let hasRedNumber = false;
+  let redNumberCount = 0;
 
   for (const hex of vertex.hexes) {
     const tile = board.hexes.find((h) => h.coord.q === hex.q && h.coord.r === hex.r);
@@ -190,7 +191,10 @@ function buildProductionProfile(
     resources.add(resource);
     producingHexCount++;
     pipTotal += probability;
-    if (tile.number === 6 || tile.number === 8) hasRedNumber = true;
+    if (tile.number === 6 || tile.number === 8) {
+      hasRedNumber = true;
+      redNumberCount += 1;
+    }
 
     byResource[resource] = (byResource[resource] ?? 0) + value;
     byNumber[tile.number] = (byNumber[tile.number] ?? 0) + value;
@@ -216,6 +220,7 @@ function buildProductionProfile(
     producingHexCount,
     desertNeighbors,
     hasRedNumber,
+    redNumberCount,
     resources,
     breakdown,
   };

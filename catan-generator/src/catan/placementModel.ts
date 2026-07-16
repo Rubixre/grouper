@@ -32,6 +32,8 @@ export interface ProductionProfile {
   producingHexCount: number;
   desertNeighbors: number;
   hasRedNumber: boolean;
+  /** Antall 6/8-hex i plasseringen (0–3) */
+  redNumberCount: number;
   resources: Set<ProdResource>;
   breakdown: { resource: ResourceType; value: number }[];
 }
@@ -80,9 +82,14 @@ export interface PositionalBonuses {
 const PIP_STRONG_SINGLE = 11 / 36;
 const PIP_PAIR_TARGET = 14 / 36;
 const PIP_PAIR_STRONG = 16 / 36;
-const PIP_QUALITY_SCALE = 0.12;
-const PAIR_PIP_BONUS_SCALE = 0.2;
-const RED_ANCHOR_BONUS = 0.03;
+/** Pip over 11/36 belønnes sterkere — elite-spots skal ikke tapes til «rare» alternativer */
+const PIP_QUALITY_SCALE = 0.2;
+const PIP_QUALITY_CAP = 0.16;
+const PAIR_PIP_BONUS_SCALE = 0.22;
+/** Per rødt tall (6/8) når plasseringen har ≥2 ressurser; ekstra for 2. og 3. */
+const RED_ANCHOR_PER = 0.055;
+const RED_ANCHOR_MULTI_EXTRA = 0.04;
+const RED_ANCHOR_CAP = 0.2;
 const MONO_RESOURCE_PENALTY = 0.14;
 const MONO_SINGLE_HEX_EXTRA = 0.08;
 const DESERT_PENALTY_PER_HEX = 0.04;
@@ -285,14 +292,23 @@ export function harborBonusForProfile(
 
 function pipQualityBonus(pipTotal: number): number {
   if (pipTotal <= PIP_STRONG_SINGLE) return 0;
-  return Math.min((pipTotal - PIP_STRONG_SINGLE) * PIP_QUALITY_SCALE * 36, 0.08);
+  return Math.min(
+    (pipTotal - PIP_STRONG_SINGLE) * PIP_QUALITY_SCALE * 36,
+    PIP_QUALITY_CAP
+  );
 }
 
-function redAnchorBonus(profile: ProductionProfile): number {
-  if (!profile.hasRedNumber) return 0;
+/**
+ * Røde tall (6/8) er strategisk gull — spesielt flere på ulike ressurser.
+ * Flat 0.03 var for svakt: 3-røde spots tapte mot klart svakere alternativer.
+ */
+export function redAnchorBonus(profile: ProductionProfile): number {
+  const reds = profile.redNumberCount || (profile.hasRedNumber ? 1 : 0);
+  if (reds <= 0) return 0;
   // Ensidig 6/8 på én ressurs er for volatilt uten mangfold
   if (profile.resources.size < 2) return 0;
-  return RED_ANCHOR_BONUS;
+  const multiExtra = Math.max(0, reds - 1) * RED_ANCHOR_MULTI_EXTRA;
+  return Math.min(reds * RED_ANCHOR_PER + multiExtra, RED_ANCHOR_CAP);
 }
 
 function monoResourcePenalty(profile: ProductionProfile): number {
@@ -505,6 +521,8 @@ export function scorePairPlacement(
   // Low-hex / mono må følge med i par — ellers overlever svake kysthex i lookahead
   const lowHexPen = lowHexPenalty(first) + lowHexPenalty(second);
   const monoPen = monoResourcePenalty(first) + monoResourcePenalty(second);
+  const redAnchor = redAnchorBonus(first) + redAnchorBonus(second);
+  const pipBonus = pipQualityBonus(first.pipTotal) + pipQualityBonus(second.pipTotal);
   const expansion = positional.expansionPotential ?? 0;
   const spacing = positional.spacingPenalty ?? 0;
   const pairProduction = first.total + second.total;
@@ -513,8 +531,8 @@ export function scorePairPlacement(
     production: pairProduction,
     diversity,
     harbor,
-    pipBonus: 0,
-    redAnchorBonus: 0,
+    pipBonus,
+    redAnchorBonus: redAnchor,
     desertPenalty: desertPen,
     lowHexPenalty: lowHexPen,
     monoResourcePenalty: monoPen,
@@ -535,6 +553,8 @@ export function scorePairPlacement(
     building +
     coordination +
     pairPip +
+    pipBonus +
+    redAnchor +
     portfolio +
     complement +
     expansion -

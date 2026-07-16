@@ -538,6 +538,7 @@ import { scoreFirstPlacement } from '../src/catan/placementModel.ts';
     producingHexCount: 1,
     desertNeighbors: 1,
     hasRedNumber: true,
+    redNumberCount: 1,
     resources: new Set(['ore']),
     breakdown: [{ resource: 'ore' as const, value: (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.ore }],
   };
@@ -568,9 +569,59 @@ import { scoreFirstPlacement } from '../src/catan/placementModel.ts';
     producingHexCount: 3,
     desertNeighbors: 0,
     hasRedNumber: true,
+    redNumberCount: 1,
     resources: new Set(['wood', 'brick', 'sheep']),
     breakdown: [],
   };
+
+  const tripleRed = {
+    ...balanced,
+    byResource: {
+      wheat: (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.wheat,
+      ore: (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.ore,
+      sheep: (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.sheep,
+    },
+    rawByResource: { wheat: 5 / 36, ore: 5 / 36, sheep: 5 / 36 },
+    rawByNumber: { 6: 10 / 36, 8: 5 / 36 },
+    total:
+      (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.wheat +
+      (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.ore +
+      (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.sheep,
+    pipTotal: 15 / 36,
+    producingHexCount: 3,
+    hasRedNumber: true,
+    redNumberCount: 3,
+    resources: new Set(['wheat', 'ore', 'sheep']),
+  };
+  const weakRoad = {
+    ...balanced,
+    byResource: {
+      brick: (1 / 36) * DEFAULT_RESOURCE_WEIGHTS.brick,
+      wood: (4 / 36) * DEFAULT_RESOURCE_WEIGHTS.wood,
+      sheep: (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.sheep,
+    },
+    rawByResource: { brick: 1 / 36, wood: 4 / 36, sheep: 5 / 36 },
+    total:
+      (1 / 36) * DEFAULT_RESOURCE_WEIGHTS.brick +
+      (4 / 36) * DEFAULT_RESOURCE_WEIGHTS.wood +
+      (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.sheep,
+    pipTotal: 10 / 36,
+    producingHexCount: 3,
+    hasRedNumber: true,
+    redNumberCount: 1,
+    resources: new Set(['brick', 'wood', 'sheep']),
+  };
+  const tripleScore = scoreFirstPlacement(tripleRed as typeof balanced, DEFAULT_RESOURCE_WEIGHTS, 0);
+  const weakScore = scoreFirstPlacement(weakRoad as typeof balanced, DEFAULT_RESOURCE_WEIGHTS, 0);
+  assert(
+    (tripleScore.components.redAnchorBonus ?? 0) >
+      (weakScore.components.redAnchorBonus ?? 0),
+    'Triple-red spot gets higher red-anchor bonus than single-red'
+  );
+  assert(
+    tripleScore.total > weakScore.total,
+    'Triple-red wheat/ore/sheep outranks weak 12/5/red road mix'
+  );
 
   const monoScore = scoreFirstPlacement(oreOnly6, DEFAULT_RESOURCE_WEIGHTS, 0);
   const balancedScore = scoreFirstPlacement(balanced, DEFAULT_RESOURCE_WEIGHTS, 0);
@@ -659,6 +710,7 @@ if (board) {
     producingHexCount: 1,
     desertNeighbors: 0,
     hasRedNumber: true,
+    redNumberCount: 1,
     resources: new Set(['wood']),
     breakdown: [],
   };
@@ -669,6 +721,7 @@ if (board) {
     resources: new Set(['wood', 'brick', 'sheep']),
     rawByResource: { wood: 5 / 36, brick: 4 / 36, sheep: 4 / 36 },
     total: 0.4,
+    redNumberCount: 1,
   };
   const pairWithWeak = scorePairPlacement(
     threeHexProfile as never,
@@ -1174,6 +1227,8 @@ if (board) {
         (o.buildingSynergy ?? 0) +
         (o.coordination ?? 0) +
         (o.pairPipBonus ?? 0) +
+        (o.pipBonus ?? 0) +
+        (o.redAnchorBonus ?? 0) +
         (o.expansionPotential ?? 0) -
         (o.desertPenalty ?? 0) -
         (o.lowHexPenalty ?? 0) -
