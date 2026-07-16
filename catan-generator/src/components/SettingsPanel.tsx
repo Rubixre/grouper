@@ -46,7 +46,7 @@ const SETTING_LABELS: {
     key: 'bonanzaBoard',
     label: 'Bonanzabrett',
     description:
-      'Trekker 19 av 30 ressursbrikker og tall fra samlet pool (18 grunn + 10 utvidelse = 28). Kan gi to ørkener, mange av én type — eller ingen.',
+      'Trekker 19 av 30 ressursbrikker og tall fra samlet pool (18 grunn + 28 utvidelse = 46). Kan gi to ørkener, mange av én type — eller ingen.',
     onlyBoardSize: 'base',
   },
 ];

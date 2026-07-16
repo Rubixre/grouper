@@ -85,10 +85,10 @@ export const NUMBERS_EXTENSION = [2, 3, 4, 5, 6, 8, 9, 10, 11, 12];
 export const NUMBERS_EXTENSION_56 = [...NUMBERS_BASE, ...NUMBERS_EXTENSION];
 
 /**
- * Bonanza tallpool: alle 18 fra grunnspill + alle 10 fra utvidelsen = 28.
- * Samme fysiske sett som 5–6-spillerbrettet.
+ * Bonanza tallpool: grunnspillets 18 + utvidelsens egne 28 = 46.
+ * (Utvidelsen har et komplett tallsett, ikke bare 10 ekstra brikker.)
  */
-export const NUMBERS_BONANZA_POOL = [...NUMBERS_EXTENSION_56];
+export const NUMBERS_BONANZA_POOL = [...NUMBERS_BASE, ...NUMBERS_EXTENSION_56];
 
 function resourcesForBoard(
   size: BoardSize,
@@ -118,7 +118,7 @@ function numbersForNonDesertCount(
     return [...NUMBERS_BASE];
   }
 
-  // Bonanza: trekk nonDesertCount tall fra samlet pool (18 grunn + 10 utvidelse)
+  // Bonanza: trekk nonDesertCount tall fra 18 grunn + 28 utvidelse
   return shuffle(NUMBERS_BONANZA_POOL).slice(0, nonDesertCount);
 }
 

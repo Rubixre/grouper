@@ -262,15 +262,17 @@ import {
   NUMBERS_BASE,
   NUMBERS_BONANZA_POOL,
   NUMBERS_EXTENSION,
+  NUMBERS_EXTENSION_56,
   RESOURCES_BONANZA_POOL,
 } from '../src/catan/generator.ts';
 assert(RESOURCES_BONANZA_POOL.length === 30, 'Bonanza pool has 30 resource tiles');
 assert(NUMBERS_BASE.length === 18, 'Base has 18 number tokens');
-assert(NUMBERS_EXTENSION.length === 10, 'Extension adds 10 number tokens');
-assert(NUMBERS_BONANZA_POOL.length === 28, 'Bonanza number pool is 18+10=28');
+assert(NUMBERS_EXTENSION.length === 10, 'Extension adds 10 number tokens beyond base set');
+assert(NUMBERS_EXTENSION_56.length === 28, 'Extension full number set has 28 tokens');
+assert(NUMBERS_BONANZA_POOL.length === 46, 'Bonanza number pool is 18+28=46');
 assert(
-  NUMBERS_BONANZA_POOL.length === NUMBERS_BASE.length + NUMBERS_EXTENSION.length,
-  'Bonanza numbers are base + extension tokens'
+  NUMBERS_BONANZA_POOL.length === NUMBERS_BASE.length + NUMBERS_EXTENSION_56.length,
+  'Bonanza numbers are base set + full extension set'
 );
 const bonanzaSettings = { ...DEFAULT_SETTINGS, bonanzaBoard: true };
 const bonanzaBoard = generateBoard(bonanzaSettings, 'base');
@@ -288,8 +290,9 @@ if (bonanzaBoard) {
 {
   const countNumber = (pool: number[], n: number) => pool.filter((x) => x === n).length;
   assert(countNumber(NUMBERS_BASE, 6) === 2, 'Base pool has two 6s');
-  assert(countNumber(NUMBERS_BONANZA_POOL, 6) === 3, 'Bonanza pool has three 6s (base+ext)');
-  assert(countNumber(NUMBERS_BONANZA_POOL, 2) === 2, 'Bonanza pool has two 2s');
+  assert(countNumber(NUMBERS_EXTENSION_56, 6) === 3, 'Extension set has three 6s');
+  assert(countNumber(NUMBERS_BONANZA_POOL, 6) === 5, 'Bonanza pool has five 6s (18+28)');
+  assert(countNumber(NUMBERS_BONANZA_POOL, 2) === 3, 'Bonanza pool has three 2s (1+2)');
   assert(countNumber(NUMBERS_BASE, 2) === 1, 'Base pool has one 2');
 }
 

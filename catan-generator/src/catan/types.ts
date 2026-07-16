@@ -77,7 +77,7 @@ export interface GeneratorSettings {
   randomHarbors: boolean;
   /**
    * Bonanzabrett (kun grunnspill-layout): trekker 19 av 30 ressursbrikker og
-   * tallbrikker fra samlet pool (18 grunn + 10 utvidelse = 28). Ignoreres for utvidelse.
+   * tallbrikker fra samlet pool (18 grunn + 28 utvidelse = 46). Ignoreres for utvidelse.
    */
   bonanzaBoard: boolean;
 }
