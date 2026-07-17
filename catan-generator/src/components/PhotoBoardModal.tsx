@@ -22,6 +22,13 @@ import {
   type ImageAdjust,
   type ImageOverlayTransform,
 } from '../catan/photoRecognize';
+import {
+  clearVisionApiConfigSession,
+  loadVisionApiConfigFromSession,
+  recognizeBoardWithVisionApi,
+  saveVisionApiConfigToSession,
+  visionApiConfigFromEnv,
+} from '../catan/photoRecognizeApi';
 import { getLandHexCoords } from '../catan/boardLayout';
 import { hexCorner, hexToPixel } from '../catan/hex';
 import { RESOURCE_COLORS, RESOURCE_LABELS } from '../catan/playerStats';
@@ -109,6 +116,13 @@ export function PhotoBoardModal({
   const [applyError, setApplyError] = useState<string | null>(null);
   const [recognizeStatus, setRecognizeStatus] = useState<string | null>(null);
   const [recognizing, setRecognizing] = useState(false);
+  const [recognizingAi, setRecognizingAi] = useState(false);
+  const [apiKey, setApiKey] = useState(() => {
+    const session = loadVisionApiConfigFromSession();
+    const env = visionApiConfigFromEnv();
+    return session.apiKey || env.apiKey || '';
+  });
+  const [showApiSettings, setShowApiSettings] = useState(false);
   const [frameSize, setFrameSize] = useState<{ w: number; h: number } | null>(
     null
   );
@@ -259,9 +273,9 @@ export function PhotoBoardModal({
         })
       );
       setRecognizeStatus(
-        `Gjenkjente ${result.recognizedResources}/${result.hexes.length} ressurser og ` +
+        `Lokal gjenkjenning: ${result.recognizedResources}/${result.hexes.length} ressurser, ` +
           `${result.recognizedNumbers}/${result.hexes.length} tall. ` +
-          'Sjekk at bildet treffer hex-nettet og rett feil i gridet før du bruker brettet.'
+          'Sjekk treff og rett feil i gridet.'
       );
     } catch (err) {
       setRecognizeStatus(
@@ -269,6 +283,48 @@ export function PhotoBoardModal({
       );
     } finally {
       setRecognizing(false);
+    }
+  };
+
+  const handleRecognizeAi = async () => {
+    if (!imageUrl || !gridTransform) {
+      setRecognizeStatus('Last opp bilde og juster det under hex-nettet først.');
+      return;
+    }
+    if (!apiKey.trim()) {
+      setShowApiSettings(true);
+      setRecognizeStatus('Legg inn OpenAI-kompatibel API-nøkkel for AI-gjenkjenning.');
+      return;
+    }
+    setRecognizingAi(true);
+    setRecognizeStatus(null);
+    setApplyError(null);
+    saveVisionApiConfigToSession({ apiKey: apiKey.trim() });
+    try {
+      const result = await recognizeBoardWithVisionApi(
+        imageUrl,
+        gridTransform,
+        imageAdjust,
+        boardSize,
+        { apiKey: apiKey.trim() }
+      );
+      setDrafts((prev) =>
+        applyRecognitionToDraft(prev, result, {
+          overwriteResources: true,
+          overwriteNumbers: true,
+        })
+      );
+      setRecognizeStatus(
+        `AI-gjenkjenning: ${result.recognizedResources}/${result.hexes.length} ressurser, ` +
+          `${result.recognizedNumbers}/${result.hexes.length} tall. ` +
+          'Prototype via Vision-API — rett feil i gridet før du bruker brettet.'
+      );
+    } catch (err) {
+      setRecognizeStatus(
+        err instanceof Error ? err.message : 'AI-gjenkjenning feilet.'
+      );
+    } finally {
+      setRecognizingAi(false);
     }
   };
 
@@ -343,9 +399,10 @@ export function PhotoBoardModal({
         <div className="modal-body photo-board-body">
           <p className="muted small photo-board-intro">
             Last opp et bilde mest mulig rett ovenfra. Hex-nettet ligger fast —
-            dra, skaler og roter bildet til brikkene treffer. Tallbrikkene ligger
-            oppå ressursene (ørken har ingen tallbrikke). Kjør gjenkjenning, og
-            rett feil i gridet før du bruker brettet.
+            dra, skaler og roter bildet til brikkene treffer. Bruk
+            «Gjenkjenn med AI» (Vision-API) for bedre tall/ressurser, eller lokal
+            gjenkjenning. Ørken har ingen tallbrikke — rett feil i gridet før du
+            bruker brettet.
           </p>
 
           <div className="photo-board-layout">
@@ -370,9 +427,24 @@ export function PhotoBoardModal({
                   type="button"
                   className="btn primary"
                   onClick={handleRecognize}
-                  disabled={!imageUrl || !gridTransform || recognizing}
+                  disabled={!imageUrl || !gridTransform || recognizing || recognizingAi}
                 >
-                  {recognizing ? 'Gjenkjenner…' : 'Gjenkjenn brett'}
+                  {recognizing ? 'Gjenkjenner…' : 'Gjenkjenn (lokal)'}
+                </button>
+                <button
+                  type="button"
+                  className="btn primary"
+                  onClick={handleRecognizeAi}
+                  disabled={!imageUrl || !gridTransform || recognizing || recognizingAi}
+                >
+                  {recognizingAi ? 'AI jobber…' : 'Gjenkjenn med AI'}
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => setShowApiSettings((v) => !v)}
+                >
+                  AI-oppsett
                 </button>
                 {imageUrl && (
                   <button
@@ -391,6 +463,48 @@ export function PhotoBoardModal({
                   </button>
                 )}
               </div>
+
+              {showApiSettings && (
+                <div className="photo-ai-settings">
+                  <p className="muted small">
+                    Prototype: OpenAI-kompatibel Vision-API (f.eks. gpt-4o-mini).
+                    Nøkkelen lagres bare i denne nettleserøkten — ikke i git.
+                  </p>
+                  <label className="photo-ai-key">
+                    <span>API-nøkkel</span>
+                    <input
+                      type="password"
+                      autoComplete="off"
+                      value={apiKey}
+                      placeholder="sk-…"
+                      onChange={(e) => setApiKey(e.target.value)}
+                    />
+                  </label>
+                  <div className="photo-ai-settings-actions">
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => {
+                        saveVisionApiConfigToSession({ apiKey: apiKey.trim() });
+                        setRecognizeStatus('API-nøkkel lagret i økten.');
+                      }}
+                    >
+                      Lagre i økt
+                    </button>
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => {
+                        setApiKey('');
+                        clearVisionApiConfigSession();
+                        setRecognizeStatus('API-nøkkel fjernet fra økten.');
+                      }}
+                    >
+                      Fjern nøkkel
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div
                 ref={overlayRef}
