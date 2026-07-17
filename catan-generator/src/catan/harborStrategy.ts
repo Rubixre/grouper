@@ -844,7 +844,8 @@ function attachHarborComparisons(
         placed,
         humanPlayer,
         playerCount,
-        opp
+        opp,
+        weights
       );
       return {
         ...opp,
