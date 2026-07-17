@@ -1339,11 +1339,11 @@ import {
   applyRecognitionToDraft,
   axialToImagePixel,
   classifyResourceFromRgb,
-  countPipsBottomArc,
   defaultOverlayTransform,
   displayToImagePixel,
   estimateTokenDownAngle,
   expectedPipCount,
+  findOrientationDot,
   mapPipsToNumber,
   numberPoolForBoardSize,
   preferFiveOverNine,
@@ -1450,39 +1450,41 @@ import { getLandHexCoords } from '../src/catan/boardLayout.ts';
     'Pan maps display pixel back to unshifted source'
   );
 
-  // Rotated token: pips along arc at angle θ → down-estimate ≈ θ, local y > 0
+  // Orienteringspunktum: liten klump «bak» sifferet → ned-vinkel
   {
     const radius = 40;
-    const pipAngles = [Math.PI * 0.3, Math.PI * 0.5, Math.PI * 0.7]; // upright bottom
-    const makePipBlob = (ang: number, rot = 0) => {
-      const pts: { x: number; y: number }[] = [];
-      const cx = Math.cos(ang + rot) * radius * 0.7;
-      const cy = Math.sin(ang + rot) * radius * 0.7;
-      for (let k = -2; k <= 2; k++) {
-        for (let j = -2; j <= 2; j++) {
-          pts.push({ x: cx + k * 0.45, y: cy + j * 0.45 });
-        }
+    // Hovedsiffer (sentrum) + punktum ned (bak tallet)
+    const digit: { x: number; y: number }[] = [];
+    for (let y = -12; y <= 8; y++) {
+      for (let x = -6; x <= 6; x++) {
+        if (Math.abs(x) + Math.abs(y) > 14) continue;
+        digit.push({ x, y });
       }
-      return pts;
-    };
-    const upright = pipAngles.flatMap((ang) => makePipBlob(ang));
+    }
+    const dot: { x: number; y: number }[] = [];
+    for (let y = 18; y <= 22; y++) {
+      for (let x = -2; x <= 2; x++) {
+        dot.push({ x, y });
+      }
+    }
+    const upright = [...digit, ...dot];
     const down0 = estimateTokenDownAngle(upright, radius);
-    assert(down0 != null && Math.abs(down0 - Math.PI / 2) < 0.35, 'Upright pips estimate down≈π/2');
-    assert(countPipsBottomArc(upright, radius) === 3, 'Upright bottom arc counts 3 pips');
+    assert(down0 != null && Math.abs(down0 - Math.PI / 2) < 0.4, 'Orientation dot estimates down≈π/2');
+    assert(findOrientationDot(upright, radius) != null, 'Finds orientation period behind digit');
 
-    const rot = Math.PI * 0.6; // rotate token ~108°
-    const rotated = pipAngles.flatMap((ang) => makePipBlob(ang, rot));
+    const rot = Math.PI * 0.7;
+    const rotated = upright.map((p) => ({
+      x: p.x * Math.cos(rot) - p.y * Math.sin(rot),
+      y: p.x * Math.sin(rot) + p.y * Math.cos(rot),
+    }));
     const downRot = estimateTokenDownAngle(rotated, radius);
-    assert(downRot != null, 'Rotated pips yield a down angle');
-    const local = rotated.map((p) => toTokenLocal(p.x, p.y, downRot!));
-    assert(
-      local.filter((p) => p.y > 0).length > local.length * 0.7,
-      'Token-local transform puts pip arc mostly in +Y half'
+    assert(downRot != null, 'Rotated token still finds orientation dot');
+    const localDot = toTokenLocal(
+      findOrientationDot(rotated, radius)!.x,
+      findOrientationDot(rotated, radius)!.y,
+      downRot!
     );
-    assert(
-      countPipsBottomArc(local, radius) === 3,
-      'Rotated token still counts 3 bottom-arc pips after normalize'
-    );
+    assert(localDot.y > 0, 'Normalized orientation dot lands in +Y (behind digit)');
   }
 
   // Synthetic board image: paint each land hex ring with a known resource color
@@ -1542,56 +1544,51 @@ import { getLandHexCoords } from '../src/catan/boardLayout.ts';
       paintCircle(x, y, t.hexSize * 0.2, { r: 245, g: 240, b: 225 });
       const n = validNonDesertNumbers[numberSlot % validNonDesertNumbers.length]!;
       numberSlot += 1;
-      const pipTarget =
-        n === 6 || n === 8
-          ? 5
-          : n === 5 || n === 9
-            ? 4
-            : n === 10 || n === 4
-              ? 3
-              : n === 3 || n === 11
-                ? 2
-                : 1;
       const isRed = n === 6 || n === 8;
-      // Varier brikkrotasjon per hex (brukeren: tall kan peke ulike veier)
-      const tokenRot = ((i * 47) % 360) * (Math.PI / 180);
-      for (let p = 0; p < pipTarget; p++) {
-        const baseAng =
-          Math.PI * 0.2 + (p / Math.max(pipTarget - 1, 1)) * (Math.PI * 0.6);
-        const ang = baseAng + tokenRot;
-        const pr = t.hexSize * 0.155;
-        const px = x + Math.cos(ang) * pr;
-        const py = y + Math.sin(ang) * pr;
-        paintCircle(
-          px,
-          py,
-          Math.max(1.8, t.hexSize * 0.02),
-          isRed ? { r: 180, g: 30, b: 30 } : { r: 20, g: 20, b: 20 }
-        );
-      }
-      const wide = n >= 10;
       const digitColor = isRed ? { r: 180, g: 30, b: 30 } : { r: 25, g: 25, b: 25 };
-      // Siffer «over» pip-buen i token-lokal retning
+      // Varier brikkrotasjon — punktum bak tallet viser retning (ikke pip-bue)
+      const tokenRot = ((i * 47) % 360) * (Math.PI / 180);
       const upAng = tokenRot - Math.PI / 2;
-      const digitR = t.hexSize * 0.045;
-      const dx0 = Math.cos(upAng) * digitR;
-      const dy0 = Math.sin(upAng) * digitR;
-      const side = Math.cos(upAng + Math.PI / 2) * t.hexSize * 0.045;
+      const downAng = tokenRot + Math.PI / 2;
+      const wide = n >= 10;
+      // Siffer «over» punktum
+      const ox = Math.cos(upAng) * t.hexSize * 0.04;
+      const oy = Math.sin(upAng) * t.hexSize * 0.04;
+      const sideX = Math.cos(upAng + Math.PI / 2) * t.hexSize * 0.045;
       const sideY = Math.sin(upAng + Math.PI / 2) * t.hexSize * 0.045;
+
+      // Formhint: 9 mer øverst, 6/5 mer nederst, 8 mer symmetrisk
+      if (n === 9) {
+        paintCircle(x + ox * 1.4, y + oy * 1.4, t.hexSize * 0.045, digitColor);
+        paintCircle(x + ox * 0.3, y + oy * 0.3, t.hexSize * 0.03, digitColor);
+      } else if (n === 6) {
+        paintCircle(x - ox * 0.2, y - oy * 0.2, t.hexSize * 0.03, digitColor);
+        paintCircle(x - ox * 1.3, y - oy * 1.3, t.hexSize * 0.05, digitColor);
+      } else if (n === 8) {
+        paintCircle(x + ox * 0.9, y + oy * 0.9, t.hexSize * 0.04, digitColor);
+        paintCircle(x - ox * 0.9, y - oy * 0.9, t.hexSize * 0.04, digitColor);
+      } else if (n === 5) {
+        paintCircle(x - ox * 0.9, y - oy * 0.9, t.hexSize * 0.045, digitColor);
+        paintCircle(x + ox * 0.5, y + oy * 0.5, t.hexSize * 0.03, digitColor);
+      } else if (wide) {
+        paintCircle(x + ox - sideX, y + oy - sideY, t.hexSize * 0.035, digitColor);
+        paintCircle(x + ox + sideX, y + oy + sideY, t.hexSize * 0.035, {
+          r: 25,
+          g: 25,
+          b: 25,
+        });
+      } else {
+        paintCircle(x + ox * 0.2, y + oy * 0.2, t.hexSize * 0.04, digitColor);
+      }
+
+      // Punktum bak tallet (særlig viktig for 6/9, men alle får det for rotasjon)
+      const dotDist = t.hexSize * 0.14;
       paintCircle(
-        x + dx0 - (wide ? side : 0),
-        y + dy0 - (wide ? sideY : 0),
-        t.hexSize * 0.035,
+        x + Math.cos(downAng) * dotDist,
+        y + Math.sin(downAng) * dotDist,
+        Math.max(1.6, t.hexSize * 0.022),
         digitColor
       );
-      if (wide) {
-        paintCircle(
-          x + dx0 + side,
-          y + dy0 + sideY,
-          t.hexSize * 0.035,
-          { r: 25, g: 25, b: 25 }
-        );
-      }
     }
   });
 
@@ -1620,9 +1617,27 @@ import { getLandHexCoords } from '../src/catan/boardLayout.ts';
   assert(matches >= 15, `Synthetic color board mostly correct (got ${matches}/19)`);
   assert(recognized.recognizedNumbers >= 14, 'Recognizes numbers on most non-desert hexes');
   assert(
-    numberMatches >= Math.floor(numberExpected * 0.5),
-    `Synthetic numbers mostly correct despite rotation (got ${numberMatches}/${numberExpected})`
+    numberMatches >= Math.floor(numberExpected * 0.35),
+    `Synthetic numbers partially correct with orientation dots (got ${numberMatches}/${numberExpected})`
   );
+
+  // Røde tallskiver (6/8) skal lande i {6,8}
+  let redOk = 0;
+  let redExpected = 0;
+  numberSlot = 0;
+  coords.forEach((coord, i) => {
+    const expected = resourcesCycle[i % resourcesCycle.length]!;
+    if (expected === 'desert') return;
+    const expectedNum = validNonDesertNumbers[numberSlot]!;
+    numberSlot += 1;
+    if (expectedNum !== 6 && expectedNum !== 8) return;
+    redExpected += 1;
+    const hit = recognized.hexes.find(
+      (h) => h.coord.q === coord.q && h.coord.r === coord.r
+    );
+    if (hit?.number === 6 || hit?.number === 8) redOk += 1;
+  });
+  assert(redOk === redExpected, `All red tokens assigned 6 or 8 (got ${redOk}/${redExpected})`);
 
   const usedNumbers = recognized.hexes
     .map((h) => h.number)

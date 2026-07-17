@@ -494,14 +494,21 @@ function creamDiscScore(
 }
 
 export interface NumberTokenFeatures {
-  pipCount: number;
   isRed: boolean;
   wideDigit: boolean;
+  /** Blekk øverst / nederst i token-lokal orientering (9 > 5). */
   topHeavyRatio: number;
+  /** Blekk nederst / øverst (6 > 8). */
+  bottomHeavyRatio: number;
   inkRatio: number;
   discScore: number;
-  /** Estimert «ned»-vinkel for brikken (atan2), eller null. */
+  hasOrientationDot: boolean;
+  /** Estimert «ned»-vinkel (atan2) fra punktum bak tallet, eller null. */
   downAngle: number | null;
+  /** Bredde/høyde for sifferets bbox. */
+  digitAspect: number;
+  /** Andel blekk i venstre halvdel (3/åpne siffer lavere). */
+  leftInkRatio: number;
 }
 
 /** Roter punkt slik at token-«ned» blir +Y. */
@@ -517,38 +524,131 @@ export function toTokenLocal(
 }
 
 /**
- * Estimer brikkens «ned»-retning fra pip-ringen (tyngdepunkt av ytre blekk).
- * Pipene ligger alltid i en bue under sifferet, uansett rotasjon.
+ * Finn orienteringspunktum («punktum bak tallet»).
+ * Returnerer tyngdepunktet til en liten, isolert blekk-klump utenfor hovedsifferet.
+ */
+export function findOrientationDot(
+  inkPixels: { x: number; y: number }[],
+  radius: number
+): { x: number; y: number } | null {
+  if (inkPixels.length < 6) return null;
+
+  // Enkel grid-clustering
+  const cell = Math.max(1.2, radius * 0.06);
+  const buckets = new Map<string, { x: number; y: number; n: number }>();
+  for (const p of inkPixels) {
+    const kx = Math.round(p.x / cell);
+    const ky = Math.round(p.y / cell);
+    const key = `${kx},${ky}`;
+    const b = buckets.get(key);
+    if (b) {
+      b.x += p.x;
+      b.y += p.y;
+      b.n += 1;
+    } else {
+      buckets.set(key, { x: p.x, y: p.y, n: 1 });
+    }
+  }
+
+  type Comp = { x: number; y: number; n: number; cells: string[] };
+  const cellKeys = [...buckets.keys()];
+  const visited = new Set<string>();
+  const comps: Comp[] = [];
+
+  const neighbors = (key: string): string[] => {
+    const [xs, ys] = key.split(',');
+    const x = Number(xs);
+    const y = Number(ys);
+    const out: string[] = [];
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const k = `${x + dx},${y + dy}`;
+        if (buckets.has(k)) out.push(k);
+      }
+    }
+    return out;
+  };
+
+  for (const start of cellKeys) {
+    if (visited.has(start)) continue;
+    const stack = [start];
+    visited.add(start);
+    let sx = 0;
+    let sy = 0;
+    let n = 0;
+    const cells: string[] = [];
+    while (stack.length) {
+      const k = stack.pop()!;
+      cells.push(k);
+      const b = buckets.get(k)!;
+      sx += b.x;
+      sy += b.y;
+      n += b.n;
+      for (const nb of neighbors(k)) {
+        if (visited.has(nb)) continue;
+        visited.add(nb);
+        stack.push(nb);
+      }
+    }
+    comps.push({ x: sx / n, y: sy / n, n, cells });
+  }
+
+  if (comps.length === 0) return null;
+  comps.sort((a, b) => b.n - a.n);
+  const main = comps[0]!;
+  const mainR = Math.hypot(main.x, main.y);
+
+  // Punktum: liten komponent, ikke for nær siffer-kjernen, innenfor skiven
+  const minDot = Math.max(2, inkPixels.length * 0.01);
+  const maxDot = Math.max(8, inkPixels.length * 0.18);
+  let best: Comp | null = null;
+  let bestScore = -Infinity;
+  for (const c of comps.slice(1)) {
+    if (c.n < minDot || c.n > maxDot) continue;
+    const r = Math.hypot(c.x, c.y);
+    if (r < radius * 0.2 || r > radius * 0.95) continue;
+    // Helst litt utenfor hovedsifferets radius
+    const distMain = Math.hypot(c.x - main.x, c.y - main.y);
+    if (distMain < radius * 0.15) continue;
+    const score =
+      (1 - c.n / (maxDot + 1)) * 0.5 +
+      Math.min(1, distMain / (radius * 0.4)) * 0.35 +
+      (r > mainR ? 0.15 : 0);
+    if (score > bestScore) {
+      bestScore = score;
+      best = c;
+    }
+  }
+  if (!best) return null;
+  return { x: best.x, y: best.y };
+}
+
+/**
+ * Estimer brikkens «ned»-retning fra orienteringspunktum bak tallet.
+ * Faller tilbake til null hvis punktum ikke finnes.
  */
 export function estimateTokenDownAngle(
   inkPixels: { x: number; y: number }[],
   radius: number
 ): number | null {
-  const pipInner = radius * 0.38;
-  const pipOuter = radius * 0.99;
-  const ring = inkPixels.filter((s) => {
-    const r = Math.hypot(s.x, s.y);
-    return r >= pipInner && r <= pipOuter;
-  });
-  if (ring.length < 3) return null;
+  const dot = findOrientationDot(inkPixels, radius);
+  if (!dot) return null;
+  return Math.atan2(dot.y, dot.x);
+}
 
-  let sx = 0;
-  let sy = 0;
-  for (const p of ring) {
-    sx += p.x;
-    sy += p.y;
-  }
-  if (Math.hypot(sx, sy) < radius * 0.15) {
-    // Nesten jevnt rundt — fall tilbake til bilde-ned
-    return Math.PI / 2;
-  }
-  return Math.atan2(sy, sx);
+/** @deprecated Pip-bue brukes ikke lenger — beholdt for bakoverkompatibilitet. */
+export function countPipsBottomArc(
+  inkPixels: { x: number; y: number }[],
+  radius: number
+): number {
+  const dot = findOrientationDot(inkPixels, radius);
+  return dot ? 1 : 0;
 }
 
 /**
- * Trekk trekk ut fra tallskiven. Pipene på ekte Catan-brikker ligger i
- * en bue under sifferet — vi normaliserer først til token-lokal orientering
- * så rotasjon av brikken ikke ødelegger pip-/sifferanalyse.
+ * Trekk trekk ut fra tallskiven.
+ * Orientering fra punktum bak tallet; 6/8 er røde; ingen pip-bue.
  */
 export function extractNumberTokenFeatures(
   imageData: RgbaImageBuffer,
@@ -583,7 +683,6 @@ export function extractNumberTokenFeatures(
     creamLums.length >= 8
       ? creamLums[Math.floor(creamLums.length / 2)]!
       : medianLum;
-  // Blekk relativt til krem — ikke til blandet median (terreng kan trekke ned)
   const darkThresh = Math.min(creamMedian - 35, 160);
 
   const ink = samples.filter((s) => {
@@ -593,13 +692,16 @@ export function extractNumberTokenFeatures(
   });
   if (ink.length < 4) {
     return {
-      pipCount: 0,
       isRed: false,
       wideDigit: false,
       topHeavyRatio: 1,
+      bottomHeavyRatio: 1,
       inkRatio: ink.length / samples.length,
       discScore: disc.score,
+      hasOrientationDot: false,
       downAngle: null,
+      digitAspect: 1,
+      leftInkRatio: 0.5,
     };
   }
 
@@ -607,9 +709,10 @@ export function extractNumberTokenFeatures(
     const { h, s: sat } = s.hsv;
     return sat > 0.35 && (h <= 35 || h >= 335);
   });
-  const isRed = redInk.length / ink.length > 0.12;
+  const isRed = redInk.length / ink.length > 0.22;
 
   const downAngle = estimateTokenDownAngle(ink, radius);
+  const hasOrientationDot = downAngle != null;
   const localInk =
     downAngle == null
       ? ink
@@ -618,158 +721,114 @@ export function extractNumberTokenFeatures(
           return { ...p, x: loc.x, y: loc.y };
         });
 
-  // Siffer: indre del av skiven, i token-lokal orientering
-  const digitInk = localInk.filter((s) => Math.hypot(s.x, s.y) < radius * 0.52);
+  // Ekskluder punktum (nedre ytre) fra sifferanalyse når vi har orientering
+  const digitInk = localInk.filter((s) => {
+    const r = Math.hypot(s.x, s.y);
+    if (r >= radius * 0.55) return false;
+    // Punktum bak tallet ligger typisk «ned» og litt utenfor sifferet
+    if (hasOrientationDot && s.y > radius * 0.28 && r > radius * 0.22) return false;
+    return true;
+  });
+
   let minX = Infinity;
   let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
   let upper = 0;
   let lower = 0;
+  let left = 0;
+  let right = 0;
   for (const p of digitInk) {
     minX = Math.min(minX, p.x);
     maxX = Math.max(maxX, p.x);
+    minY = Math.min(minY, p.y);
+    maxY = Math.max(maxY, p.y);
     if (p.y < -radius * 0.02) upper += 1;
     else lower += 1;
+    if (p.x < 0) left += 1;
+    else right += 1;
   }
   const digitWidth = digitInk.length > 5 ? maxX - minX : 0;
+  const digitHeight = digitInk.length > 5 ? maxY - minY : 0;
   const wideDigit = digitWidth > radius * 0.55;
+  const digitAspect =
+    digitHeight > 1e-3 ? digitWidth / digitHeight : wideDigit ? 1.2 : 0.7;
   const topHeavyRatio =
-    upper + lower === 0
-      ? 1
-      : lower === 0
-        ? 1
-        : upper / lower;
-
-  const pipCount = countPipsBottomArc(localInk, radius);
+    upper + lower === 0 ? 1 : lower === 0 ? 1 : upper / lower;
+  const bottomHeavyRatio =
+    upper + lower === 0 ? 1 : upper === 0 ? 2 : lower / upper;
+  const leftInkRatio =
+    left + right === 0 ? 0.5 : left / (left + right);
 
   return {
-    pipCount,
     isRed,
     wideDigit,
     topHeavyRatio,
+    bottomHeavyRatio,
     inkRatio: ink.length / samples.length,
     discScore: disc.score,
+    hasOrientationDot,
     downAngle,
+    digitAspect,
+    leftInkRatio,
   };
 }
 
-/**
- * Tell pips langs bunnbue i token-lokal orientering (ned = +Y).
- * Bruker vinkel-topper med minsteavstand — x-gap alene smelter sammen overlapping.
- */
-export function countPipsBottomArc(
-  inkPixels: { x: number; y: number }[],
-  radius: number
-): number {
-  const pipInner = radius * 0.4;
-  const pipOuter = radius * 0.98;
-
-  const bottom = inkPixels.filter((s) => {
-    const r = Math.hypot(s.x, s.y);
-    // Hold siffer-sonen utenfor (øvre/midtre del i token-lokal)
-    return s.y >= radius * 0.12 && r >= pipInner && r <= pipOuter;
-  });
-
-  if (bottom.length >= 2) {
-    // Bunnbue i lokal orientering: ca. 0..π (nedre halvplan via atan2)
-    const peaks = countAngularPeaks(bottom, 0.05 * Math.PI, 0.95 * Math.PI, 5);
-    if (peaks >= 1) return peaks;
-  }
-
-  const ring = inkPixels.filter((s) => {
-    const r = Math.hypot(s.x, s.y);
-    return r >= pipInner && r <= pipOuter;
-  });
-  if (ring.length < 2) return ring.length >= 1 ? 1 : 0;
-  return countAngularPeaks(ring, 0, Math.PI * 2, 5);
-}
-
-function countAngularPeaks(
-  pixels: { x: number; y: number }[],
-  angMin: number,
-  angMax: number,
-  maxPips: number
-): number {
-  if (pixels.length < 2) return pixels.length >= 1 ? 1 : 0;
-  const span = angMax - angMin;
-  if (span <= 1e-6) return 0;
-
-  const binCount = 48;
-  const bins = new Array(binCount).fill(0) as number[];
-  for (const p of pixels) {
-    let ang = Math.atan2(p.y, p.x);
-    if (ang < 0) ang += Math.PI * 2;
-    if (ang < angMin || ang > angMax) continue;
-    const t = (ang - angMin) / span;
-    const bin = Math.min(binCount - 1, Math.floor(t * binCount));
-    bins[bin]! += 1;
-  }
-
-  const smooth = bins.map((_, i) => {
-    const a = bins[Math.max(0, i - 1)]!;
-    const b = bins[i]!;
-    const c = bins[Math.min(binCount - 1, i + 1)]!;
-    return a * 0.25 + b * 0.5 + c * 0.25;
-  });
-
-  const peakThresh = Math.max(0.55, pixels.length / 55);
-  const candidates: { i: number; v: number }[] = [];
-  for (let i = 1; i < binCount - 1; i++) {
-    const v = smooth[i]!;
-    if (v >= peakThresh && v >= smooth[i - 1]! && v >= smooth[i + 1]!) {
-      candidates.push({ i, v });
-    }
-  }
-  candidates.sort((a, b) => b.v - a.v);
-
-  const minBinSep = Math.max(2, Math.floor(binCount / (maxPips + 3)));
-  const kept: number[] = [];
-  for (const c of candidates) {
-    if (kept.every((k) => Math.abs(k - c.i) >= minBinSep)) {
-      kept.push(c.i);
-    }
-    if (kept.length >= maxPips) break;
-  }
-  return clamp(kept.length, 0, 5);
-}
-
-/** Soft-score for hvert lovlige tall gitt pip/farge/bredde. */
+/** Soft-score for hvert lovlige tall: rød=6/8, punktum-orientering, sifferform (ingen pip-bue). */
 export function scoreNumberHypotheses(
   features: NumberTokenFeatures
 ): Partial<Record<PhotoBoardNumber, number>> {
   const scores: Partial<Record<PhotoBoardNumber, number>> = {};
-  if (features.pipCount <= 0 && features.inkRatio < 0.04) return scores;
+  if (features.inkRatio < 0.02) return scores;
 
-  const preferFive = preferFiveOverNine(features.topHeavyRatio);
+  const clearlyFive = features.topHeavyRatio < 0.9;
+  const clearlyNine = features.topHeavyRatio > 1.35;
+  const preferSix = features.bottomHeavyRatio >= 1.15;
+  const orientBoost = features.hasOrientationDot ? 0.1 : 0;
 
-  // Rødt blekk ≈ alltid 6 eller 8 (begge har 5 pips). Pip-telling er da sekundær.
+  // Rødt blekk ⇒ 6 eller 8. Skill på tyngde (6 mer nederst) og punktum.
   if (features.isRed) {
-    const pipBoost = features.pipCount >= 4 ? 0.15 : features.pipCount >= 2 ? 0.05 : 0;
-    scores[6] = 0.88 + pipBoost;
-    scores[8] = 0.86 + pipBoost;
+    scores[6] = (preferSix ? 0.92 : 0.7) + orientBoost;
+    scores[8] = (preferSix ? 0.68 : 0.92) + orientBoost;
+    if (features.hasOrientationDot && preferSix) scores[6]! += 0.08;
     for (const n of PHOTO_BOARD_NUMBERS) {
-      if (n !== 6 && n !== 8) scores[n] = -0.2;
+      if (n !== 6 && n !== 8) scores[n] = -0.25;
     }
     return scores;
   }
 
   for (const n of PHOTO_BOARD_NUMBERS) {
     if (n === 6 || n === 8) {
-      scores[n] = -0.15; // ikke rød → sjelden 6/8
+      scores[n] = -0.25; // ikke rød → ikke 6/8
       continue;
     }
-    const pipExp = expectedPipCount(n);
-    const pipErr = Math.abs(features.pipCount - pipExp);
-    let score = 0.55 - pipErr * 0.28;
 
+    let score = 0.4 + orientBoost + Math.min(0.08, features.discScore * 0.1);
     const expectWide = n >= 10;
-    if (features.wideDigit === expectWide) score += 0.28;
-    else score -= 0.25;
+    if (features.wideDigit === expectWide) score += 0.32;
+    else score -= 0.3;
 
-    if (n === 5) score += preferFive ? 0.22 : 0.06;
-    if (n === 9) score += preferFive ? -0.06 : 0.22;
+    if (n === 5) {
+      if (clearlyFive) score += 0.28;
+      else if (clearlyNine) score -= 0.12;
+      else score += 0.02;
+    }
+    if (n === 9) {
+      if (clearlyNine) score += 0.32;
+      else if (clearlyFive) score -= 0.1;
+      else score += 0.04;
+      // 9 har typisk punktum bak for å skille fra 6
+      if (features.hasOrientationDot) score += 0.1;
+    }
 
-    if (n === 5 || n === 9 || n === 4 || n === 10) score += 0.03;
-    score += Math.min(0.1, features.discScore * 0.12);
+    if (n === 10) score += features.digitAspect > 0.95 ? 0.1 : 0.02;
+    if (n === 11) score += features.digitAspect > 1.05 ? 0.12 : features.wideDigit ? 0.05 : -0.05;
+    if (n === 12) score += features.digitAspect > 0.9 ? 0.08 : 0;
+
+    if (n === 2) score += 0.06;
+    if (n === 3) score += features.leftInkRatio < 0.42 ? 0.12 : 0.04;
+    if (n === 4) score += features.digitAspect < 0.85 ? 0.1 : 0.05;
+
     scores[n] = score;
   }
   return scores;
@@ -802,8 +861,8 @@ export function bestNumberFromFeatures(
 }
 
 /**
- * Analyser tallskiven i sentrum: lokaliser krem-skive, tell bunnbue-pips
- * (rotasjonsnormalisert), skill rød 6/8 og bredde for 10–12.
+ * Analyser tallskiven: lokaliser krem-skive, orienter via punktum bak tallet,
+ * skill rød 6/8 og sifferform (ingen pip-bue).
  */
 export function guessNumberFromCenterPatch(
   imageData: RgbaImageBuffer,
@@ -823,7 +882,6 @@ export function guessNumberFromCenterPatch(
 
   const disc = locateCreamDisc(imageData, cx, cy, hexSize);
   if (!disc) {
-    // Fallback: anta skive i hex-senter
     const fallback: CreamDisc = {
       x: cx,
       y: cy,
@@ -831,7 +889,7 @@ export function guessNumberFromCenterPatch(
       score: 0.2,
     };
     const features = extractNumberTokenFeatures(imageData, fallback);
-    if (!features || features.pipCount <= 0) {
+    if (!features || features.inkRatio < 0.025) {
       return { number: null, confidence: 0.12, scores: {}, hasDisc: false };
     }
     const best = bestNumberFromFeatures(features);
@@ -844,7 +902,7 @@ export function guessNumberFromCenterPatch(
 
   const features = extractNumberTokenFeatures(imageData, disc);
   if (!features) return { number: null, confidence: 0.1, scores: {}, hasDisc: true };
-  if (features.pipCount <= 0 && features.inkRatio < 0.03) {
+  if (features.inkRatio < 0.02) {
     return { number: null, confidence: 0.2, scores: {}, hasDisc: true };
   }
 
@@ -997,9 +1055,9 @@ export function mapPipsToNumber(
   return null;
 }
 
-/** 5 vs 9: 9 har mer blekk øverst (løkke). Ambivalent → 5. */
+/** 5 vs 9: 9 har mer blekk øverst (løkke). Ambivalent → ingen sterk preferanse. */
 export function preferFiveOverNine(topHeavyRatio: number): boolean {
-  return topHeavyRatio < 1.28;
+  return topHeavyRatio < 0.95;
 }
 
 /** Bakoverkompatibel stub — bruk guessNumberFromCenterPatch. */
