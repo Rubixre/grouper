@@ -1339,11 +1339,17 @@ import {
   applyRecognitionToDraft,
   axialToImagePixel,
   classifyResourceFromRgb,
+  countPipsBottomArc,
   defaultOverlayTransform,
   displayToImagePixel,
+  estimateTokenDownAngle,
+  expectedPipCount,
   mapPipsToNumber,
+  numberPoolForBoardSize,
   preferFiveOverNine,
   recognizeBoardFromImageData,
+  reconcileOreDesertWithDisc,
+  toTokenLocal,
 } from '../src/catan/photoRecognize.ts';
 import { getLandHexCoords } from '../src/catan/boardLayout.ts';
 {
@@ -1388,6 +1394,26 @@ import { getLandHexCoords } from '../src/catan/boardLayout.ts';
   assert(preferFiveOverNine(0.9) === true, 'Bottom-heavy digit prefers 5');
   assert(preferFiveOverNine(1.4) === false, 'Top-heavy digit prefers 9');
 
+  // Cream disc overrides false desert; missing disc + warm beige → desert
+  const falseDesert = {
+    resource: 'desert' as const,
+    confidence: 0.5,
+    rgb: { r: 95, g: 100, b: 110 },
+  };
+  assert(
+    reconcileOreDesertWithDisc(falseDesert, true)?.resource === 'ore',
+    'Cream disc flips false desert to ore'
+  );
+  const warmOre = {
+    resource: 'ore' as const,
+    confidence: 0.48,
+    rgb: { r: 200, g: 180, b: 125 },
+  };
+  assert(
+    reconcileOreDesertWithDisc(warmOre, false)?.resource === 'desert',
+    'No disc + warm beige flips ore to desert'
+  );
+
   const coords = getLandHexCoords('base');
   const transform = defaultOverlayTransform(800, 800, coords);
   assert(transform.hexSize > 0, 'Default overlay has positive hex size');
@@ -1424,6 +1450,41 @@ import { getLandHexCoords } from '../src/catan/boardLayout.ts';
     'Pan maps display pixel back to unshifted source'
   );
 
+  // Rotated token: pips along arc at angle θ → down-estimate ≈ θ, local y > 0
+  {
+    const radius = 40;
+    const pipAngles = [Math.PI * 0.3, Math.PI * 0.5, Math.PI * 0.7]; // upright bottom
+    const makePipBlob = (ang: number, rot = 0) => {
+      const pts: { x: number; y: number }[] = [];
+      const cx = Math.cos(ang + rot) * radius * 0.7;
+      const cy = Math.sin(ang + rot) * radius * 0.7;
+      for (let k = -2; k <= 2; k++) {
+        for (let j = -2; j <= 2; j++) {
+          pts.push({ x: cx + k * 0.45, y: cy + j * 0.45 });
+        }
+      }
+      return pts;
+    };
+    const upright = pipAngles.flatMap((ang) => makePipBlob(ang));
+    const down0 = estimateTokenDownAngle(upright, radius);
+    assert(down0 != null && Math.abs(down0 - Math.PI / 2) < 0.35, 'Upright pips estimate down≈π/2');
+    assert(countPipsBottomArc(upright, radius) === 3, 'Upright bottom arc counts 3 pips');
+
+    const rot = Math.PI * 0.6; // rotate token ~108°
+    const rotated = pipAngles.flatMap((ang) => makePipBlob(ang, rot));
+    const downRot = estimateTokenDownAngle(rotated, radius);
+    assert(downRot != null, 'Rotated pips yield a down angle');
+    const local = rotated.map((p) => toTokenLocal(p.x, p.y, downRot!));
+    assert(
+      local.filter((p) => p.y > 0).length > local.length * 0.7,
+      'Token-local transform puts pip arc mostly in +Y half'
+    );
+    assert(
+      countPipsBottomArc(local, radius) === 3,
+      'Rotated token still counts 3 bottom-arc pips after normalize'
+    );
+  }
+
   // Synthetic board image: paint each land hex ring with a known resource color
   const W = 600;
   const H = 600;
@@ -1437,7 +1498,12 @@ import { getLandHexCoords } from '../src/catan/boardLayout.ts';
   }
   const resourcesCycle = ['wood', 'brick', 'sheep', 'wheat', 'ore', 'desert'] as const;
   const t = defaultOverlayTransform(W, H, coords, 0.1);
-  const paintCircle = (cx: number, cy: number, radius: number, rgb: { r: number; g: number; b: number }) => {
+  const paintCircle = (
+    cx: number,
+    cy: number,
+    radius: number,
+    rgb: { r: number; g: number; b: number }
+  ) => {
     const r2 = radius * radius;
     const x0 = Math.max(0, Math.floor(cx - radius));
     const x1 = Math.min(W - 1, Math.ceil(cx + radius));
@@ -1463,30 +1529,68 @@ import { getLandHexCoords } from '../src/catan/boardLayout.ts';
     ore: { r: 85, g: 90, b: 100 },
     desert: { r: 200, g: 180, b: 125 },
   };
-  const numbersCycle = [6, 8, 5, 10, 3, null] as const; // null paired with desert slots
+  // Gyldig Catan-tallsett for de 16 ikke-ørken-hexene
+  const validNonDesertNumbers = [
+    2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11,
+  ];
+  let numberSlot = 0;
   coords.forEach((coord, i) => {
     const resource = resourcesCycle[i % resourcesCycle.length]!;
     const { x, y } = axialToImagePixel(coord, t);
     paintCircle(x, y, t.hexSize * 0.55, proto[resource]);
-    // Cream number token + dark pips for non-desert
     if (resource !== 'desert') {
       paintCircle(x, y, t.hexSize * 0.2, { r: 245, g: 240, b: 225 });
-      const n = numbersCycle[i % numbersCycle.length];
+      const n = validNonDesertNumbers[numberSlot % validNonDesertNumbers.length]!;
+      numberSlot += 1;
       const pipTarget =
-        n === 6 || n === 8 ? 5 : n === 5 || n === 9 ? 4 : n === 10 || n === 4 ? 3 : n === 3 || n === 11 ? 2 : 1;
-      const isRed = n === 6;
+        n === 6 || n === 8
+          ? 5
+          : n === 5 || n === 9
+            ? 4
+            : n === 10 || n === 4
+              ? 3
+              : n === 3 || n === 11
+                ? 2
+                : 1;
+      const isRed = n === 6 || n === 8;
+      // Varier brikkrotasjon per hex (brukeren: tall kan peke ulike veier)
+      const tokenRot = ((i * 47) % 360) * (Math.PI / 180);
       for (let p = 0; p < pipTarget; p++) {
-        const ang = (p / pipTarget) * Math.PI * 2 - Math.PI / 2;
-        const pr = t.hexSize * 0.15;
+        const baseAng =
+          Math.PI * 0.2 + (p / Math.max(pipTarget - 1, 1)) * (Math.PI * 0.6);
+        const ang = baseAng + tokenRot;
+        const pr = t.hexSize * 0.155;
         const px = x + Math.cos(ang) * pr;
         const py = y + Math.sin(ang) * pr;
-        paintCircle(px, py, Math.max(2, t.hexSize * 0.03), isRed ? { r: 180, g: 30, b: 30 } : { r: 20, g: 20, b: 20 });
+        paintCircle(
+          px,
+          py,
+          Math.max(1.8, t.hexSize * 0.02),
+          isRed ? { r: 180, g: 30, b: 30 } : { r: 20, g: 20, b: 20 }
+        );
       }
-      // Digit ink in center (wide for 10)
-      const wide = n === 10;
-      paintCircle(x - (wide ? t.hexSize * 0.04 : 0), y, t.hexSize * 0.04, isRed ? { r: 180, g: 30, b: 30 } : { r: 25, g: 25, b: 25 });
+      const wide = n >= 10;
+      const digitColor = isRed ? { r: 180, g: 30, b: 30 } : { r: 25, g: 25, b: 25 };
+      // Siffer «over» pip-buen i token-lokal retning
+      const upAng = tokenRot - Math.PI / 2;
+      const digitR = t.hexSize * 0.045;
+      const dx0 = Math.cos(upAng) * digitR;
+      const dy0 = Math.sin(upAng) * digitR;
+      const side = Math.cos(upAng + Math.PI / 2) * t.hexSize * 0.045;
+      const sideY = Math.sin(upAng + Math.PI / 2) * t.hexSize * 0.045;
+      paintCircle(
+        x + dx0 - (wide ? side : 0),
+        y + dy0 - (wide ? sideY : 0),
+        t.hexSize * 0.035,
+        digitColor
+      );
       if (wide) {
-        paintCircle(x + t.hexSize * 0.05, y, t.hexSize * 0.04, { r: 25, g: 25, b: 25 });
+        paintCircle(
+          x + dx0 + side,
+          y + dy0 + sideY,
+          t.hexSize * 0.035,
+          { r: 25, g: 25, b: 25 }
+        );
       }
     }
   });
@@ -1497,13 +1601,38 @@ import { getLandHexCoords } from '../src/catan/boardLayout.ts';
   assert(recognized.recognizedResources >= 15, 'Most synthetic hexes recognized');
 
   let matches = 0;
+  let numberMatches = 0;
+  let numberExpected = 0;
+  numberSlot = 0;
   coords.forEach((coord, i) => {
     const expected = resourcesCycle[i % resourcesCycle.length]!;
-    const hit = recognized.hexes.find((h) => h.coord.q === coord.q && h.coord.r === coord.r);
+    const hit = recognized.hexes.find(
+      (h) => h.coord.q === coord.q && h.coord.r === coord.r
+    );
     if (hit?.resource?.resource === expected) matches += 1;
+    if (expected !== 'desert') {
+      const expectedNum = validNonDesertNumbers[numberSlot]!;
+      numberSlot += 1;
+      numberExpected += 1;
+      if (hit?.number === expectedNum) numberMatches += 1;
+    }
   });
   assert(matches >= 15, `Synthetic color board mostly correct (got ${matches}/19)`);
-  assert(recognized.recognizedNumbers >= 10, 'Recognizes numbers on most non-desert hexes');
+  assert(recognized.recognizedNumbers >= 14, 'Recognizes numbers on most non-desert hexes');
+  assert(
+    numberMatches >= Math.floor(numberExpected * 0.5),
+    `Synthetic numbers mostly correct despite rotation (got ${numberMatches}/${numberExpected})`
+  );
+
+  const usedNumbers = recognized.hexes
+    .map((h) => h.number)
+    .filter((n): n is number => n != null);
+  const countOf = (n: number) => usedNumbers.filter((x) => x === n).length;
+  assert(countOf(6) <= 2 && countOf(8) <= 2, 'At most two 6s and two 8s after pool assign');
+  assert(countOf(2) <= 1 && countOf(12) <= 1, 'At most one 2 and one 12 on base board');
+
+  assert(expectedPipCount(6) === 5 && expectedPipCount(12) === 1, 'Pip expectations for 6 and 12');
+  assert(numberPoolForBoardSize('base').length === 18, 'Base number pool has 18 tokens');
 
   const draft = applyRecognitionToDraft(createEmptyLandDraft('base'), recognized, {
     overwriteResources: true,
@@ -1514,10 +1643,13 @@ import { getLandHexCoords } from '../src/catan/boardLayout.ts';
     'Recognition applied into draft'
   );
   assert(
-    draft.filter((d) => d.resource !== 'desert' && d.resource !== null && d.number !== null).length >= 8,
+    draft.filter(
+      (d) => d.resource !== 'desert' && d.resource !== null && d.number !== null
+    ).length >= 8,
     'Numbers applied into draft for many hexes'
   );
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
+
