@@ -380,15 +380,17 @@ export function PhotoBoardModal({
                             <path
                               d={d}
                               className="photo-overlay-hex"
-                              fill="rgba(26, 95, 74, 0.12)"
-                              stroke="rgba(26, 95, 74, 0.85)"
-                              strokeWidth={Math.max(1.5, transform.hexSize * 0.04)}
+                              fill="rgba(220, 38, 38, 0.1)"
+                              stroke="rgba(220, 38, 38, 0.95)"
+                              strokeWidth={Math.max(2, transform.hexSize * 0.045)}
                             />
                             <circle
                               cx={center.x}
                               cy={center.y}
-                              r={Math.max(2, transform.hexSize * 0.06)}
-                              fill="rgba(255, 255, 255, 0.7)"
+                              r={Math.max(2.5, transform.hexSize * 0.065)}
+                              fill="rgba(255, 255, 255, 0.9)"
+                              stroke="rgba(185, 28, 28, 0.95)"
+                              strokeWidth={Math.max(1.2, transform.hexSize * 0.025)}
                             />
                           </g>
                         );
