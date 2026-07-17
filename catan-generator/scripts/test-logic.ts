@@ -1674,6 +1674,22 @@ import { getLandHexCoords } from '../src/catan/boardLayout.ts';
   );
 }
 
+console.log('\nPhoto Vision API helpers');
+import { apiHexesToRecognitionResult } from '../src/catan/photoRecognizeApi.ts';
+{
+  const coords = getLandHexCoords('base');
+  const apiHexes = coords.map((coord, index) => ({
+    index,
+    resource: index === 0 ? 'desert' : index % 2 === 0 ? 'ore' : 'wood',
+    number: index === 0 ? null : index === 1 ? 6 : 4,
+  }));
+  const result = apiHexesToRecognitionResult(apiHexes, coords);
+  assert(result.hexes.length === 19, 'API mapper returns 19 hexes');
+  assert(result.hexes[0]!.resource?.resource === 'desert', 'API desert mapped');
+  assert(result.hexes[0]!.number === null, 'API desert has no number');
+  assert(result.hexes[1]!.number === 6, 'API number 6 mapped');
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
 
