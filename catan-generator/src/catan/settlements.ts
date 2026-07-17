@@ -364,8 +364,28 @@ export function vertexProducingHexCount(vertexId: string, board: Board): number 
 }
 
 /**
- * Motspillermodell: menneskelig preferanse for 3-hex når det finnes.
- * Blant kandidater på beste hex-nivå: høyest pip.
+ * Motspillervalg med samme modell som live auto-advance:
+ * #1 → myopisk PSM (beste plass her og nå)
+ * #2 → par-PSM med egen #1
+ */
+export function pickOpponentVertex(
+  board: Board,
+  placed: PlacedSettlement[],
+  player: number,
+  weights?: ResourceWeights
+): string | null {
+  const ranked = rankVertices(
+    board,
+    placed,
+    weights ?? DEFAULT_RESOURCE_WEIGHTS,
+    player
+  );
+  return ranked[0]?.vertexId ?? null;
+}
+
+/**
+ * Enkel pip-greedy modell (tester / fallback).
+ * Foretrekker 3-hex når det finnes, deretter høyest pip.
  */
 export function pickGreedyOpponentVertex(
   board: Board,

@@ -633,7 +633,8 @@ import {
   rankFirstSettlementsWithLookahead,
   evaluateFirstSettlementPath,
 } from '../src/catan/strategyAdvisor.ts';
-import { getValidVertices, pickGreedyOpponentVertex, vertexPipTotal, vertexProducingHexCount } from '../src/catan/settlements.ts';
+import { getValidVertices, pickGreedyOpponentVertex, pickOpponentVertex, vertexPipTotal, vertexProducingHexCount } from '../src/catan/settlements.ts';
+import { DEFAULT_RESOURCE_WEIGHTS } from '../src/catan/types.ts';
 if (board) {
   const config = createSimulationConfig(4, 0);
   const sim = createSimulation(board, config);
@@ -723,6 +724,37 @@ if (board) {
     assert(
       oppOpts.every((o) => o.placementKind === 'first'),
       'Opponent #1 still uses first-placement scoring'
+    );
+
+    // Lookahead bruker samme PSM-motstandere som live (ikke pip-greedy)
+    const simPlaced = simulateToHumanSecondTurn(
+      board,
+      sim.placements,
+      config.humanPlayerIndex,
+      4,
+      turnOpts[0].vertexId,
+      DEFAULT_RESOURCE_WEIGHTS
+    );
+    assert(simPlaced !== null, 'PSM opponent sim reaches human second turn');
+    const afterHumanOnly = [
+      {
+        vertexId: turnOpts[0].vertexId,
+        player: config.humanPlayerIndex,
+        isCity: false,
+      },
+    ];
+    const nextPlayer = 1; // snake: etter spiller 0 kommer spiller 1
+    const expectedPick = pickOpponentVertex(
+      board,
+      afterHumanOnly,
+      nextPlayer,
+      DEFAULT_RESOURCE_WEIGHTS
+    );
+    const actualPick = simPlaced!.find((p) => p.player === nextPlayer)?.vertexId;
+    assert(expectedPick !== null, 'PSM opponent has a #1 pick');
+    assert(
+      actualPick === expectedPick,
+      'Lookahead opponent #1 matches live PSM pickOpponentVertex'
     );
   }
 }
