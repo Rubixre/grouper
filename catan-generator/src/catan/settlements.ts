@@ -341,9 +341,31 @@ export function vertexRawByResource(
   return raw;
 }
 
+/** Antall produktive landhex (ikke ørken) på et hjørne */
+export function vertexProducingHexCount(vertexId: string, board: Board): number {
+  const vertices = getVertices();
+  const vertex = vertices.get(vertexId);
+  if (!vertex) return 0;
+  let count = 0;
+  for (const hex of vertex.hexes) {
+    const tile = board.hexes.find((h) => h.coord.q === hex.q && h.coord.r === hex.r);
+    if (
+      !tile ||
+      tile.kind !== 'land' ||
+      !tile.resource ||
+      tile.resource === 'desert' ||
+      !tile.number
+    ) {
+      continue;
+    }
+    count += 1;
+  }
+  return count;
+}
+
 /**
- * Enkel motspillermodell: velg hjørne med høyest pip-produksjon.
- * Første landsby = høyest pip; andre landsby = høyest pip-sum for paret.
+ * Motspillermodell: menneskelig preferanse for 3-hex når det finnes.
+ * Blant kandidater på beste hex-nivå: høyest pip.
  */
 export function pickGreedyOpponentVertex(
   board: Board,
@@ -354,26 +376,27 @@ export function pickGreedyOpponentVertex(
   if (valid.length === 0) return null;
 
   const existing = placed.find((p) => p.player === player);
+  const firstPip = existing ? vertexPipTotal(existing.vertexId, board) : 0;
+
+  type Cand = { id: string; pip: number; hexes: number };
+  const candidates: Cand[] = valid.map((id) => {
+    const pip = existing
+      ? firstPip + vertexPipTotal(id, board)
+      : vertexPipTotal(id, board);
+    const hexes = vertexProducingHexCount(id, board);
+    return { id, pip, hexes };
+  });
+
+  const maxHex = Math.max(...candidates.map((c) => c.hexes));
+  const preferredHex = maxHex >= 3 ? 3 : maxHex >= 2 ? 2 : maxHex;
+  const pool = candidates.filter((c) => c.hexes >= preferredHex);
+
   let bestId: string | null = null;
-  let bestScore = -1;
-
-  if (existing) {
-    const firstPip = vertexPipTotal(existing.vertexId, board);
-    for (const vertexId of valid) {
-      const score = firstPip + vertexPipTotal(vertexId, board);
-      if (score > bestScore || (score === bestScore && vertexId < (bestId ?? ''))) {
-        bestScore = score;
-        bestId = vertexId;
-      }
-    }
-    return bestId;
-  }
-
-  for (const vertexId of valid) {
-    const pip = vertexPipTotal(vertexId, board);
-    if (pip > bestScore || (pip === bestScore && vertexId < (bestId ?? ''))) {
-      bestScore = pip;
-      bestId = vertexId;
+  let bestPip = -1;
+  for (const c of pool) {
+    if (c.pip > bestPip || (c.pip === bestPip && c.id < (bestId ?? ''))) {
+      bestPip = c.pip;
+      bestId = c.id;
     }
   }
   return bestId;
