@@ -4,14 +4,21 @@ import type { SettlementScore, ResourceWeights, BoardSize } from '../catan/types
 import type { Board } from '../catan/types';
 import type { SimulationState } from '../catan/simulator';
 import { currentPlayer, isHumanTurn } from '../catan/simulator';
-import { getStrategyProfile } from '../catan/resourceWeights';
 import type { StrategyProfile, StrategyProfileId } from '../catan/resourceWeights';
+import { OPPONENT_RESOURCE_WEIGHTS } from '../catan/resourceWeights';
 import type { StrategyRecommendation } from '../catan/strategyAdvisor';
 import {
   isHumanFirstSettlementTurn,
   isHumanSecondSettlementTurn,
 } from '../catan/strategyAdvisor';
-import { DEFAULT_RESOURCE_WEIGHTS } from '../catan/types';
+
+const OPPONENT_BREAKDOWN_PROFILE: StrategyProfile = {
+  id: 'general',
+  label: 'Jevne vekter (motstander)',
+  description:
+    'Motspillere vektlegger ressursene mer likt enn strategisk balansert.',
+  weights: OPPONENT_RESOURCE_WEIGHTS,
+};
 import {
   harborOpportunityKey,
   type HarborStrategyOpportunity,
@@ -134,7 +141,7 @@ export function SettlementSimulator({
       : isFirstHuman
         ? 'Rangert på forventet par (balansert start). Stiplet ring = #2'
         : 'Første landsby'
-    : 'Motspillere følger balansert strategi · velg hjørne';
+    : 'Motspillere bruker jevnere ressursvekter · velg hjørne';
 
   const showHarborTab = harborOpportunities.length > 0 && isYourTurn;
   const harborAboveBalanced = harborOpportunities.some(
@@ -145,10 +152,10 @@ export function SettlementSimulator({
 
   const breakdownProfile = isYourTurn
     ? strategyProfile
-    : getStrategyProfile('general');
+    : OPPONENT_BREAKDOWN_PROFILE;
   const breakdownWeights = isYourTurn
     ? strategyWeights
-    : DEFAULT_RESOURCE_WEIGHTS;
+    : OPPONENT_RESOURCE_WEIGHTS;
 
   return (
     <div className="panel simulator-panel">
@@ -181,7 +188,7 @@ export function SettlementSimulator({
             <div className="sim-progress-fill" style={{ width: `${progress}%` }} />
           </div>
           <span className="sim-profile-chip muted small">
-            {isYourTurn ? strategyProfile.label : 'Balansert (motstander)'}
+            {isYourTurn ? strategyProfile.label : 'Jevne vekter (motstander)'}
           </span>
         </div>
 

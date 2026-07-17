@@ -8,6 +8,7 @@ import type {
   Vertex,
 } from './types';
 import { DEFAULT_RESOURCE_WEIGHTS } from './types';
+import { OPPONENT_RESOURCE_WEIGHTS } from './resourceWeights';
 import { getHarborsForVertex } from './harbors';
 import { coordKey, hexNeighbor } from './hex';
 import { getBoardSet, getLandSet } from './boardLayout';
@@ -372,14 +373,9 @@ export function pickOpponentVertex(
   board: Board,
   placed: PlacedSettlement[],
   player: number,
-  weights?: ResourceWeights
+  weights: ResourceWeights = OPPONENT_RESOURCE_WEIGHTS
 ): string | null {
-  const ranked = rankVertices(
-    board,
-    placed,
-    weights ?? DEFAULT_RESOURCE_WEIGHTS,
-    player
-  );
+  const ranked = rankVertices(board, placed, weights, player);
   return ranked[0]?.vertexId ?? null;
 }
 

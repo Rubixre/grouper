@@ -56,6 +56,32 @@ export const WEIGHTS_GENERAL: ResourceWeights = averageWeights([
   WEIGHTS_NEITHER,
 ]);
 
+/**
+ * Bland strategiske vekter mot like vekter (1.0 på alle).
+ * `towardEqual` = 0 beholder `weights`, 1 = helt like.
+ */
+export function blendTowardEqualWeights(
+  weights: ResourceWeights,
+  towardEqual: number
+): ResourceWeights {
+  const t = Math.min(1, Math.max(0, towardEqual));
+  const keys: (keyof ResourceWeights)[] = ['wood', 'brick', 'sheep', 'wheat', 'ore'];
+  const result = {} as ResourceWeights;
+  for (const key of keys) {
+    result[key] = weights[key] * (1 - t) + 1 * t;
+  }
+  return result;
+}
+
+/**
+ * Motspillere rundt bordet vektlegger ressursene mer likt enn «Balansert»
+ * for deg — mindre wheat/ore-bias, mer jevn produksjonsvurdering.
+ */
+export const OPPONENT_RESOURCE_WEIGHTS: ResourceWeights = blendTowardEqualWeights(
+  WEIGHTS_GENERAL,
+  0.6
+);
+
 export type StrategyProfileId =
   | 'general'
   | 'longestRoad'

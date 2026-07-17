@@ -359,12 +359,29 @@ import {
   WEIGHTS_GENERAL,
   WEIGHTS_LONGEST_ROAD_ONLY,
   WEIGHTS_LARGEST_ARMY_ONLY,
+  OPPONENT_RESOURCE_WEIGHTS,
+  blendTowardEqualWeights,
   coverageBonus,
   getStrategyWeights,
 } from '../src/catan/resourceWeights.ts';
 import { DEFAULT_RESOURCE_WEIGHTS } from '../src/catan/types.ts';
 
 assert(Math.abs(DEFAULT_RESOURCE_WEIGHTS.wheat - WEIGHTS_GENERAL.wheat) < 0.01, 'Default matches general average');
+assert(
+  OPPONENT_RESOURCE_WEIGHTS.wheat < WEIGHTS_GENERAL.wheat &&
+    OPPONENT_RESOURCE_WEIGHTS.ore < WEIGHTS_GENERAL.ore &&
+    OPPONENT_RESOURCE_WEIGHTS.wood > WEIGHTS_GENERAL.wood &&
+    OPPONENT_RESOURCE_WEIGHTS.sheep > WEIGHTS_GENERAL.sheep,
+  'Opponent weights are flatter than strategic balanced'
+);
+assert(
+  Math.abs(blendTowardEqualWeights(WEIGHTS_GENERAL, 0).wheat - WEIGHTS_GENERAL.wheat) < 1e-12,
+  'blendTowardEqual 0 keeps original'
+);
+assert(
+  Math.abs(blendTowardEqualWeights(WEIGHTS_GENERAL, 1).wheat - 1) < 1e-12,
+  'blendTowardEqual 1 yields equal weights'
+);
 assert(
   WEIGHTS_LONGEST_ROAD_ONLY.wood > WEIGHTS_GENERAL.wood,
   'Longest road profile has higher wood weight'
@@ -637,6 +654,7 @@ import {
 } from '../src/catan/strategyAdvisor.ts';
 import { getValidVertices, pickGreedyOpponentVertex, pickOpponentVertex, vertexPipTotal, vertexProducingHexCount } from '../src/catan/settlements.ts';
 import { DEFAULT_RESOURCE_WEIGHTS } from '../src/catan/types.ts';
+import { OPPONENT_RESOURCE_WEIGHTS } from '../src/catan/resourceWeights.ts';
 if (board) {
   const config = createSimulationConfig(4, 0);
   const sim = createSimulation(board, config);
@@ -750,7 +768,7 @@ if (board) {
       board,
       afterHumanOnly,
       nextPlayer,
-      DEFAULT_RESOURCE_WEIGHTS
+      OPPONENT_RESOURCE_WEIGHTS
     );
     const actualPick = simPlaced!.find((p) => p.player === nextPlayer)?.vertexId;
     assert(expectedPick !== null, 'PSM opponent has a #1 pick');
@@ -760,8 +778,13 @@ if (board) {
   );
   }
 
-  // Motstandere ignorerer menneskets strategiprofil — alltid balansert
+  // Motstandere ignorerer menneskets strategiprofil — jevnere vekter
   {
+    assert(
+      OPPONENT_RESOURCE_WEIGHTS.wheat < WEIGHTS_GENERAL.wheat &&
+        OPPONENT_RESOURCE_WEIGHTS.wood > WEIGHTS_GENERAL.wood,
+      'Opponent weights are flatter than strategic balanced'
+    );
     const armyWeights = {
       wheat: 1.45,
       ore: 1.42,
@@ -775,11 +798,16 @@ if (board) {
     assert(humanOpts.length > 0, 'Human options under army weights');
     stateOpp = placeSettlement(stateOpp, humanOpts[0]!.vertexId);
     const oppWithArmyArg = getOptionsForCurrentTurn(stateOpp, armyWeights);
-    const oppBalanced = getOptionsForCurrentTurn(stateOpp, DEFAULT_RESOURCE_WEIGHTS);
-    assert(oppWithArmyArg.length > 0 && oppBalanced.length > 0, 'Opponent has options');
+    const oppFlat = getOptionsForCurrentTurn(stateOpp, DEFAULT_RESOURCE_WEIGHTS);
+    assert(oppWithArmyArg.length > 0 && oppFlat.length > 0, 'Opponent has options');
     assert(
-      oppWithArmyArg[0]!.vertexId === oppBalanced[0]!.vertexId,
-      'Opponent #1 ignores human strategy weights (always balanced)'
+      oppWithArmyArg[0]!.vertexId === oppFlat[0]!.vertexId,
+      'Opponent #1 ignores human strategy weights (uses flat opponent weights)'
+    );
+    const directPick = pickOpponentVertex(board, stateOpp.placements, 1);
+    assert(
+      directPick === oppFlat[0]!.vertexId,
+      'pickOpponentVertex defaults to opponent flat weights'
     );
   }
 

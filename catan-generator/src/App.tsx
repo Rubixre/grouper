@@ -615,9 +615,9 @@ function App() {
                 <p className="muted small strategy-hint">{activeStrategy.description}</p>
 
                 <p className="muted small scoring-hint">
-                  Strategiprofilen gjelder bare deg. Motspillere følger alltid balansert
-                  strategi. Hver simulering starter balansert; ved landsby #2 revurderes
-                  beste strategi ut fra gjenværende posisjoner.
+                  Strategiprofilen gjelder bare deg. Motspillere vektlegger ressursene mer
+                  likt (jevnere vekter). Hver simulering starter balansert; ved landsby #2
+                  revurderes beste strategi ut fra gjenværende posisjoner.
                 </p>
 
                 {!simActive ? (
@@ -646,9 +646,9 @@ function App() {
                 <div className="panel sim-placeholder">
                   <p className="muted small">
                     Velg hvem du er, gi spillere navn og farger. Alle plasseres manuelt i
-                    draft-rekkefølge. Strategiprofilen gjelder bare deg — motspillere er
-                    alltid balansert. Ved landsby #2 byttes strategien automatisk ut fra
-                    gjenværende posisjoner.
+                    draft-rekkefølge. Strategiprofilen gjelder bare deg — motspillere
+                    vektlegger ressursene mer likt. Ved landsby #2 byttes strategien
+                    automatisk ut fra gjenværende posisjoner.
                   </p>
                 </div>
               )}

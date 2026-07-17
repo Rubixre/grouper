@@ -5,8 +5,8 @@ import type {
   ResourceWeights,
   SettlementScore,
 } from './types';
-import { DEFAULT_RESOURCE_WEIGHTS } from './types';
 import {
+  OPPONENT_RESOURCE_WEIGHTS,
   STRATEGY_PROFILES,
   type StrategyProfile,
   type StrategyProfileId,
@@ -43,11 +43,11 @@ export interface StrategyRecommendation {
 
 /**
  * Simuler motspillere til det er din andre landsby-tur.
- * Motstandere bruker alltid balansert strategi (DEFAULT) — uavhengig av
- * menneskets valgte profil. PSM: myopisk #1, par-score på #2.
+ * Motstandere bruker jevnere ressursvekter (OPPONENT_RESOURCE_WEIGHTS) —
+ * uavhengig av menneskets valgte profil. PSM: myopisk #1, par-score på #2.
  *
  * `weights` er bevart for bakoverkompatibilitet, men brukes ikke for
- * motspillervalg (alltid DEFAULT_RESOURCE_WEIGHTS).
+ * motspillervalg.
  */
 export function simulateToHumanSecondTurn(
   board: Board,
@@ -78,7 +78,7 @@ export function simulateToHumanSecondTurn(
       board,
       simulated,
       player,
-      DEFAULT_RESOURCE_WEIGHTS
+      OPPONENT_RESOURCE_WEIGHTS
     );
     if (!pickVertexId) return null;
 
@@ -378,7 +378,7 @@ export function recommendStrategyForSecondSettlement(
 
   let reason = 'Ingen gyldige plasseringer igjen – bruker balansert profil.';
   if (winnerPath) {
-    reason = `Ut fra gjenværende posisjoner passer ${recommendedProfile.label} best for landsby #2 (parscore ${winnerPath.pairScore.toFixed(2)}). Motspillere følger alltid balansert strategi.`;
+    reason = `Ut fra gjenværende posisjoner passer ${recommendedProfile.label} best for landsby #2 (parscore ${winnerPath.pairScore.toFixed(2)}). Motspillere vektlegger ressursene mer likt.`;
   }
 
   const suggestedPaths = ranked
