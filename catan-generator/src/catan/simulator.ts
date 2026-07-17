@@ -80,16 +80,22 @@ export function getOptionsForCurrentTurn(
 
   const resolvedWeights = weights ?? DEFAULT_RESOURCE_WEIGHTS;
   const ownCount = state.placements.filter((p) => p.player === player).length;
+  const isHuman = player === state.config.humanPlayerIndex;
 
-  // Første landsby: ranger etter forventet parscore (lookahead)
+  // Første landsby:
+  // - Mennesket (deg): lookahead mot forventet par (#1+#2)
+  // - Motstandere: kun «beste plass her og nå» — de planlegger ikke #2 ennå
   if (ownCount === 0) {
-    return rankFirstSettlementsWithLookahead(
-      state.board,
-      state.placements,
-      player,
-      state.playerCount,
-      resolvedWeights
-    );
+    if (isHuman) {
+      return rankFirstSettlementsWithLookahead(
+        state.board,
+        state.placements,
+        player,
+        state.playerCount,
+        resolvedWeights
+      );
+    }
+    return rankVertices(state.board, state.placements, resolvedWeights, player);
   }
 
   return rankVertices(state.board, state.placements, resolvedWeights, player);

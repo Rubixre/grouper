@@ -708,8 +708,23 @@ if (board) {
   const turnOpts = getOptionsForCurrentTurn(sim);
   assert(
     turnOpts[0]?.expectedPairScore !== undefined,
-    'getOptionsForCurrentTurn uses lookahead on first settlement'
+    'Human first settlement uses lookahead (expected pair score)'
   );
+
+  // Motstander på landsby #1: kun lokale score, ikke par-lookahead
+  if (turnOpts[0]) {
+    const afterHuman = placeSettlement(sim, turnOpts[0].vertexId);
+    const oppOpts = getOptionsForCurrentTurn(afterHuman);
+    assert(oppOpts.length > 0, 'Opponent has first-settlement options');
+    assert(
+      oppOpts.every((o) => o.expectedPairScore === undefined),
+      'Opponent #1 is myopic (no #2 lookahead)'
+    );
+    assert(
+      oppOpts.every((o) => o.placementKind === 'first'),
+      'Opponent #1 still uses first-placement scoring'
+    );
+  }
 }
 
 console.log('\nHarbor strategy alternative');
