@@ -153,8 +153,9 @@ export function isTerrainSamplePixel(rgb: Rgb): boolean {
   const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
   // Hav / blå duk
   if (hsv.h >= 175 && hsv.h <= 260 && hsv.s > 0.18 && hsv.v > 0.2) return false;
-  // Lys tallskive (krem/hvit)
-  if (hsv.v > 0.82 && hsv.s < 0.22) return false;
+  // Lys tallskive (krem/hvit) — ikke terreng
+  if (hsv.v > 0.78 && hsv.s < 0.28) return false;
+  if (hsv.v > 0.85 && hsv.s < 0.35) return false;
   // Nesten svart (vei/skygge)
   if (hsv.v < 0.12) return false;
   return true;
@@ -309,24 +310,26 @@ export function defaultOverlayTransform(
 }
 
 /**
- * Sample terreng i ring rundt tallskiven.
+ * Sample terreng i ring rundt tallskiven (tallbrikken ligger oppå ressursen).
  * Filtrerer bort krem/hav; bruker median for robusthet mot støy.
  */
 export function sampleTerrainColor(
   imageData: RgbaImageBuffer,
   cx: number,
   cy: number,
-  hexSize: number
+  hexSize: number,
+  excludeRadius = 0
 ): Rgb | null {
-  const inner = hexSize * 0.34;
-  const outer = hexSize * 0.58;
+  // Start utenfor tallskiven — ikke sample kremflaten som «ørkenbeige»
+  const inner = Math.max(hexSize * 0.36, excludeRadius * 1.12, hexSize * 0.28);
+  const outer = Math.max(inner + hexSize * 0.12, hexSize * 0.6);
   const rs: number[] = [];
   const gs: number[] = [];
   const bs: number[] = [];
 
-  for (let ring = 0; ring < 4; ring++) {
-    const rad = inner + ((ring + 0.5) / 4) * (outer - inner);
-    const count = 20 + ring * 8;
+  for (let ring = 0; ring < 5; ring++) {
+    const rad = inner + ((ring + 0.5) / 5) * (outer - inner);
+    const count = 24 + ring * 8;
     for (let i = 0; i < count; i++) {
       const ang = (i / count) * Math.PI * 2;
       const px = readPixel(imageData, cx + Math.cos(ang) * rad, cy + Math.sin(ang) * rad);
@@ -437,7 +440,7 @@ export function locateCreamDisc(
     }
   }
 
-  if (!best || best.score < 0.25) return null;
+  if (!best || best.score < 0.35) return null;
   return best;
 }
 
@@ -487,10 +490,18 @@ function creamDiscScore(
   // Må være en kremskive — ikke terreng med litt lyst midtparti
   if (creamRatio < 0.35 || outerCreamRatio < 0.4) return creamRatio * 0.1;
 
-  const inkTerm =
-    inkRatio >= 0.015 && inkRatio <= 0.45 ? 0.25 : inkRatio < 0.008 ? -0.15 : 0.05;
+  // Tallbrikke har sifferblekk; ørkensand kan være krem uten blekk
+  if (inkRatio < 0.012) return creamRatio * 0.12 + outerCreamRatio * 0.05;
 
-  return creamRatio * 0.5 + outerCreamRatio * 0.25 + inkTerm;
+  const inkTerm =
+    inkRatio >= 0.015 && inkRatio <= 0.5 ? 0.3 : inkRatio < 0.012 ? -0.2 : 0.08;
+
+  return creamRatio * 0.45 + outerCreamRatio * 0.22 + inkTerm;
+}
+
+/** True når vi har en ekte tallbrikke (krem + blekk), ikke bare lyst terreng. */
+export function isNumberTokenDisc(disc: CreamDisc | null): boolean {
+  return !!disc && disc.score >= 0.35;
 }
 
 export interface NumberTokenFeatures {
@@ -861,15 +872,16 @@ export function bestNumberFromFeatures(
 }
 
 /**
- * Analyser tallskiven: lokaliser krem-skive, orienter via punktum bak tallet,
- * skill rød 6/8 og sifferform (ingen pip-bue).
+ * Analyser tallskiven: krever bekreftet krem-tallbrikke med blekk.
+ * Ørken har aldri tallbrikke — kall ikke denne for ørken-hex.
  */
 export function guessNumberFromCenterPatch(
   imageData: RgbaImageBuffer,
   cx: number,
   cy: number,
   hexSize: number,
-  resource: ResourceType | null
+  resource: ResourceType | null,
+  disc?: CreamDisc | null
 ): {
   number: number | null;
   confidence: number;
@@ -877,33 +889,18 @@ export function guessNumberFromCenterPatch(
   hasDisc?: boolean;
 } {
   if (resource === 'desert') {
-    return { number: null, confidence: 0.92, scores: {}, hasDisc: false };
+    return { number: null, confidence: 0.95, scores: {}, hasDisc: false };
   }
 
-  const disc = locateCreamDisc(imageData, cx, cy, hexSize);
-  if (!disc) {
-    const fallback: CreamDisc = {
-      x: cx,
-      y: cy,
-      radius: hexSize * 0.2,
-      score: 0.2,
-    };
-    const features = extractNumberTokenFeatures(imageData, fallback);
-    if (!features || features.inkRatio < 0.025) {
-      return { number: null, confidence: 0.12, scores: {}, hasDisc: false };
-    }
-    const best = bestNumberFromFeatures(features);
-    return {
-      ...best,
-      scores: scoreNumberHypotheses(features),
-      hasDisc: false,
-    };
+  const found = disc === undefined ? locateCreamDisc(imageData, cx, cy, hexSize) : disc;
+  if (!isNumberTokenDisc(found)) {
+    // Ingen tallbrikke → ikke gjett tall fra terrengtekstur
+    return { number: null, confidence: 0.08, scores: {}, hasDisc: false };
   }
 
-  const features = extractNumberTokenFeatures(imageData, disc);
-  if (!features) return { number: null, confidence: 0.1, scores: {}, hasDisc: true };
-  if (features.inkRatio < 0.02) {
-    return { number: null, confidence: 0.2, scores: {}, hasDisc: true };
+  const features = extractNumberTokenFeatures(imageData, found!);
+  if (!features || features.inkRatio < 0.02) {
+    return { number: null, confidence: 0.15, scores: {}, hasDisc: true };
   }
 
   const scores = scoreNumberHypotheses(features);
@@ -911,74 +908,127 @@ export function guessNumberFromCenterPatch(
   return { ...best, scores, hasDisc: true };
 }
 
+/** Hvor ørken-aktig er en terrengfarge (høyere = mer ørken). */
+export function desertLikeness(rgb: Rgb): number {
+  const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+  const warm = hsv.h >= 20 && hsv.h <= 60 ? 1 : hsv.h >= 15 && hsv.h <= 70 ? 0.45 : 0;
+  const satOk = hsv.s >= 0.08 && hsv.s <= 0.5 ? 1 - Math.abs(hsv.s - 0.28) : 0.15;
+  const valOk = hsv.v >= 0.42 && hsv.v <= 0.95 ? hsv.v : 0.2;
+  return warm * 0.45 + satOk * 0.25 + valOk * 0.3;
+}
+
 /**
- * Reconcile malm/ørken med tallskive: kremskive ⇒ ikke ørken;
- * ingen skive + varm beige ⇒ ørken.
+ * Klassifiser ressurs på nytt uten ørken-kandidat (når tallbrikke finnes).
+ */
+export function classifyNonDesertResource(rgb: Rgb): ResourceGuess {
+  const base = classifyResourceFromRgb(rgb);
+  if (base.resource !== 'desert') return base;
+  // Fall tilbake til malm for beige som egentlig var tallskive-lekkasje / lys malm
+  const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+  if (hsv.s < 0.22 || hsv.v < 0.55) {
+    return { resource: 'ore', confidence: Math.max(base.confidence, 0.5), rgb };
+  }
+  // Varm og mettet uten ørken-lov → korn
+  if (hsv.h >= 35 && hsv.h <= 70 && hsv.s >= 0.28) {
+    return { resource: 'wheat', confidence: 0.45, rgb };
+  }
+  return { resource: 'ore', confidence: 0.48, rgb };
+}
+
+export function expectedDesertCount(boardSize: BoardSize): number {
+  return boardSize === 'base' ? 1 : 2;
+}
+
+/**
+ * Tilordne ørken hardt: ørken har ALDRI tallbrikke.
+ * Hex med tallbrikke kan ikke være ørken. Blant hex uten tallbrikke
+ * plukkes de mest ørken-aktige opp til forventet antall.
+ */
+export function assignDesertsByNumberTokens(
+  entries: {
+    resource: ResourceGuess | null;
+    hasNumberToken: boolean;
+    terrainRgb: Rgb | null;
+  }[],
+  desertCount: number
+): (ResourceGuess | null)[] {
+  const out = entries.map((e) => e.resource);
+
+  // 1) Tallbrikke ⇒ aldri ørken
+  for (let i = 0; i < entries.length; i++) {
+    if (!entries[i]!.hasNumberToken) continue;
+    const g = out[i];
+    if (g?.resource === 'desert') {
+      out[i] = entries[i]!.terrainRgb
+        ? classifyNonDesertResource(entries[i]!.terrainRgb!)
+        : { resource: 'ore', confidence: 0.55, rgb: g.rgb };
+    }
+  }
+
+  // 2) Kandidater uten tallbrikke
+  const candidates = entries
+    .map((e, i) => ({
+      i,
+      score: e.hasNumberToken
+        ? -1
+        : e.terrainRgb
+          ? desertLikeness(e.terrainRgb)
+          : 0.2,
+    }))
+    .filter((c) => c.score >= 0)
+    .sort((a, b) => b.score - a.score);
+
+  const desertIdx = new Set(
+    candidates.slice(0, Math.max(0, desertCount)).map((c) => c.i)
+  );
+
+  for (let i = 0; i < entries.length; i++) {
+    if (entries[i]!.hasNumberToken) continue;
+    if (desertIdx.has(i)) {
+      const rgb = entries[i]!.terrainRgb ?? out[i]?.rgb ?? { r: 200, g: 180, b: 125 };
+      out[i] = { resource: 'desert', confidence: 0.85, rgb };
+    } else if (out[i]?.resource === 'desert') {
+      // Ekstra «ørken» uten tallbrikke men ikke valgt → malm
+      out[i] = entries[i]!.terrainRgb
+        ? classifyNonDesertResource(entries[i]!.terrainRgb!)
+        : { resource: 'ore', confidence: 0.5, rgb: out[i]!.rgb };
+    }
+  }
+
+  return out;
+}
+
+/**
+ * @deprecated Bruk assignDesertsByNumberTokens. Beholdt for tester.
+ * Kremskive ⇒ ikke ørken; ingen skive alene avgjør ikke ørken lenger.
  */
 export function reconcileOreDesertWithDisc(
   guess: ResourceGuess | null,
   hasCreamDisc: boolean
 ): ResourceGuess | null {
   if (!guess) return guess;
-  if (guess.resource !== 'ore' && guess.resource !== 'desert') return guess;
-
-  const hsv = rgbToHsv(guess.rgb.r, guess.rgb.g, guess.rgb.b);
-  const warmBeige =
-    hsv.h >= 22 && hsv.h <= 58 && hsv.s >= 0.1 && hsv.s <= 0.5 && hsv.v >= 0.45;
-
-  if (hasCreamDisc) {
-    if (guess.resource === 'desert') {
-      return {
-        resource: 'ore',
-        confidence: Math.max(guess.confidence, 0.55),
-        rgb: guess.rgb,
-      };
-    }
-    return {
-      ...guess,
-      confidence: Math.max(guess.confidence, 0.55),
-    };
-  }
-
-  // Ingen tallskive: ørken er mer sannsynlig ved varm beige
-  if (warmBeige && hsv.v >= 0.52) {
-    return {
-      resource: 'desert',
-      confidence: Math.max(guess.confidence, 0.6),
-      rgb: guess.rgb,
-    };
-  }
-  if (guess.resource === 'desert' && (!warmBeige || hsv.v < 0.48)) {
-    return {
-      resource: 'ore',
-      confidence: Math.max(guess.confidence * 0.9, 0.45),
-      rgb: guess.rgb,
-    };
+  if (hasCreamDisc && guess.resource === 'desert') {
+    return classifyNonDesertResource(guess.rgb);
   }
   return guess;
 }
 
 /**
- * Tilordne tall globalt mot kjent Catan-pool (2×6, 2×8, …).
- * Retter lokale pip-feil når ressursene allerede er greie.
+ * Tilordne tall globalt mot kjent Catan-pool.
+ * Kun sterke lokale treff — fyller IKKE inn svake gjetninger (bedre tomt enn feil).
  */
 export function assignNumbersWithPool(
   hexScores: {
     scores: Partial<Record<PhotoBoardNumber, number>>;
     localNumber: number | null;
     localConfidence: number;
+    hasToken?: boolean;
   }[],
   pool: number[]
 ): { number: PhotoBoardNumber | null; confidence: number }[] {
   const n = hexScores.length;
   const result: { number: PhotoBoardNumber | null; confidence: number }[] = hexScores.map(
-    (h) => ({
-      number:
-        h.localNumber !== null && isPhotoBoardNumber(h.localNumber)
-          ? h.localNumber
-          : null,
-      confidence: h.localConfidence,
-    })
+    () => ({ number: null, confidence: 0.2 })
   );
 
   const available = [...pool];
@@ -987,54 +1037,60 @@ export function assignNumbersWithPool(
   type Cand = { hi: number; num: PhotoBoardNumber; score: number };
   const cands: Cand[] = [];
   for (let hi = 0; hi < n; hi++) {
+    if (hexScores[hi]!.hasToken === false) continue;
+    const scores = hexScores[hi]!.scores;
+    // Finn beste og nest beste for margin
+    let bestNum: PhotoBoardNumber | null = null;
+    let bestScore = -Infinity;
+    let second = -Infinity;
     for (const num of PHOTO_BOARD_NUMBERS) {
-      const score = hexScores[hi]!.scores[num];
-      if (score == null || score < 0.18) continue;
-      cands.push({ hi, num, score });
+      const score = scores[num];
+      if (score == null) continue;
+      if (score > bestScore) {
+        second = bestScore;
+        bestScore = score;
+        bestNum = num;
+      } else if (score > second) {
+        second = score;
+      }
     }
+    if (bestNum == null || bestScore < 0.45) continue;
+    const margin = bestScore - (Number.isFinite(second) ? second : 0);
+    // Rød 6/8: lavere margin-krav; ellers krev tydelig vinner
+    const isRedPair = bestNum === 6 || bestNum === 8;
+    if (!isRedPair && margin < 0.06 && bestScore < 0.7) continue;
+    cands.push({
+      hi,
+      num: bestNum,
+      score: bestScore + margin * 0.5,
+    });
   }
   cands.sort((a, b) => b.score - a.score);
-
-  // Nullstill og bygg på nytt fra scores + pool
-  for (let i = 0; i < n; i++) {
-    result[i] = { number: null, confidence: hexScores[i]!.localConfidence * 0.5 };
-  }
 
   for (const c of cands) {
     if (usedHex.has(c.hi)) continue;
     const idx = available.indexOf(c.num);
-    if (idx < 0) continue;
+    if (idx < 0) {
+      // Prøv alternativ for rød: 6↔8
+      if (c.num === 6 || c.num === 8) {
+        const alt = c.num === 6 ? 8 : 6;
+        const altIdx = available.indexOf(alt);
+        if (altIdx < 0) continue;
+        available.splice(altIdx, 1);
+        usedHex.add(c.hi);
+        result[c.hi] = {
+          number: alt,
+          confidence: clamp(0.45 + c.score * 0.3, 0.4, 0.9),
+        };
+      }
+      continue;
+    }
     available.splice(idx, 1);
     usedHex.add(c.hi);
     result[c.hi] = {
       number: c.num,
-      confidence: clamp(0.4 + c.score * 0.4, 0.4, 0.96),
+      confidence: clamp(0.45 + c.score * 0.35, 0.42, 0.96),
     };
-  }
-
-  // Fyll resten med beste gjenværende pool-tall
-  for (let hi = 0; hi < n; hi++) {
-    if (result[hi]!.number != null) continue;
-    let bestNum: PhotoBoardNumber | null = null;
-    let bestScore = -Infinity;
-    const uniq = [...new Set(available)] as PhotoBoardNumber[];
-    for (const num of uniq) {
-      const s = hexScores[hi]!.scores[num] ?? -1;
-      if (s > bestScore) {
-        bestScore = s;
-        bestNum = num;
-      }
-    }
-    if (bestNum != null && bestScore > 0.05) {
-      const idx = available.indexOf(bestNum);
-      if (idx >= 0) {
-        available.splice(idx, 1);
-        result[hi] = {
-          number: bestNum,
-          confidence: clamp(0.32 + bestScore * 0.35, 0.3, 0.85),
-        };
-      }
-    }
   }
 
   return result;
@@ -1077,13 +1133,19 @@ export function recognizeBoardFromImageData(
 ): BoardRecognitionResult {
   const landCoords = getLandHexCoords(boardSize);
   const sampleHexSize = transform.hexSize / (imageAdjust.zoom || 1);
-  const pending: {
+
+  type Pending = {
     coord: HexCoord;
+    terrainRgb: Rgb | null;
     resource: ResourceGuess | null;
+    disc: CreamDisc | null;
+    hasNumberToken: boolean;
     localNumber: number | null;
     localConfidence: number;
     scores: Partial<Record<PhotoBoardNumber, number>>;
-  }[] = [];
+  };
+
+  const pending: Pending[] = [];
 
   for (const coord of landCoords) {
     const display = axialToImagePixel(coord, transform);
@@ -1094,42 +1156,82 @@ export function recognizeBoardFromImageData(
       imageData.height,
       imageAdjust
     );
-    const terrain = sampleTerrainColor(imageData, x, y, sampleHexSize);
 
-    let resourceGuess: ResourceGuess | null = terrain
+    // Tallbrikken ligger oppå ressursen — finn den først
+    const disc = locateCreamDisc(imageData, x, y, sampleHexSize);
+    const hasNumberToken = isNumberTokenDisc(disc);
+
+    const terrain = sampleTerrainColor(
+      imageData,
+      x,
+      y,
+      sampleHexSize,
+      hasNumberToken && disc ? disc.radius : sampleHexSize * 0.2
+    );
+
+    const resourceGuess: ResourceGuess | null = terrain
       ? classifyResourceFromRgb(terrain)
       : null;
 
-    // Finn tallskive før ørken-avgjørelse — skive betyr aldri ørken
-    const disc = locateCreamDisc(imageData, x, y, sampleHexSize);
-    const hasDisc = !!disc && disc.score >= 0.25;
-    resourceGuess = reconcileOreDesertWithDisc(resourceGuess, hasDisc);
-
-    const numberGuess =
-      resourceGuess?.resource === 'desert'
-        ? { number: null, confidence: 0.92, scores: {} as Partial<Record<PhotoBoardNumber, number>> }
-        : guessNumberFromCenterPatch(
-            imageData,
-            x,
-            y,
-            sampleHexSize,
-            resourceGuess?.resource ?? null
-          );
-
     pending.push({
       coord,
+      terrainRgb: terrain,
       resource: resourceGuess,
-      localNumber: numberGuess.number,
-      localConfidence: numberGuess.confidence,
-      scores: numberGuess.scores ?? {},
+      disc,
+      hasNumberToken,
+      localNumber: null,
+      localConfidence: 0.1,
+      scores: {},
     });
   }
 
-  // Global talltilordning for ikke-ørken
+  // Ørken = ingen tallbrikke (hard regel + forventet antall)
+  const desertAssigned = assignDesertsByNumberTokens(
+    pending.map((p) => ({
+      resource: p.resource,
+      hasNumberToken: p.hasNumberToken,
+      terrainRgb: p.terrainRgb,
+    })),
+    expectedDesertCount(boardSize)
+  );
+  for (let i = 0; i < pending.length; i++) {
+    pending[i]!.resource = desertAssigned[i] ?? pending[i]!.resource;
+  }
+
+  // Tall kun der det finnes tallbrikke (ørken har aldri)
+  for (const p of pending) {
+    if (p.resource?.resource === 'desert' || !p.hasNumberToken) {
+      p.localNumber = null;
+      p.localConfidence = p.resource?.resource === 'desert' ? 0.95 : 0.08;
+      p.scores = {};
+      continue;
+    }
+    const display = axialToImagePixel(p.coord, transform);
+    const { x, y } = displayToImagePixel(
+      display.x,
+      display.y,
+      imageData.width,
+      imageData.height,
+      imageAdjust
+    );
+    const numberGuess = guessNumberFromCenterPatch(
+      imageData,
+      x,
+      y,
+      sampleHexSize,
+      p.resource?.resource ?? null,
+      p.disc
+    );
+    p.localNumber = numberGuess.number;
+    p.localConfidence = numberGuess.confidence;
+    p.scores = numberGuess.scores ?? {};
+  }
+
   const numberedIdx: number[] = [];
   for (let i = 0; i < pending.length; i++) {
     const p = pending[i]!;
     if (p.resource?.resource === 'desert') continue;
+    if (!p.hasNumberToken) continue;
     numberedIdx.push(i);
   }
 
@@ -1139,6 +1241,7 @@ export function recognizeBoardFromImageData(
       scores: pending[i]!.scores,
       localNumber: pending[i]!.localNumber,
       localConfidence: pending[i]!.localConfidence,
+      hasToken: true,
     })),
     numberedIdx.length === pool.length
       ? pool
@@ -1151,11 +1254,19 @@ export function recognizeBoardFromImageData(
         coord: p.coord,
         resource: p.resource,
         number: null,
-        numberConfidence: Math.max(p.localConfidence, 0.85),
+        numberConfidence: 0.95,
       };
     }
     const slot = numberedIdx.indexOf(i);
-    const assigned = slot >= 0 ? assignment[slot] : null;
+    if (slot < 0) {
+      return {
+        coord: p.coord,
+        resource: p.resource,
+        number: null,
+        numberConfidence: 0.1,
+      };
+    }
+    const assigned = assignment[slot];
     const number =
       assigned?.number != null && isPhotoBoardNumber(assigned.number)
         ? assigned.number
