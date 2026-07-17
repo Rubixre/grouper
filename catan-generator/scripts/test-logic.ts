@@ -1343,6 +1343,8 @@ import {
   mapPipsToNumber,
   preferFiveOverNine,
   recognizeBoardFromImageData,
+  expectedPipCount,
+  numberPoolForBoardSize,
 } from '../src/catan/photoRecognize.ts';
 import { getLandHexCoords } from '../src/catan/boardLayout.ts';
 {
@@ -1432,29 +1434,59 @@ import { getLandHexCoords } from '../src/catan/boardLayout.ts';
     desert: { r: 200, g: 180, b: 125 },
   };
   const numbersCycle = [6, 8, 5, 10, 3, null] as const; // null paired with desert slots
+  // Gyldig Catan-tallsett for de 16 ikke-ørken-hexene (syklusen over produserer for mange 6/8)
+  const validNonDesertNumbers = [
+    2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11,
+  ];
+  let numberSlot = 0;
   coords.forEach((coord, i) => {
     const resource = resourcesCycle[i % resourcesCycle.length]!;
     const { x, y } = axialToImagePixel(coord, t);
     paintCircle(x, y, t.hexSize * 0.55, proto[resource]);
-    // Cream number token + dark pips for non-desert
+    // Cream number token + dark pips along BOTTOM arc (real Catan layout)
     if (resource !== 'desert') {
       paintCircle(x, y, t.hexSize * 0.2, { r: 245, g: 240, b: 225 });
-      const n = numbersCycle[i % numbersCycle.length];
+      const n = validNonDesertNumbers[numberSlot % validNonDesertNumbers.length]!;
+      numberSlot += 1;
       const pipTarget =
-        n === 6 || n === 8 ? 5 : n === 5 || n === 9 ? 4 : n === 10 || n === 4 ? 3 : n === 3 || n === 11 ? 2 : 1;
-      const isRed = n === 6;
+        n === 6 || n === 8
+          ? 5
+          : n === 5 || n === 9
+            ? 4
+            : n === 10 || n === 4
+              ? 3
+              : n === 3 || n === 11
+                ? 2
+                : 1;
+      const isRed = n === 6 || n === 8;
       for (let p = 0; p < pipTarget; p++) {
-        const ang = (p / pipTarget) * Math.PI * 2 - Math.PI / 2;
-        const pr = t.hexSize * 0.15;
+        // Bunnbue: små, separerte pips som ekte brikker
+        const ang = Math.PI * 0.2 + (p / Math.max(pipTarget - 1, 1)) * (Math.PI * 0.6);
+        const pr = t.hexSize * 0.155;
         const px = x + Math.cos(ang) * pr;
         const py = y + Math.sin(ang) * pr;
-        paintCircle(px, py, Math.max(2, t.hexSize * 0.03), isRed ? { r: 180, g: 30, b: 30 } : { r: 20, g: 20, b: 20 });
+        paintCircle(
+          px,
+          py,
+          Math.max(1.8, t.hexSize * 0.02),
+          isRed ? { r: 180, g: 30, b: 30 } : { r: 20, g: 20, b: 20 }
+        );
       }
-      // Digit ink in center (wide for 10)
-      const wide = n === 10;
-      paintCircle(x - (wide ? t.hexSize * 0.04 : 0), y, t.hexSize * 0.04, isRed ? { r: 180, g: 30, b: 30 } : { r: 25, g: 25, b: 25 });
+      // Digit ink in center (wide for 10+)
+      const wide = n >= 10;
+      const digitColor = isRed ? { r: 180, g: 30, b: 30 } : { r: 25, g: 25, b: 25 };
+      paintCircle(
+        x - (wide ? t.hexSize * 0.045 : 0),
+        y - t.hexSize * 0.045,
+        t.hexSize * 0.035,
+        digitColor
+      );
       if (wide) {
-        paintCircle(x + t.hexSize * 0.05, y, t.hexSize * 0.04, { r: 25, g: 25, b: 25 });
+        paintCircle(x + t.hexSize * 0.05, y - t.hexSize * 0.045, t.hexSize * 0.035, {
+          r: 25,
+          g: 25,
+          b: 25,
+        });
       }
     }
   });
@@ -1465,13 +1497,37 @@ import { getLandHexCoords } from '../src/catan/boardLayout.ts';
   assert(recognized.recognizedResources >= 15, 'Most synthetic hexes recognized');
 
   let matches = 0;
+  let numberMatches = 0;
+  let numberExpected = 0;
+  numberSlot = 0;
   coords.forEach((coord, i) => {
     const expected = resourcesCycle[i % resourcesCycle.length]!;
     const hit = recognized.hexes.find((h) => h.coord.q === coord.q && h.coord.r === coord.r);
     if (hit?.resource?.resource === expected) matches += 1;
+    if (expected !== 'desert') {
+      const expectedNum = validNonDesertNumbers[numberSlot]!;
+      numberSlot += 1;
+      numberExpected += 1;
+      if (hit?.number === expectedNum) numberMatches += 1;
+    }
   });
   assert(matches >= 15, `Synthetic color board mostly correct (got ${matches}/19)`);
   assert(recognized.recognizedNumbers >= 10, 'Recognizes numbers on most non-desert hexes');
+  assert(
+    numberMatches >= Math.floor(numberExpected * 0.5),
+    `Synthetic numbers mostly correct (got ${numberMatches}/${numberExpected})`
+  );
+
+  // Pool-konsistens: ingen ulovlige duplikater utover Catan-sett
+  const usedNumbers = recognized.hexes
+    .map((h) => h.number)
+    .filter((n): n is number => n != null);
+  const countOf = (n: number) => usedNumbers.filter((x) => x === n).length;
+  assert(countOf(6) <= 2 && countOf(8) <= 2, 'At most two 6s and two 8s after pool assign');
+  assert(countOf(2) <= 1 && countOf(12) <= 1, 'At most one 2 and one 12 on base board');
+
+  assert(expectedPipCount(6) === 5 && expectedPipCount(12) === 1, 'Pip expectations for 6 and 12');
+  assert(numberPoolForBoardSize('base').length === 18, 'Base number pool has 18 tokens');
 
   const draft = applyRecognitionToDraft(createEmptyLandDraft('base'), recognized, {
     overwriteResources: true,
