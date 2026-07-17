@@ -12,11 +12,14 @@ import {
 import {
   applyRecognitionToDraft,
   axialToImagePixel,
+  defaultImageAdjust,
   defaultOverlayTransform,
   loadImageDataFromUrl,
-  nudgeTransform,
+  nudgeImageAdjust,
   recognizeBoardFromImageData,
+  scaleImageAdjustForRecognition,
   scaleTransformForRecognition,
+  type ImageAdjust,
   type ImageOverlayTransform,
 } from '../catan/photoRecognize';
 import { getLandHexCoords } from '../catan/boardLayout';
@@ -64,6 +67,17 @@ function hexPath(coord: { q: number; r: number }, size: number): string {
   );
 }
 
+/** object-fit: contain / SVG meet-skala fra naturlig bilde → ramme. */
+function meetScale(
+  frameW: number,
+  frameH: number,
+  imageW: number,
+  imageH: number
+): number {
+  if (frameW <= 0 || frameH <= 0 || imageW <= 0 || imageH <= 0) return 1;
+  return Math.min(frameW / imageW, frameH / imageH);
+}
+
 export function PhotoBoardModal({
   open,
   onClose,
@@ -73,15 +87,21 @@ export function PhotoBoardModal({
 }: PhotoBoardModalProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ x: number; y: number; cx: number; cy: number } | null>(
-    null
-  );
+  const dragRef = useRef<{
+    x: number;
+    y: number;
+    panX: number;
+    panY: number;
+  } | null>(null);
 
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [imageSize, setImageSize] = useState<{ w: number; h: number } | null>(
     null
   );
-  const [transform, setTransform] = useState<ImageOverlayTransform | null>(null);
+  /** Fast hex-overlay — flyttes ikke; bildet justeres under. */
+  const [gridTransform, setGridTransform] =
+    useState<ImageOverlayTransform | null>(null);
+  const [imageAdjust, setImageAdjust] = useState<ImageAdjust>(defaultImageAdjust);
   const [drafts, setDrafts] = useState<LandHexDraft[]>(() =>
     createEmptyLandDraft(boardSize)
   );
@@ -89,6 +109,9 @@ export function PhotoBoardModal({
   const [applyError, setApplyError] = useState<string | null>(null);
   const [recognizeStatus, setRecognizeStatus] = useState<string | null>(null);
   const [recognizing, setRecognizing] = useState(false);
+  const [frameSize, setFrameSize] = useState<{ w: number; h: number } | null>(
+    null
+  );
 
   const landCoords = useMemo(() => getLandHexCoords(boardSize), [boardSize]);
 
@@ -119,6 +142,22 @@ export function PhotoBoardModal({
     };
   }, [imageUrl]);
 
+  useEffect(() => {
+    if (!imageUrl || !overlayRef.current) {
+      setFrameSize(null);
+      return;
+    }
+    const el = overlayRef.current;
+    const update = () => {
+      const rect = el.getBoundingClientRect();
+      setFrameSize({ w: rect.width, h: rect.height });
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [imageUrl]);
+
   const validation = useMemo(
     () => validateLandDraft(drafts, boardSize),
     [drafts, boardSize]
@@ -142,10 +181,25 @@ export function PhotoBoardModal({
     };
   }, [drafts]);
 
-  const initTransformForImage = useCallback(
+  const cssScale =
+    frameSize && imageSize
+      ? meetScale(frameSize.w, frameSize.h, imageSize.w, imageSize.h)
+      : 1;
+
+  const imageLayerStyle = useMemo(
+    () => ({
+      transform: `translate(${imageAdjust.panX * cssScale}px, ${
+        imageAdjust.panY * cssScale
+      }px) rotate(${imageAdjust.rotationDeg}deg) scale(${imageAdjust.zoom})`,
+    }),
+    [imageAdjust, cssScale]
+  );
+
+  const initForImage = useCallback(
     (w: number, h: number) => {
       setImageSize({ w, h });
-      setTransform(defaultOverlayTransform(w, h, landCoords));
+      setGridTransform(defaultOverlayTransform(w, h, landCoords));
+      setImageAdjust(defaultImageAdjust());
     },
     [landCoords]
   );
@@ -158,7 +212,7 @@ export function PhotoBoardModal({
     setRecognizeStatus(null);
     const img = new Image();
     img.onload = () => {
-      initTransformForImage(img.naturalWidth || img.width, img.naturalHeight || img.height);
+      initForImage(img.naturalWidth || img.width, img.naturalHeight || img.height);
     };
     img.src = url;
   };
@@ -181,8 +235,8 @@ export function PhotoBoardModal({
   };
 
   const handleRecognize = async () => {
-    if (!imageUrl || !transform) {
-      setRecognizeStatus('Last opp bilde og juster overlay først.');
+    if (!imageUrl || !gridTransform) {
+      setRecognizeStatus('Last opp bilde og juster det under hex-nettet først.');
       return;
     }
     setRecognizing(true);
@@ -190,11 +244,13 @@ export function PhotoBoardModal({
     setApplyError(null);
     try {
       const { imageData, scale } = await loadImageDataFromUrl(imageUrl);
-      const recogTransform = scaleTransformForRecognition(transform, scale);
+      const recogTransform = scaleTransformForRecognition(gridTransform, scale);
+      const recogAdjust = scaleImageAdjustForRecognition(imageAdjust, scale);
       const result = recognizeBoardFromImageData(
         imageData,
         recogTransform,
-        boardSize
+        boardSize,
+        recogAdjust
       );
       setDrafts((prev) =>
         applyRecognitionToDraft(prev, result, {
@@ -205,7 +261,7 @@ export function PhotoBoardModal({
       setRecognizeStatus(
         `Gjenkjente ${result.recognizedResources}/${result.hexes.length} ressurser og ` +
           `${result.recognizedNumbers}/${result.hexes.length} tall. ` +
-          'Sjekk overlay-treff og rett feil i gridet før du bruker brettet.'
+          'Sjekk at bildet treffer hex-nettet og rett feil i gridet før du bruker brettet.'
       );
     } catch (err) {
       setRecognizeStatus(
@@ -234,28 +290,27 @@ export function PhotoBoardModal({
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if (!transform) return;
+    if (!imageUrl) return;
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     dragRef.current = {
       x: e.clientX,
       y: e.clientY,
-      cx: transform.centerX,
-      cy: transform.centerY,
+      panX: imageAdjust.panX,
+      panY: imageAdjust.panY,
     };
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
-    if (!dragRef.current || !transform || !imageSize || !overlayRef.current) return;
+    if (!dragRef.current || !imageSize || !overlayRef.current) return;
     const rect = overlayRef.current.getBoundingClientRect();
-    const scaleX = imageSize.w / rect.width;
-    const scaleY = imageSize.h / rect.height;
-    const dx = (e.clientX - dragRef.current.x) * scaleX;
-    const dy = (e.clientY - dragRef.current.y) * scaleY;
-    setTransform({
-      ...transform,
-      centerX: dragRef.current.cx + dx,
-      centerY: dragRef.current.cy + dy,
-    });
+    const scale = meetScale(rect.width, rect.height, imageSize.w, imageSize.h);
+    const dx = (e.clientX - dragRef.current.x) / scale;
+    const dy = (e.clientY - dragRef.current.y) / scale;
+    const nextPanX = dragRef.current.panX + dx;
+    const nextPanY = dragRef.current.panY + dy;
+    setImageAdjust((prev) =>
+      nudgeImageAdjust(prev, { panX: nextPanX, panY: nextPanY })
+    );
   };
 
   const onPointerUp = () => {
@@ -287,10 +342,9 @@ export function PhotoBoardModal({
 
         <div className="modal-body photo-board-body">
           <p className="muted small photo-board-intro">
-            Last opp et bilde mest mulig rett ovenfra, juster hex-overlayet til
-            brikkene, og kjør gjenkjenning. Ressurser leses fra terrengfarge;
-            tall fra pip/siffer på tallskiven. Rett feil i gridet før du bruker
-            brettet.
+            Last opp et bilde mest mulig rett ovenfra. Hex-nettet ligger fast —
+            dra, skaler og roter bildet til brikkene treffer. Kjør gjenkjenning,
+            og rett feil i gridet før du bruker brettet.
           </p>
 
           <div className="photo-board-layout">
@@ -315,7 +369,7 @@ export function PhotoBoardModal({
                   type="button"
                   className="btn primary"
                   onClick={handleRecognize}
-                  disabled={!imageUrl || !transform || recognizing}
+                  disabled={!imageUrl || !gridTransform || recognizing}
                 >
                   {recognizing ? 'Gjenkjenner…' : 'Gjenkjenn brett'}
                 </button>
@@ -327,7 +381,8 @@ export function PhotoBoardModal({
                       if (imageUrl) URL.revokeObjectURL(imageUrl);
                       setImageUrl(null);
                       setImageSize(null);
-                      setTransform(null);
+                      setGridTransform(null);
+                      setImageAdjust(defaultImageAdjust());
                       setRecognizeStatus(null);
                     }}
                   >
@@ -346,26 +401,28 @@ export function PhotoBoardModal({
                 onPointerUp={onPointerUp}
                 onPointerLeave={onPointerUp}
               >
-                {imageUrl && transform && imageSize ? (
+                {imageUrl && gridTransform && imageSize ? (
                   <>
-                    <img
-                      src={imageUrl}
-                      alt="Opplastet Catan-brett"
-                      draggable={false}
-                    />
+                    <div className="photo-image-layer" style={imageLayerStyle}>
+                      <img
+                        src={imageUrl}
+                        alt="Opplastet Catan-brett"
+                        draggable={false}
+                      />
+                    </div>
                     <svg
                       className="photo-overlay-svg"
                       viewBox={`0 0 ${imageSize.w} ${imageSize.h}`}
                       preserveAspectRatio="xMidYMid meet"
                     >
                       {landCoords.map((coord) => {
-                        const center = axialToImagePixel(coord, transform);
-                        const rad = (transform.rotationDeg * Math.PI) / 180;
+                        const center = axialToImagePixel(coord, gridTransform);
+                        const rad = (gridTransform.rotationDeg * Math.PI) / 180;
                         const pts = Array.from({ length: 6 }, (_, i) => {
                           const angle = ((60 * i - 30) * Math.PI) / 180 + rad;
                           return {
-                            x: center.x + transform.hexSize * Math.cos(angle),
-                            y: center.y + transform.hexSize * Math.sin(angle),
+                            x: center.x + gridTransform.hexSize * Math.cos(angle),
+                            y: center.y + gridTransform.hexSize * Math.sin(angle),
                           };
                         });
                         const d =
@@ -382,15 +439,21 @@ export function PhotoBoardModal({
                               className="photo-overlay-hex"
                               fill="rgba(220, 38, 38, 0.1)"
                               stroke="rgba(220, 38, 38, 0.95)"
-                              strokeWidth={Math.max(2, transform.hexSize * 0.045)}
+                              strokeWidth={Math.max(
+                                2,
+                                gridTransform.hexSize * 0.045
+                              )}
                             />
                             <circle
                               cx={center.x}
                               cy={center.y}
-                              r={Math.max(2.5, transform.hexSize * 0.065)}
+                              r={Math.max(2.5, gridTransform.hexSize * 0.065)}
                               fill="rgba(255, 255, 255, 0.9)"
                               stroke="rgba(185, 28, 28, 0.95)"
-                              strokeWidth={Math.max(1.2, transform.hexSize * 0.025)}
+                              strokeWidth={Math.max(
+                                1.2,
+                                gridTransform.hexSize * 0.025
+                              )}
                             />
                           </g>
                         );
@@ -400,42 +463,42 @@ export function PhotoBoardModal({
                 ) : (
                   <p className="muted small">
                     Last opp et bilde tatt mest mulig rett ovenfra. Dra for å
-                    flytte overlay, bruk skyverne under for størrelse og
+                    flytte bildet, bruk skyverne under for skalering og
                     rotasjon.
                   </p>
                 )}
               </div>
 
-              {transform && imageUrl && (
+              {gridTransform && imageUrl && (
                 <div className="photo-overlay-controls">
                   <label className="photo-overlay-slider">
-                    <span>Størrelse</span>
+                    <span>Skalér bilde</span>
                     <input
                       type="range"
-                      min={Math.max(8, (imageSize?.w ?? 400) * 0.02)}
-                      max={(imageSize?.w ?? 400) * 0.2}
-                      step={0.5}
-                      value={transform.hexSize}
+                      min={0.5}
+                      max={2.5}
+                      step={0.01}
+                      value={imageAdjust.zoom}
                       onChange={(e) =>
-                        setTransform(
-                          nudgeTransform(transform, {
-                            hexSize: Number(e.target.value),
+                        setImageAdjust(
+                          nudgeImageAdjust(imageAdjust, {
+                            zoom: Number(e.target.value),
                           })
                         )
                       }
                     />
                   </label>
                   <label className="photo-overlay-slider">
-                    <span>Rotasjon</span>
+                    <span>Roter bilde</span>
                     <input
                       type="range"
-                      min={-30}
-                      max={30}
+                      min={-45}
+                      max={45}
                       step={0.5}
-                      value={transform.rotationDeg}
+                      value={imageAdjust.rotationDeg}
                       onChange={(e) =>
-                        setTransform(
-                          nudgeTransform(transform, {
+                        setImageAdjust(
+                          nudgeImageAdjust(imageAdjust, {
                             rotationDeg: Number(e.target.value),
                           })
                         )
@@ -445,15 +508,9 @@ export function PhotoBoardModal({
                   <button
                     type="button"
                     className="btn"
-                    onClick={() => {
-                      if (imageSize) {
-                        setTransform(
-                          defaultOverlayTransform(imageSize.w, imageSize.h, landCoords)
-                        );
-                      }
-                    }}
+                    onClick={() => setImageAdjust(defaultImageAdjust())}
                   >
-                    Nullstill overlay
+                    Nullstill bilde
                   </button>
                 </div>
               )}
