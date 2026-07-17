@@ -77,8 +77,16 @@ const RED_ANCHOR_BONUS = 0.03;
 const MONO_RESOURCE_PENALTY = 0.12;
 const MONO_SINGLE_HEX_EXTRA = 0.06;
 const DESERT_PENALTY_PER_HEX = 0.04;
-const LOW_HEX_PIP_THRESHOLD = 10 / 36;
-const LOW_HEX_PENALTY = 0.03;
+/**
+ * 1–2 produktive hex er nesten alltid svake åpningsplasseringer.
+ * Straffen er stor nok til at en solid 3-hex slår typisk «sterk» 2-hex-kyst
+ * (f.eks. 6+8). Unntak for elite-2-hex: redusert straff, aldri null.
+ */
+/** 2-hex med topp-pip (6+8 = 10/36) får redusert straff — aldri fritak */
+const LOW_HEX_ELITE_PIP = 10 / 36;
+const LOW_HEX_PENALTY_1 = 0.22;
+const LOW_HEX_PENALTY_2 = 0.14;
+const LOW_HEX_PENALTY_2_ELITE = 0.07;
 const PAIR_DIVERSITY_SCALE = 0.25;
 const ROAD_SYNERGY_SCALE = 0.35;
 const CITY_SYNERGY_SCALE = 0.3;
@@ -291,15 +299,23 @@ function monoResourcePenalty(profile: ProductionProfile): number {
   return penalty;
 }
 
-function desertPenalty(profile: ProductionProfile): number {
-  return profile.desertNeighbors * DESERT_PENALTY_PER_HEX;
+/**
+ * Straff for færre enn 3 produktive hex.
+ * Elite 2-hex (pip ≥ 12/36 og ≥2 ressurser) får redusert straff — aldri fritak.
+ */
+export function lowHexPenalty(profile: ProductionProfile): number {
+  const n = profile.producingHexCount;
+  if (n >= 3) return 0;
+  if (n <= 1) return LOW_HEX_PENALTY_1;
+  // n === 2
+  if (profile.resources.size >= 2 && profile.pipTotal >= LOW_HEX_ELITE_PIP) {
+    return LOW_HEX_PENALTY_2_ELITE;
+  }
+  return LOW_HEX_PENALTY_2;
 }
 
-function lowHexPenalty(profile: ProductionProfile): number {
-  if (profile.producingHexCount >= 3) return 0;
-  if (profile.resources.size === 1 && profile.producingHexCount === 1) return 0;
-  if (profile.pipTotal >= LOW_HEX_PIP_THRESHOLD) return 0;
-  return LOW_HEX_PENALTY;
+function desertPenalty(profile: ProductionProfile): number {
+  return profile.desertNeighbors * DESERT_PENALTY_PER_HEX;
 }
 
 function pairRaw(profile: ProductionProfile, resource: ProdResource): number {
@@ -469,6 +485,9 @@ export function scorePairPlacement(
   const complement = complementScore(first, second, weights);
   const pairPip = pairPipBonus(first, second);
   const desertPen = desertPenalty(first) + desertPenalty(second);
+  // Low-hex må følge med i par — ellers overlever 2-hex-kyst i lookahead
+  const lowHexPen = lowHexPenalty(first) + lowHexPenalty(second);
+  const monoPen = monoResourcePenalty(first) + monoResourcePenalty(second);
   const pairProduction = first.total + second.total;
 
   const components: PlacementComponents = {
@@ -478,8 +497,8 @@ export function scorePairPlacement(
     pipBonus: 0,
     redAnchorBonus: 0,
     desertPenalty: desertPen,
-    lowHexPenalty: 0,
-    monoResourcePenalty: 0,
+    lowHexPenalty: lowHexPen,
+    monoResourcePenalty: monoPen,
     buildingSynergy: building,
     pairPipBonus: pairPip,
     complementScore: complement,
@@ -498,7 +517,9 @@ export function scorePairPlacement(
     portfolio +
     complement -
     overlap -
-    desertPen;
+    desertPen -
+    lowHexPen -
+    monoPen;
 
   return { total, components };
 }

@@ -577,13 +577,53 @@ import { scoreFirstPlacement } from '../src/catan/placementModel.ts';
 
   assert(
     (monoScore.components.monoResourcePenalty ?? 0) > 0,
-    'Single-resource placement gets mono-resource penalty'
+    'Mono-resource 6 gets mono penalty'
   );
-  assert(monoScore.components.redAnchorBonus === 0, 'Red anchor bonus requires resource diversity');
+  assert(
+    (monoScore.components.lowHexPenalty ?? 0) > 0,
+    '1-hex gets low-hex penalty'
+  );
   assert(
     balancedScore.total > monoScore.total,
-    'Balanced 3-resource spot outranks lone ore-6 edge gamble'
+    'Balanced 3-hex outranks mono 6'
   );
+
+  // Sterk 2-hex (6+8) skal tape mot solid 3-hex når begge er tilgjengelige
+  const eliteCoast = {
+    byResource: {
+      ore: (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.ore,
+      wheat: (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.wheat,
+    },
+    byNumber: {
+      6: (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.ore,
+      8: (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.wheat,
+    },
+    rawByResource: { ore: 5 / 36, wheat: 5 / 36 },
+    rawByNumber: { 6: 5 / 36, 8: 5 / 36 },
+    rawByResourceNumber: {
+      ore: { 6: 5 / 36 },
+      wheat: { 8: 5 / 36 },
+    },
+    total:
+      (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.ore +
+      (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.wheat,
+    pipTotal: 10 / 36,
+    producingHexCount: 2,
+    desertNeighbors: 0,
+    hasRedNumber: true,
+    resources: new Set(['ore', 'wheat']),
+    breakdown: [],
+  };
+  const coastScore = scoreFirstPlacement(eliteCoast, DEFAULT_RESOURCE_WEIGHTS, 0);
+  assert(
+    (coastScore.components.lowHexPenalty ?? 0) > 0,
+    '2-hex always pays low-hex penalty (no full waiver)'
+  );
+  assert(
+    balancedScore.total > coastScore.total,
+    'Solid 3-hex outranks elite 6+8 coast 2-hex'
+  );
+  assert(monoScore.components.redAnchorBonus === 0, 'Red anchor bonus requires resource diversity');
 }
 
 console.log('\nStrategy advisor');
@@ -593,7 +633,7 @@ import {
   rankFirstSettlementsWithLookahead,
   evaluateFirstSettlementPath,
 } from '../src/catan/strategyAdvisor.ts';
-import { getValidVertices, pickGreedyOpponentVertex, vertexPipTotal } from '../src/catan/settlements.ts';
+import { getValidVertices, pickGreedyOpponentVertex, vertexPipTotal, vertexProducingHexCount } from '../src/catan/settlements.ts';
 if (board) {
   const config = createSimulationConfig(4, 0);
   const sim = createSimulation(board, config);
@@ -604,7 +644,10 @@ if (board) {
   const valid = getValidVertices(sim.placements);
   let bestPipVertex = valid[0]!;
   let bestPip = -1;
+  const maxHex = Math.max(...valid.map((id) => vertexProducingHexCount(id, board)));
+  const preferredHex = maxHex >= 3 ? 3 : maxHex >= 2 ? 2 : maxHex;
   for (const vertexId of valid) {
+    if (vertexProducingHexCount(vertexId, board) < preferredHex) continue;
     const pip = vertexPipTotal(vertexId, board);
     if (pip > bestPip || (pip === bestPip && vertexId < bestPipVertex)) {
       bestPip = pip;
@@ -612,7 +655,10 @@ if (board) {
     }
   }
   const greedyPick = pickGreedyOpponentVertex(board, sim.placements, 1);
-  assert(greedyPick === bestPipVertex, 'Greedy opponent picks highest pip for first settlement');
+  assert(
+    greedyPick === bestPipVertex,
+    'Greedy opponent prefers 3-hex when available, then highest pip'
+  );
 
   const humanFirst = valid[1] ?? valid[0];
   const simulated = simulateToHumanSecondTurn(
@@ -1074,7 +1120,9 @@ if (board) {
         (o.buildingSynergy ?? 0) +
         (o.coordination ?? 0) +
         (o.pairPipBonus ?? 0) -
-        (o.desertPenalty ?? 0);
+        (o.desertPenalty ?? 0) -
+        (o.lowHexPenalty ?? 0) -
+        (o.monoResourcePenalty ?? 0);
       return Math.abs(recomposed - o.total) < 1e-6;
     }),
     'Second settlement score components sum to total'
