@@ -28,6 +28,17 @@ export interface FirstSettlementPath {
   bestSecondVertexId: string;
   /** Robust parscore (sikret #1 + sannsynlig #2-løft; spekulativ upside nedvektet) */
   pairScore: number;
+  /**
+   * Rangeringsscore: egen parstyrke + relativ margin mot motstanderne.
+   * «Ikke bare gjøre det bra — gjøre det bedre enn dem.»
+   */
+  relativeScore?: number;
+  /** ownPair − beste motstanderpar (etter simulering) */
+  marginVsBestOpponent?: number;
+  /** ownPair − snitt motstanderpar */
+  marginVsMeanOpponent?: number;
+  /** Merverdi av å nekte motstanderne din #1-plass */
+  denialValue?: number;
   /** Beste rå parscore etter én motstandersimulering (optimistisk) */
   optimisticPairScore?: number;
   /** #2 som simulert rest ville gitt (kan være «ta sjansen») */
@@ -70,11 +81,23 @@ export const HARBOR_UPSIDE_CREDIT = 0.08;
  * lookahead kan løfte spots som ikke er absolutt topp i shallow score.
  */
 export const FIRST_SETTLEMENT_THREAT_BUFFER = 2;
+/**
+ * Vekt på relativ margin (egen − motstander) i lookahead-rangering.
+ * 0 = kun absolutt egenstyrke; høyere = mer «slå dem», ikke bare «vær sterk».
+ */
+export const RELATIVE_ADVANTAGE_WEIGHT = 0.42;
+/** Andel av relativ ledd som er vs beste motstander (resten vs snitt). */
+export const RELATIVE_BEST_SHARE = 0.65;
+/**
+ * Vekt på denial: hvor mye bedre din #1 er enn beste spot som blir igjen til dem.
+ * Høy nok til at elite-#1 fortsatt prioriteres (nekte dem pip-gull).
+ */
+export const DENIAL_WEIGHT = 0.35;
 
 const DEFAULT_LOOKAHEAD_CANDIDATES = 12;
 const LOOKAHEAD_PIP_CANDIDATES = 6;
 export const LOOKAHEAD_IMMEDIATE_BLEND = 0.55;
-export const LOOKAHEAD_PIP_GUARD = 0.02;
+export const LOOKAHEAD_PIP_GUARD = 0.028;
 
 /** Antall motstanderplasseringer mellom din 1. og 2. landsby */
 export function opponentPlacementsUntilSecond(
@@ -239,6 +262,107 @@ function bestSecondOnBoard(
 }
 
 /**
+ * Estimér motstandernes parstyrke etter simulering frem til din #2-tur.
+ * Fullførte par scorer direkte; de med bare #1 får beste gjenværende #2
+ * (optimistisk for dem → konservativt for din relative margin).
+ */
+export function estimateOpponentPairScores(
+  board: Board,
+  simulated: PlacedSettlement[],
+  humanPlayer: number,
+  weights: ResourceWeights
+): number[] {
+  const econ = computeBoardEconomics(board, weights);
+  const byPlayer = new Map<number, string[]>();
+  for (const p of simulated) {
+    if (p.player === humanPlayer || p.player < 0) continue;
+    const list = byPlayer.get(p.player) ?? [];
+    list.push(p.vertexId);
+    byPlayer.set(p.player, list);
+  }
+
+  const scores: number[] = [];
+  for (const [, vertices] of byPlayer) {
+    if (vertices.length >= 2) {
+      scores.push(
+        scoreSecondSettlement(vertices[1]!, vertices[0]!, board, econ, simulated)
+          .total
+      );
+      continue;
+    }
+    if (vertices.length === 1) {
+      const best = bestSecondOnBoard(board, vertices[0]!, simulated, econ);
+      if (best) scores.push(best.total);
+      else scores.push(scoreVertex(vertices[0]!, board, econ, simulated).total);
+    }
+  }
+  return scores;
+}
+
+/**
+ * Denial: hvor mye sterkere er spoten du tok enn beste gjenværende for andre?
+ * Positiv = du nekta dem en elite; ~0 = du tok noe midt på treet.
+ */
+export function denialValueForFirstSpot(
+  board: Board,
+  placedBefore: PlacedSettlement[],
+  firstVertexId: string,
+  firstScore: number,
+  weights: ResourceWeights
+): number {
+  const econ = computeBoardEconomics(board, weights);
+  const after: PlacedSettlement[] = [
+    ...placedBefore,
+    { vertexId: firstVertexId, player: -1, isCity: false },
+  ];
+  const remaining = getValidVertices(after)
+    .map((id) => scoreVertex(id, board, econ, after).total)
+    .sort((a, b) => b - a);
+  const bestLeft = remaining[0] ?? 0;
+  return firstScore - bestLeft;
+}
+
+/**
+ * Absolutt egenstyrke + relativ margin mot motstanderne.
+ * marginVsBest veier tyngst (må slå den sterkeste), snitt myker av outliers.
+ */
+export function applyRelativeAdvantage(
+  ownPair: number,
+  opponentPairs: number[],
+  denialValue: number,
+  relativeWeight = RELATIVE_ADVANTAGE_WEIGHT,
+  denialWeight = DENIAL_WEIGHT
+): {
+  relativeScore: number;
+  marginVsBest: number;
+  marginVsMean: number;
+} {
+  if (opponentPairs.length === 0) {
+    return {
+      relativeScore: ownPair + denialWeight * Math.max(0, denialValue),
+      marginVsBest: 0,
+      marginVsMean: 0,
+    };
+  }
+  const bestOpp = Math.max(...opponentPairs);
+  const meanOpp =
+    opponentPairs.reduce((sum, s) => sum + s, 0) / opponentPairs.length;
+  const marginVsBest = ownPair - bestOpp;
+  const marginVsMean = ownPair - meanOpp;
+  const relativeMargin =
+    RELATIVE_BEST_SHARE * marginVsBest +
+    (1 - RELATIVE_BEST_SHARE) * marginVsMean;
+  return {
+    relativeScore:
+      ownPair +
+      relativeWeight * relativeMargin +
+      denialWeight * Math.max(0, denialValue),
+    marginVsBest,
+    marginVsMean,
+  };
+}
+
+/**
  * #1 er allerede sikret — usikkerhet gjelder bare løftet fra landsby #2.
  */
 export function blendSafeAndOptimisticPairScore(
@@ -371,11 +495,31 @@ export function evaluateFirstSettlementPath(
     (optimisticSecond.vertexId !== chosen.vertexId &&
       optimisticSecond.total - safeTotal > 0.04);
 
+  const ownPair = chosenIsThreatened ? pairScore * 0.85 : pairScore;
+  const opponentPairs = estimateOpponentPairScores(
+    board,
+    simulated,
+    humanPlayer,
+    weights
+  );
+  const denial = denialValueForFirstSpot(
+    board,
+    placed,
+    firstVertexId,
+    firstLocal.total,
+    weights
+  );
+  const relative = applyRelativeAdvantage(ownPair, opponentPairs, denial);
+
   return {
     firstVertexId,
     firstScore: firstLocal.total,
     bestSecondVertexId: chosen.vertexId,
-    pairScore: chosenIsThreatened ? pairScore * 0.85 : pairScore,
+    pairScore: ownPair,
+    relativeScore: relative.relativeScore,
+    marginVsBestOpponent: relative.marginVsBest,
+    marginVsMeanOpponent: relative.marginVsMean,
+    denialValue: denial,
     optimisticPairScore: optimisticSecond.total,
     optimisticSecondVertexId: optimisticSecond.vertexId,
     safePairScore: safeTotal,
@@ -432,8 +576,9 @@ export function rankFirstSettlementsWithLookahead(
       };
     }
     const pip = vertexPipTotal(spot.vertexId, board);
+    const relativeBase = path.relativeScore ?? path.pairScore;
     const blended =
-      path.pairScore +
+      relativeBase +
       LOOKAHEAD_IMMEDIATE_BLEND * spot.total +
       LOOKAHEAD_PIP_GUARD * pip;
     return {
@@ -441,6 +586,8 @@ export function rankFirstSettlementsWithLookahead(
       immediateScore: spot.total,
       expectedPairScore: path.pairScore,
       expectedSecondVertexId: path.bestSecondVertexId,
+      relativeAdvantage: path.marginVsBestOpponent,
+      denialValue: path.denialValue,
       total: blended,
     };
   });
@@ -448,6 +595,9 @@ export function rankFirstSettlementsWithLookahead(
   withLookahead.sort((a, b) => {
     const totalDiff = b.total - a.total;
     if (Math.abs(totalDiff) > 1e-9) return totalDiff;
+    const relDiff =
+      (b.relativeAdvantage ?? 0) - (a.relativeAdvantage ?? 0);
+    if (Math.abs(relDiff) > 1e-9) return relDiff;
     const pairDiff = (b.expectedPairScore ?? 0) - (a.expectedPairScore ?? 0);
     if (Math.abs(pairDiff) > 1e-9) return pairDiff;
     return (b.immediateScore ?? 0) - (a.immediateScore ?? 0);
@@ -490,7 +640,7 @@ export function recommendStrategy(
         option.vertexId,
         weights
       );
-      if (path && (!bestPath || path.pairScore > bestPath.pairScore)) {
+      if (path && (!bestPath || (path.relativeScore ?? path.pairScore) > (bestPath.relativeScore ?? bestPath.pairScore))) {
         bestPath = path;
       }
     }
@@ -499,7 +649,9 @@ export function recommendStrategy(
   }
 
   const ranked = [...evaluations].sort(
-    (a, b) => (b.bestPath?.pairScore ?? 0) - (a.bestPath?.pairScore ?? 0)
+    (a, b) =>
+      (b.bestPath?.relativeScore ?? b.bestPath?.pairScore ?? 0) -
+      (a.bestPath?.relativeScore ?? a.bestPath?.pairScore ?? 0)
   );
   const winner = ranked[0];
   const recommendedProfile = winner?.profile ?? STRATEGY_PROFILES[0];
@@ -507,16 +659,18 @@ export function recommendStrategy(
 
   let reason = 'Ingen gyldige parplasseringer funnet – bruker balansert profil.';
   if (winnerPath) {
-    const opt = winnerPath.optimisticPairScore;
-    const safe = winnerPath.safePairScore;
-    const threatNote = winnerPath.secondContested
-      ? ' Unngår omstridte førstevalg hos motstandere der det er mulig.'
-      : '';
-    const gapNote =
-      opt != null && safe != null && opt - safe > 0.05
-        ? ` Trygg #2 ${safe.toFixed(2)} vs optimistisk rest ${opt.toFixed(2)} — vektlegger det sannsynlige.`
-        : ' Planlegger for sannsynlig #2 (motstandere tar sterke PSM-plasser).';
-    reason = `${recommendedProfile.label} gir best robust parscore (${winnerPath.pairScore.toFixed(2)}) med landsby nr. 2 på ${describeSecondPreview(board, winnerPath, recommendedProfile.weights)}.${gapNote}${threatNote}`;
+    const margin = winnerPath.marginVsBestOpponent;
+    const marginNote =
+      margin != null
+        ? margin >= 0
+          ? ` Relativ margin mot sterkeste motstander +${margin.toFixed(2)}.`
+          : ` Relativ margin mot sterkeste motstander ${margin.toFixed(2)} (de er sterkere absolutt — vurder denial/posisjon).`
+        : '';
+    const denialNote =
+      winnerPath.denialValue != null && winnerPath.denialValue > 0.05
+        ? ` Denial av topp-spot +${winnerPath.denialValue.toFixed(2)}.`
+        : '';
+    reason = `${recommendedProfile.label} gir best relativ parscore (${(winnerPath.relativeScore ?? winnerPath.pairScore).toFixed(2)}) med landsby nr. 2 på ${describeSecondPreview(board, winnerPath, recommendedProfile.weights)}.${marginNote}${denialNote}`;
   }
 
   const suggestedPaths: FirstSettlementPath[] = [];
@@ -537,7 +691,10 @@ export function recommendStrategy(
     );
     if (path) suggestedPaths.push(path);
   }
-  suggestedPaths.sort((a, b) => b.pairScore - a.pairScore);
+  suggestedPaths.sort(
+    (a, b) =>
+      (b.relativeScore ?? b.pairScore) - (a.relativeScore ?? a.pairScore)
+  );
 
   return {
     recommendedProfileId: recommendedProfile.id,

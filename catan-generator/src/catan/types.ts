@@ -172,6 +172,10 @@ export interface SettlementScore {
   expectedSecondVertexId?: string;
   /** Umiddelbar lokale score før lookahead (kun første landsby) */
   immediateScore?: number;
+  /** ownPair − beste motstanderpar (lookahead) */
+  relativeAdvantage?: number;
+  /** Denial-verdi av #1-plassen (lookahead) */
+  denialValue?: number;
   breakdown: { resource: ResourceType; value: number }[];
 }
 
