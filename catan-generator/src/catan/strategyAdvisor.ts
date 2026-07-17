@@ -5,6 +5,7 @@ import type {
   ResourceWeights,
   SettlementScore,
 } from './types';
+import { DEFAULT_RESOURCE_WEIGHTS } from './types';
 import {
   STRATEGY_PROFILES,
   type StrategyProfile,
@@ -12,7 +13,7 @@ import {
 } from './resourceWeights';
 import {
   getValidVertices,
-  pickGreedyOpponentVertex,
+  pickOpponentVertex,
   scoreSecondSettlement,
   scoreVertex,
   vertexPipTotal,
@@ -23,17 +24,17 @@ import { getPlacementOrder } from './draftOrder';
 export interface FirstSettlementPath {
   firstVertexId: string;
   firstScore: number;
-  /** Anbefalt #2 under trygg plan (motstandere tar høy pip) */
+  /** Anbefalt #2 under trygg plan (ikke blant motstandernes sannsynlige førstevalg) */
   bestSecondVertexId: string;
   /** Robust parscore (sikret #1 + sannsynlig #2-løft; spekulativ upside nedvektet) */
   pairScore: number;
-  /** Beste rå parscore etter én greedy-motstandersimulering (optimistisk) */
+  /** Beste rå parscore etter én motstandersimulering (optimistisk) */
   optimisticPairScore?: number;
-  /** #2 som greedy-resten ville gitt (kan være «ta sjansen») */
+  /** #2 som simulert rest ville gitt (kan være «ta sjansen») */
   optimisticSecondVertexId?: string;
-  /** Beste parscore når topp-pip er blokkert før din #2 */
+  /** Beste parscore når omstridte spots er blokkert før din #2 */
   safePairScore?: number;
-  /** True hvis optimistisk #2 skiller seg fra trygg plan (usikker upside) */
+  /** True hvis anbefalt/optimistisk #2 er usikker mot motstandernes førstevalg */
   secondContested?: boolean;
 }
 
@@ -52,34 +53,27 @@ export interface StrategyRecommendation {
 }
 
 /**
- * Motstandernes trekk er usikre. Én greedy-simulering + «beste #2 blant
- * restene» er optimistisk: den belønner drømmepar/havn som bare finnes hvis
- * motstanderne lar akkurat den plassen stå.
+ * Motstandernes trekk er usikre. Pip-only «trygg»-blokkering var for svak:
+ * UI/motspillere rangerer etter PSM, så en høy PSM-spot kan overleve pip-blokk
+ * og likevel være motstanderens førstevalg.
  *
  * Robust modell:
- * - TRYGG: anta at motstanderne tar de N hotteste pip-plassene (med avstandsregel)
- * - OPTIMISTISK: én greedy snake-simulering (dagens hovedlinje)
- * - pairScore ≈ mest vekt på trygg #2, liten kreditt for optimistisk upside
- * - havnegevinst som bare finnes i den optimistiske resten nedvektes ekstra
- * - anbefalt #2 = den trygge kandidaten (det du faktisk bør planlegge for)
- */
-/**
- * Hvor mye spekulativ (optimistisk) upside får lov til å løfte over trygg score.
- * Lav = foretrekk sannsynlig/trygt fremfor «ta sjansen».
+ * - TRYGG: motstanderne tar de N hotteste PSM-plassene (scoreVertex)
+ * - Hard filter: anbefalt #2 skal ikke ligge i trussel-sonen for 1. landsby
+ * - Simulering bruker samme PSM-motspillermodell
+ * - Spekulativ havn/upside nedvektet
  */
 export const PAIR_UPSIDE_CREDIT = 0.2;
-/** Andel av optimistisk havne-ekstra (#2) som får telle utover trygg plan */
 export const HARBOR_UPSIDE_CREDIT = 0.08;
+/**
+ * Ekstra buffer utover antall motstander-førsteplasseringer:
+ * lookahead kan løfte spots som ikke er absolutt topp i shallow score.
+ */
+export const FIRST_SETTLEMENT_THREAT_BUFFER = 2;
 
 const DEFAULT_LOOKAHEAD_CANDIDATES = 12;
-/** Alltid vurder også topp-N etter rå pip (ikke bare lokal PSM) */
 const LOOKAHEAD_PIP_CANDIDATES = 6;
-/**
- * Bland umiddelbar score inn i lookahead-rangering.
- * #1 er sikker verdi; spekulativ #2-løft skal ikke ofre elite-førsteplass.
- */
 export const LOOKAHEAD_IMMEDIATE_BLEND = 0.55;
-/** Lett pip-guard slik at åpenbare produksjonseliter ikke tapes på marginale #2-planer */
 export const LOOKAHEAD_PIP_GUARD = 0.02;
 
 /** Antall motstanderplasseringer mellom din 1. og 2. landsby */
@@ -106,40 +100,108 @@ export function opponentPlacementsUntilSecond(
   return between;
 }
 
+/** Antall motstander-førsteplasseringer mellom din #1 og #2 */
+export function opponentFirstSettlementsUntilSecond(
+  humanPlayer: number,
+  playerCount: PlayerCount
+): number {
+  const order = getPlacementOrder(playerCount);
+  let seenHuman = 0;
+  let firsts = 0;
+  let counting = false;
+  const firstDone = new Set<number>();
+  for (const player of order) {
+    if (player === humanPlayer) {
+      seenHuman += 1;
+      if (seenHuman === 1) {
+        counting = true;
+        continue;
+      }
+      if (seenHuman === 2) return firsts;
+      continue;
+    }
+    if (counting && !firstDone.has(player)) {
+      firsts += 1;
+      firstDone.add(player);
+    }
+  }
+  return firsts;
+}
+
 /**
- * Pip-rangering av gyldige hjørner rett etter at human har satt #1.
- * Rank 0 = mest attraktiv for greedy pip-motstandere.
+ * PSM-rangering (umiddelbar) — samme type signal motstandere følger i UI
+ * for første landsby, uten rekursiv lookahead.
  */
 export function contestationRanks(
   board: Board,
-  placedAfterHumanFirst: PlacedSettlement[]
+  placedAfterHumanFirst: PlacedSettlement[],
+  weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS
 ): Map<string, number> {
+  const econ = computeBoardEconomics(board, weights);
   const ranked = getValidVertices(placedAfterHumanFirst)
-    .map((id) => ({ id, pip: vertexPipTotal(id, board) }))
-    .sort((a, b) => b.pip - a.pip || a.id.localeCompare(b.id));
+    .map((id) => ({
+      id,
+      score: scoreVertex(id, board, econ, placedAfterHumanFirst).total,
+      pip: vertexPipTotal(id, board),
+    }))
+    .sort(
+      (a, b) => b.score - a.score || b.pip - a.pip || a.id.localeCompare(b.id)
+    );
   const ranks = new Map<string, number>();
   ranked.forEach((entry, index) => ranks.set(entry.id, index));
   return ranks;
 }
 
 /**
- * Blokker de N hotteste pip-hjørnene sekvensielt (med avstandsregel).
- * Representerer en pessimistisk «motstanderne tar det som er mest sannsynlig».
+ * Hjørner som er realistiske førstevalg for motstandere etter din #1.
+ * Anbefalt landsby #2 skal ikke ligge her.
  */
-export function occupyTopPipSpots(
+export function firstSettlementThreatIds(
+  board: Board,
+  placedAfterHumanFirst: PlacedSettlement[],
+  playerCount: PlayerCount,
+  humanPlayer: number,
+  weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS
+): Set<string> {
+  const firsts = opponentFirstSettlementsUntilSecond(humanPlayer, playerCount);
+  const threatCount = Math.min(
+    getValidVertices(placedAfterHumanFirst).length,
+    firsts + FIRST_SETTLEMENT_THREAT_BUFFER
+  );
+  const ranks = contestationRanks(board, placedAfterHumanFirst, weights);
+  const threatened = new Set<string>();
+  for (const [id, rank] of ranks) {
+    if (rank < threatCount) threatened.add(id);
+  }
+  return threatened;
+}
+
+/**
+ * Blokker de N mest omstridte hjørnene sekvensielt (PSM-score, pip som tiebreak).
+ */
+export function occupyContestedSpots(
   board: Board,
   placed: PlacedSettlement[],
-  count: number
+  count: number,
+  weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS
 ): PlacedSettlement[] {
+  const econ = computeBoardEconomics(board, weights);
   let current = [...placed];
   for (let i = 0; i < count; i++) {
     const valid = getValidVertices(current);
     if (valid.length === 0) break;
     let bestId = valid[0]!;
+    let bestScore = -Infinity;
     let bestPip = -1;
     for (const id of valid) {
+      const score = scoreVertex(id, board, econ, current).total;
       const pip = vertexPipTotal(id, board);
-      if (pip > bestPip || (pip === bestPip && id < bestId)) {
+      if (
+        score > bestScore + 1e-12 ||
+        (Math.abs(score - bestScore) <= 1e-12 &&
+          (pip > bestPip || (pip === bestPip && id < bestId)))
+      ) {
+        bestScore = score;
         bestPip = pip;
         bestId = id;
       }
@@ -152,13 +214,25 @@ export function occupyTopPipSpots(
   return current;
 }
 
+/** @deprecated Bruk occupyContestedSpots — alias for bakoverkompatibilitet. */
+export function occupyTopPipSpots(
+  board: Board,
+  placed: PlacedSettlement[],
+  count: number,
+  weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS
+): PlacedSettlement[] {
+  return occupyContestedSpots(board, placed, count, weights);
+}
+
 function bestSecondOnBoard(
   board: Board,
   firstVertexId: string,
   placed: PlacedSettlement[],
-  econ: ReturnType<typeof computeBoardEconomics>
+  econ: ReturnType<typeof computeBoardEconomics>,
+  avoid: Set<string> = new Set()
 ): SettlementScore | null {
   const options = getValidVertices(placed)
+    .filter((id) => !avoid.has(id))
     .map((id) => scoreSecondSettlement(id, firstVertexId, board, econ, placed))
     .sort((a, b) => b.total - a.total);
   return options[0] ?? null;
@@ -166,7 +240,6 @@ function bestSecondOnBoard(
 
 /**
  * #1 er allerede sikret — usikkerhet gjelder bare løftet fra landsby #2.
- * Havne-ekstra som bare finnes i den optimistiske resten får nesten ingen kreditt.
  */
 export function blendSafeAndOptimisticPairScore(
   firstSecured: number,
@@ -182,19 +255,23 @@ export function blendSafeAndOptimisticPairScore(
   const liftCore =
     (1 - PAIR_UPSIDE_CREDIT) * safeLiftCore +
     PAIR_UPSIDE_CREDIT * Math.max(safeLiftCore, optLiftCore);
-  const harborExtra = Math.max(0, optimisticHarborSecond - Math.max(0, safeHarborSecond));
+  const harborExtra = Math.max(
+    0,
+    optimisticHarborSecond - Math.max(0, safeHarborSecond)
+  );
   const harbor =
     Math.max(0, safeHarborSecond) + HARBOR_UPSIDE_CREDIT * harborExtra;
   return firstSecured + liftCore + harbor;
 }
 
-/** Simuler motspillere (høyest pip) til det er din andre landsby-tur */
+/** Simuler motspillere (PSM-score) til det er din andre landsby-tur */
 export function simulateToHumanSecondTurn(
   board: Board,
   placed: PlacedSettlement[],
   humanPlayer: number,
   playerCount: PlayerCount,
-  humanFirstVertex: string
+  humanFirstVertex: string,
+  weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS
 ): PlacedSettlement[] | null {
   let simulated: PlacedSettlement[] = [
     ...placed,
@@ -212,7 +289,7 @@ export function simulateToHumanSecondTurn(
       return simulated;
     }
 
-    const pickVertexId = pickGreedyOpponentVertex(board, simulated, player);
+    const pickVertexId = pickOpponentVertex(board, simulated, player, weights);
     if (!pickVertexId) return null;
 
     simulated = [...simulated, { vertexId: pickVertexId, player, isCity: false }];
@@ -235,7 +312,8 @@ export function evaluateFirstSettlementPath(
     placed,
     humanPlayer,
     playerCount,
-    firstVertexId
+    firstVertexId,
+    weights
   );
   if (!simulated) return null;
 
@@ -248,29 +326,47 @@ export function evaluateFirstSettlementPath(
   const firstLocal = scoreVertex(firstVertexId, board, econ, placed);
   const harborOnFirst = firstLocal.harbor;
 
-  const optimisticSecond = bestSecondOnBoard(board, firstVertexId, simulated, econ);
+  const threatIds = firstSettlementThreatIds(
+    board,
+    afterFirst,
+    playerCount,
+    humanPlayer,
+    weights
+  );
+
+  const optimisticSecond = bestSecondOnBoard(
+    board,
+    firstVertexId,
+    simulated,
+    econ
+  );
   if (!optimisticSecond) return null;
 
-  const safeBoard = occupyTopPipSpots(board, afterFirst, opponentSlots);
-  const safeSecond = bestSecondOnBoard(board, firstVertexId, safeBoard, econ);
+  const safeBoard = occupyContestedSpots(
+    board,
+    afterFirst,
+    opponentSlots,
+    weights
+  );
+  const safeSecond =
+    bestSecondOnBoard(board, firstVertexId, safeBoard, econ, threatIds) ??
+    bestSecondOnBoard(board, firstVertexId, safeBoard, econ) ??
+    bestSecondOnBoard(board, firstVertexId, simulated, econ, threatIds);
 
-  const optimisticHarborSecond = Math.max(0, optimisticSecond.harbor - harborOnFirst);
-  const safeHarborSecond = safeSecond
-    ? Math.max(0, safeSecond.harbor - harborOnFirst)
-    : 0;
-
-  // Anbefal trygg #2 når den finnes; ellers fall tilbake til greedy-resten
   const chosen = safeSecond ?? optimisticSecond;
+  const chosenIsThreatened = threatIds.has(chosen.vertexId);
+
   const safeTotal = safeSecond?.total ?? optimisticSecond.total * 0.75;
   const pairScore = blendSafeAndOptimisticPairScore(
     firstLocal.total,
     safeTotal,
-    safeHarborSecond,
+    safeSecond ? Math.max(0, safeSecond.harbor - harborOnFirst) : 0,
     optimisticSecond.total,
-    optimisticHarborSecond
+    Math.max(0, optimisticSecond.harbor - harborOnFirst)
   );
 
   const secondContested =
+    chosenIsThreatened ||
     !safeSecond ||
     (optimisticSecond.vertexId !== chosen.vertexId &&
       optimisticSecond.total - safeTotal > 0.04);
@@ -279,7 +375,7 @@ export function evaluateFirstSettlementPath(
     firstVertexId,
     firstScore: firstLocal.total,
     bestSecondVertexId: chosen.vertexId,
-    pairScore,
+    pairScore: chosenIsThreatened ? pairScore * 0.85 : pairScore,
     optimisticPairScore: optimisticSecond.total,
     optimisticSecondVertexId: optimisticSecond.vertexId,
     safePairScore: safeTotal,
@@ -288,8 +384,7 @@ export function evaluateFirstSettlementPath(
 }
 
 /**
- * Rangér første-landsbyer etter robust par + lokal styrke:
- * topp lokal PSM ∪ topp pip → robust lookahead → blend med sikker #1.
+ * Rangér første-landsbyer etter robust par + lokal styrke.
  */
 export function rankFirstSettlementsWithLookahead(
   board: Board,
@@ -414,11 +509,14 @@ export function recommendStrategy(
   if (winnerPath) {
     const opt = winnerPath.optimisticPairScore;
     const safe = winnerPath.safePairScore;
+    const threatNote = winnerPath.secondContested
+      ? ' Unngår omstridte førstevalg hos motstandere der det er mulig.'
+      : '';
     const gapNote =
       opt != null && safe != null && opt - safe > 0.05
         ? ` Trygg #2 ${safe.toFixed(2)} vs optimistisk rest ${opt.toFixed(2)} — vektlegger det sannsynlige.`
-        : ' Planlegger for sannsynlig #2 (motstandere tar høy pip).';
-    reason = `${recommendedProfile.label} gir best robust parscore (${winnerPath.pairScore.toFixed(2)}) med landsby nr. 2 på ${describeSecondPreview(board, winnerPath, recommendedProfile.weights)}.${gapNote}`;
+        : ' Planlegger for sannsynlig #2 (motstandere tar sterke PSM-plasser).';
+    reason = `${recommendedProfile.label} gir best robust parscore (${winnerPath.pairScore.toFixed(2)}) med landsby nr. 2 på ${describeSecondPreview(board, winnerPath, recommendedProfile.weights)}.${gapNote}${threatNote}`;
   }
 
   const suggestedPaths: FirstSettlementPath[] = [];

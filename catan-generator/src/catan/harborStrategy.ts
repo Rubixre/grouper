@@ -10,7 +10,7 @@ import { DEFAULT_RESOURCE_WEIGHTS } from './types';
 import {
   getValidVertices,
   getVertices,
-  pickGreedyOpponentVertex,
+  pickOpponentVertex,
   scoreSecondSettlement,
   scoreVertex,
   vertexRawByResource,
@@ -25,7 +25,7 @@ import { RESOURCE_LABELS } from './playerStats';
 import { getPlacementOrder } from './draftOrder';
 import {
   evaluateFirstSettlementPath,
-  occupyTopPipSpots,
+  occupyContestedSpots,
   opponentPlacementsUntilSecond,
 } from './strategyAdvisor';
 import { coordKey } from './hex';
@@ -146,7 +146,8 @@ function simulateToHumanSecondTurn(
   placed: PlacedSettlement[],
   humanPlayer: number,
   playerCount: PlayerCount,
-  humanFirstVertex: string
+  humanFirstVertex: string,
+  weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS
 ): PlacedSettlement[] | null {
   let simulated: PlacedSettlement[] = [
     ...placed,
@@ -160,7 +161,7 @@ function simulateToHumanSecondTurn(
     const humanCount = simulated.filter((p) => p.player === humanPlayer).length;
     if (player === humanPlayer && humanCount === 1) return simulated;
 
-    const pickVertexId = pickGreedyOpponentVertex(board, simulated, player);
+    const pickVertexId = pickOpponentVertex(board, simulated, player, weights);
     if (!pickVertexId) return null;
     simulated = [...simulated, { vertexId: pickVertexId, player, isCity: false }];
     step++;
@@ -519,14 +520,15 @@ export function findHarborStrategyOpportunities(
       const slots = opponentPlacementsUntilSecond(humanPlayer, playerCount);
       // Trygge #2-kandidater (motstandere tar topp-pip) + greedy-rest (spekulativ)
       const secondIds = new Set<string>(
-        getValidVertices(occupyTopPipSpots(board, afterFirst, slots))
+        getValidVertices(occupyContestedSpots(board, afterFirst, slots, weights))
       );
       const simulated = simulateToHumanSecondTurn(
         board,
         placed,
         humanPlayer,
         playerCount,
-        candidate.vertexId
+        candidate.vertexId,
+        weights
       );
       if (simulated) {
         for (const id of getValidVertices(simulated)) secondIds.add(id);
@@ -669,7 +671,8 @@ export function harborTradeReliability(
   opportunity: Pick<
     HarborStrategyOpportunity,
     'resource' | 'firstVertexId' | 'secondVertexId'
-  >
+  >,
+  weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS
 ): number {
   const fromFirst = bestReachableHarbor(
     [opportunity.firstVertexId],
@@ -688,7 +691,7 @@ export function harborTradeReliability(
     { vertexId: opportunity.firstVertexId, player: humanPlayer, isCity: false },
   ];
   const slots = opponentPlacementsUntilSecond(humanPlayer, playerCount);
-  const safeBoard = occupyTopPipSpots(board, afterFirst, slots);
+  const safeBoard = occupyContestedSpots(board, afterFirst, slots, weights);
   const safeSeconds = new Set(getValidVertices(safeBoard));
   if (safeSeconds.has(opportunity.secondVertexId)) {
     return HARBOR_SAFE_SECOND_TRADE_FACTOR;

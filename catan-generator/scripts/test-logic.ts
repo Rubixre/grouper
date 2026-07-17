@@ -746,7 +746,8 @@ import {
   rankFirstSettlementsWithLookahead,
   evaluateFirstSettlementPath,
   blendSafeAndOptimisticPairScore,
-  occupyTopPipSpots,
+  occupyContestedSpots,
+  firstSettlementThreatIds,
   opponentPlacementsUntilSecond,
   PAIR_UPSIDE_CREDIT,
   HARBOR_UPSIDE_CREDIT,
@@ -845,10 +846,59 @@ if (board) {
     ...sim.placements,
     { vertexId: lookaheadOpts[0]!.vertexId, player: config.humanPlayerIndex, isCity: false },
   ];
-  const blocked = occupyTopPipSpots(board, afterFirst, slots);
+  const blocked = occupyContestedSpots(
+    board,
+    afterFirst,
+    slots,
+    DEFAULT_RESOURCE_WEIGHTS
+  );
   assert(
     blocked.length === afterFirst.length + slots,
-    'Safe board occupies one pip spot per opponent placement until #2'
+    'Safe board occupies one contested spot per opponent placement until #2'
+  );
+  const threats = firstSettlementThreatIds(
+    board,
+    afterFirst,
+    4,
+    config.humanPlayerIndex,
+    DEFAULT_RESOURCE_WEIGHTS
+  );
+  assert(
+    topPath?.bestSecondVertexId != null && !threats.has(topPath.bestSecondVertexId),
+    'Recommended #2 is not among opponent first-settlement threats'
+  );
+
+  // Flere tilfeldige førstevalg: anbefalt #2 skal nesten aldri være i trussel-sonen
+  let threatenedSeconds = 0;
+  let checkedPaths = 0;
+  for (const spot of lookaheadOpts.slice(0, 6)) {
+    const path = evaluateFirstSettlementPath(
+      board,
+      sim.placements,
+      config.humanPlayerIndex,
+      4,
+      spot.vertexId,
+      DEFAULT_RESOURCE_WEIGHTS
+    );
+    if (!path) continue;
+    checkedPaths += 1;
+    const after = [
+      ...sim.placements,
+      { vertexId: path.firstVertexId, player: config.humanPlayerIndex, isCity: false },
+    ];
+    const t = firstSettlementThreatIds(
+      board,
+      after,
+      4,
+      config.humanPlayerIndex,
+      DEFAULT_RESOURCE_WEIGHTS
+    );
+    if (t.has(path.bestSecondVertexId)) threatenedSeconds += 1;
+  }
+  assert(checkedPaths > 0, 'Checked several first-settlement paths');
+  assert(
+    threatenedSeconds === 0,
+    `Recommended #2 never in opponent first-pick threat zone (got ${threatenedSeconds}/${checkedPaths})`
   );
 
   const turnOpts = getOptionsForCurrentTurn(sim);

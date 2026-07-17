@@ -430,6 +430,64 @@ export function pickGreedyOpponentVertex(
   return bestId;
 }
 
+/**
+ * Motspillermodell som matcher UI bedre enn ren pip:
+ * 1. landsby = høyest PSM (scoreVertex), 2. = høyest pair-score.
+ */
+export function pickOpponentVertex(
+  board: Board,
+  placed: PlacedSettlement[],
+  player: number,
+  weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS
+): string | null {
+  const valid = getValidVertices(placed);
+  if (valid.length === 0) return null;
+
+  const econ = computeBoardEconomics(board, weights);
+  const existing = placed.find((p) => p.player === player);
+
+  if (existing) {
+    let bestId: string | null = null;
+    let bestTotal = -Infinity;
+    for (const vertexId of valid) {
+      const score = scoreSecondSettlement(
+        vertexId,
+        existing.vertexId,
+        board,
+        econ,
+        placed
+      );
+      if (
+        score.total > bestTotal + 1e-12 ||
+        (Math.abs(score.total - bestTotal) <= 1e-12 &&
+          vertexId < (bestId ?? ''))
+      ) {
+        bestTotal = score.total;
+        bestId = vertexId;
+      }
+    }
+    return bestId;
+  }
+
+  let bestId: string | null = null;
+  let bestTotal = -Infinity;
+  let bestPip = -1;
+  for (const vertexId of valid) {
+    const score = scoreVertex(vertexId, board, econ, placed);
+    const pip = vertexPipTotal(vertexId, board);
+    if (
+      score.total > bestTotal + 1e-12 ||
+      (Math.abs(score.total - bestTotal) <= 1e-12 &&
+        (pip > bestPip || (pip === bestPip && vertexId < (bestId ?? ''))))
+    ) {
+      bestTotal = score.total;
+      bestPip = pip;
+      bestId = vertexId;
+    }
+  }
+  return bestId;
+}
+
 export function rankVertices(
   board: Board,
   placed: PlacedSettlement[],
