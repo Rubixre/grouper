@@ -749,8 +749,11 @@ import {
   occupyContestedSpots,
   firstSettlementThreatIds,
   opponentPlacementsUntilSecond,
+  applyRelativeAdvantage,
   PAIR_UPSIDE_CREDIT,
   HARBOR_UPSIDE_CREDIT,
+  RELATIVE_ADVANTAGE_WEIGHT,
+  DENIAL_WEIGHT,
 } from '../src/catan/strategyAdvisor.ts';
 import { getValidVertices, pickGreedyOpponentVertex, vertexPipTotal } from '../src/catan/settlements.ts';
 
@@ -773,6 +776,31 @@ import { getValidVertices, pickGreedyOpponentVertex, vertexPipTotal } from '../s
   assert(blended < opt, 'Robust score stays below pure optimistic pair total');
   assert(blended > safe - 0.05, 'Robust score stays near safe plan');
   assert(opponentPlacementsUntilSecond(0, 4) === 6, '4p seat 0 has 6 opponent placements before #2');
+
+  const ahead = applyRelativeAdvantage(2.0, [1.5, 1.4, 1.6], 0.2);
+  const behind = applyRelativeAdvantage(1.5, [1.8, 1.7, 1.6], 0);
+  assert(ahead.marginVsBest > 0, 'Leading pair has positive margin vs best opponent');
+  assert(behind.marginVsBest < 0, 'Trailing pair has negative margin vs best opponent');
+  assert(
+    ahead.relativeScore > 2.0,
+    'Relative score keeps absolute strength and adds positive margin'
+  );
+  assert(
+    Math.abs(ahead.relativeScore - (2.0 + RELATIVE_ADVANTAGE_WEIGHT * (0.65 * ahead.marginVsBest + 0.35 * ahead.marginVsMean) + DENIAL_WEIGHT * 0.2)) < 1e-9,
+    'Relative score matches ownPair + weighted margins + denial'
+  );
+  assert(
+    ahead.relativeScore > behind.relativeScore,
+    'Better absolute+relative beats weaker trailing position'
+  );
+  // Samme egenstyrke, men denial av elite skal løfte
+  const withDenial = applyRelativeAdvantage(1.8, [1.7], 0.3);
+  const noDenial = applyRelativeAdvantage(1.8, [1.7], 0);
+  assert(
+    withDenial.relativeScore > noDenial.relativeScore,
+    'Denying a stronger leftover spot increases relative score'
+  );
+  assert(RELATIVE_ADVANTAGE_WEIGHT > 0 && DENIAL_WEIGHT > 0, 'Relative weights are active');
 }
 
 if (board) {
