@@ -10,7 +10,6 @@ import { DEFAULT_RESOURCE_WEIGHTS } from './types';
 import {
   getValidVertices,
   getVertices,
-  pickGreedyOpponentVertex,
   scoreSecondSettlement,
   scoreVertex,
   vertexRawByResource,
@@ -22,8 +21,10 @@ import {
   type ProdResource,
 } from './placementModel';
 import { RESOURCE_LABELS } from './playerStats';
-import { getPlacementOrder } from './draftOrder';
-import { evaluateFirstSettlementPath } from './strategyAdvisor';
+import {
+  evaluateFirstSettlementPath,
+  simulateToHumanSecondTurn,
+} from './strategyAdvisor';
 import { coordKey } from './hex';
 
 /**
@@ -124,33 +125,6 @@ export function harborOpportunityKey(o: HarborStrategyOpportunity): string {
     o.harborRoadDistance,
     o.harborName,
   ].join('|');
-}
-
-function simulateToHumanSecondTurn(
-  board: Board,
-  placed: PlacedSettlement[],
-  humanPlayer: number,
-  playerCount: PlayerCount,
-  humanFirstVertex: string
-): PlacedSettlement[] | null {
-  let simulated: PlacedSettlement[] = [
-    ...placed,
-    { vertexId: humanFirstVertex, player: humanPlayer, isCity: false },
-  ];
-  const order = getPlacementOrder(playerCount);
-  let step = simulated.length;
-
-  while (step < order.length) {
-    const player = order[step];
-    const humanCount = simulated.filter((p) => p.player === humanPlayer).length;
-    if (player === humanPlayer && humanCount === 1) return simulated;
-
-    const pickVertexId = pickGreedyOpponentVertex(board, simulated, player);
-    if (!pickVertexId) return null;
-    simulated = [...simulated, { vertexId: pickVertexId, player, isCity: false }];
-    step++;
-  }
-  return null;
 }
 
 function harborMatchesResource(harbor: HarborType, resource: ProdResource): HarborStrategyKind | null {
@@ -502,7 +476,8 @@ export function findHarborStrategyOpportunities(
         placed,
         humanPlayer,
         playerCount,
-        candidate.vertexId
+        candidate.vertexId,
+        weights
       );
       if (!simulated) continue;
 

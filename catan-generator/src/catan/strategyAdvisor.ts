@@ -12,7 +12,7 @@ import {
 } from './resourceWeights';
 import {
   getValidVertices,
-  pickGreedyOpponentVertex,
+  pickOpponentVertex,
   scoreSecondSettlement,
   scoreVertex,
 } from './settlements';
@@ -40,13 +40,17 @@ export interface StrategyRecommendation {
   suggestedPaths: FirstSettlementPath[];
 }
 
-/** Simuler motspillere (høyest pip) til det er din andre landsby-tur */
+/**
+ * Simuler motspillere til det er din andre landsby-tur.
+ * Bruker samme PSM som live: myopisk #1, par-score på #2.
+ */
 export function simulateToHumanSecondTurn(
   board: Board,
   placed: PlacedSettlement[],
   humanPlayer: number,
   playerCount: PlayerCount,
-  humanFirstVertex: string
+  humanFirstVertex: string,
+  weights?: ResourceWeights
 ): PlacedSettlement[] | null {
   let simulated: PlacedSettlement[] = [
     ...placed,
@@ -64,11 +68,11 @@ export function simulateToHumanSecondTurn(
       return simulated;
     }
 
-    const pickVertexId = pickGreedyOpponentVertex(board, simulated, player);
+    const pickVertexId = pickOpponentVertex(board, simulated, player, weights);
     if (!pickVertexId) return null;
 
     simulated = [...simulated, { vertexId: pickVertexId, player, isCity: false }];
-    step++;
+    step += 1;
   }
 
   return null;
@@ -87,7 +91,8 @@ export function evaluateFirstSettlementPath(
     placed,
     humanPlayer,
     playerCount,
-    firstVertexId
+    firstVertexId,
+    weights
   );
   if (!simulated) return null;
 
