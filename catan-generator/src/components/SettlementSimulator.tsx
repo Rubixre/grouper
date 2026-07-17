@@ -4,9 +4,14 @@ import type { SettlementScore, ResourceWeights, BoardSize } from '../catan/types
 import type { Board } from '../catan/types';
 import type { SimulationState } from '../catan/simulator';
 import { currentPlayer, isHumanTurn } from '../catan/simulator';
+import { getStrategyProfile } from '../catan/resourceWeights';
 import type { StrategyProfile, StrategyProfileId } from '../catan/resourceWeights';
 import type { StrategyRecommendation } from '../catan/strategyAdvisor';
-import { isHumanFirstSettlementTurn } from '../catan/strategyAdvisor';
+import {
+  isHumanFirstSettlementTurn,
+  isHumanSecondSettlementTurn,
+} from '../catan/strategyAdvisor';
+import { DEFAULT_RESOURCE_WEIGHTS } from '../catan/types';
 import {
   harborOpportunityKey,
   type HarborStrategyOpportunity,
@@ -94,6 +99,7 @@ export function SettlementSimulator({
   const progress = state.finished ? 100 : (step / total) * 100;
   const isSecond = options[0]?.placementKind === 'second';
   const isFirstHuman = isHumanFirstSettlementTurn(state.placements, human);
+  const isSecondHuman = isHumanSecondSettlementTurn(state.placements, human);
   const visibleCount = showAllOptions ? options.length : DEFAULT_VISIBLE_OPTIONS;
   const visibleOptions = options.slice(0, visibleCount);
   const selectedOption = selectedVertex
@@ -124,11 +130,11 @@ export function SettlementSimulator({
 
   const turnHint = isYourTurn
     ? isSecond
-      ? 'Andre landsby — hele paret vurderes'
+      ? 'Andre landsby — strategi revurdert ut fra gjenværende posisjoner'
       : isFirstHuman
-        ? 'Rangert på forventet par. Stiplet ring = #2'
+        ? 'Rangert på forventet par (balansert start). Stiplet ring = #2'
         : 'Første landsby'
-    : 'Velg hjørne på brettet eller i listen';
+    : 'Motspillere følger balansert strategi · velg hjørne';
 
   const showHarborTab = harborOpportunities.length > 0 && isYourTurn;
   const harborAboveBalanced = harborOpportunities.some(
@@ -136,6 +142,13 @@ export function SettlementSimulator({
   );
   const activeTab: SimTab =
     tab === 'harbor' && showHarborTab ? 'harbor' : 'placement';
+
+  const breakdownProfile = isYourTurn
+    ? strategyProfile
+    : getStrategyProfile('general');
+  const breakdownWeights = isYourTurn
+    ? strategyWeights
+    : DEFAULT_RESOURCE_WEIGHTS;
 
   return (
     <div className="panel simulator-panel">
@@ -167,7 +180,9 @@ export function SettlementSimulator({
           <div className="sim-progress-mini">
             <div className="sim-progress-fill" style={{ width: `${progress}%` }} />
           </div>
-          <span className="sim-profile-chip muted small">{strategyProfile.label}</span>
+          <span className="sim-profile-chip muted small">
+            {isYourTurn ? strategyProfile.label : 'Balansert (motstander)'}
+          </span>
         </div>
 
         <div className="sim-action-row">
@@ -228,10 +243,16 @@ export function SettlementSimulator({
         <p className="sim-done">Ferdig! Statistikk vises under brettet.</p>
       ) : activeTab === 'placement' ? (
         <div className="sim-main-scroll" role="tabpanel">
-          {strategyRecommendation && isFirstHuman && isYourTurn && (
-            <details className="sim-details-block strategy-recommendation-details">
+          {strategyRecommendation &&
+            isYourTurn &&
+            (isFirstHuman || isSecondHuman) && (
+            <details
+              className="sim-details-block strategy-recommendation-details"
+              open={isSecondHuman}
+            >
               <summary>
-                Anbefalt: {strategyRecommendation.recommendedProfile.label}
+                {isSecondHuman ? 'Revurdert: ' : 'Anbefalt: '}
+                {strategyRecommendation.recommendedProfile.label}
               </summary>
               <div className="strategy-recommendation-card">
                 <p className="muted small">{strategyRecommendation.reason}</p>
@@ -394,8 +415,8 @@ export function SettlementSimulator({
               score={selectedOption}
               board={board}
               rank={selectedRank}
-              strategyProfile={strategyProfile}
-              strategyWeights={strategyWeights}
+              strategyProfile={breakdownProfile}
+              strategyWeights={breakdownWeights}
               firstVertexId={
                 selectedOption.placementKind === 'second' ? currentFirstVertex : undefined
               }

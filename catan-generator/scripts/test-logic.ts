@@ -629,9 +629,11 @@ import { scoreFirstPlacement } from '../src/catan/placementModel.ts';
 console.log('\nStrategy advisor');
 import {
   recommendStrategy,
+  recommendStrategyForSecondSettlement,
   simulateToHumanSecondTurn,
   rankFirstSettlementsWithLookahead,
   evaluateFirstSettlementPath,
+  isHumanSecondSettlementTurn,
 } from '../src/catan/strategyAdvisor.ts';
 import { getValidVertices, pickGreedyOpponentVertex, pickOpponentVertex, vertexPipTotal, vertexProducingHexCount } from '../src/catan/settlements.ts';
 import { DEFAULT_RESOURCE_WEIGHTS } from '../src/catan/types.ts';
@@ -753,8 +755,69 @@ if (board) {
     const actualPick = simPlaced!.find((p) => p.player === nextPlayer)?.vertexId;
     assert(expectedPick !== null, 'PSM opponent has a #1 pick');
     assert(
-      actualPick === expectedPick,
-      'Lookahead opponent #1 matches live PSM pickOpponentVertex'
+    actualPick === expectedPick,
+    'Lookahead opponent #1 matches live PSM pickOpponentVertex'
+  );
+  }
+
+  // Motstandere ignorerer menneskets strategiprofil — alltid balansert
+  {
+    const armyWeights = {
+      wheat: 1.45,
+      ore: 1.42,
+      wood: 0.65,
+      brick: 0.65,
+      sheep: 0.88,
+    };
+    const configOpp = createSimulationConfig(4, 0);
+    let stateOpp = createSimulation(board, configOpp);
+    const humanOpts = getOptionsForCurrentTurn(stateOpp, armyWeights);
+    assert(humanOpts.length > 0, 'Human options under army weights');
+    stateOpp = placeSettlement(stateOpp, humanOpts[0]!.vertexId);
+    const oppWithArmyArg = getOptionsForCurrentTurn(stateOpp, armyWeights);
+    const oppBalanced = getOptionsForCurrentTurn(stateOpp, DEFAULT_RESOURCE_WEIGHTS);
+    assert(oppWithArmyArg.length > 0 && oppBalanced.length > 0, 'Opponent has options');
+    assert(
+      oppWithArmyArg[0]!.vertexId === oppBalanced[0]!.vertexId,
+      'Opponent #1 ignores human strategy weights (always balanced)'
+    );
+  }
+
+  // Revurder strategi ved landsby #2 ut fra gjenværende posisjoner
+  {
+    const config2 = createSimulationConfig(4, 0);
+    let state2 = createSimulation(board, config2);
+    // Plasser alle første-runde landsbyer + motstanderes andre til menneskets #2
+    while (!state2.finished) {
+      const player = state2.placementOrder[state2.currentStep];
+      const humanCount = state2.placements.filter(
+        (p) => p.player === config2.humanPlayerIndex
+      ).length;
+      if (player === config2.humanPlayerIndex && humanCount === 1) break;
+      const opts = getOptionsForCurrentTurn(state2, DEFAULT_RESOURCE_WEIGHTS);
+      if (opts.length === 0) break;
+      state2 = placeSettlement(state2, opts[0]!.vertexId);
+    }
+    assert(
+      isHumanSecondSettlementTurn(state2.placements, config2.humanPlayerIndex),
+      'Reached human second settlement turn'
+    );
+    const rec2 = recommendStrategyForSecondSettlement(
+      board,
+      state2.placements,
+      config2.humanPlayerIndex
+    );
+    assert(rec2.recommendedProfileId.length > 0, 'Second settlement recommends a profile');
+    assert(rec2.evaluations.length === 5, 'Second settlement evaluates all profiles');
+    assert(
+      rec2.suggestedPaths.length > 0,
+      'Second settlement recommendation includes a best path'
+    );
+    const topEval = rec2.evaluations[0];
+    assert(
+      topEval?.bestPath !== null &&
+        topEval?.profile.id === rec2.recommendedProfileId,
+      'Recommended profile has the highest remaining pair score'
     );
   }
 }

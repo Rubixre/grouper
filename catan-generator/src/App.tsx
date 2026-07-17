@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Board, BoardSize, GeneratorSettings, PlayerCount } from './catan/types';
 import { DEFAULT_SETTINGS } from './catan/types';
 import { BOARD_SIZE_CONFIG } from './catan/boardLayout';
@@ -17,7 +17,9 @@ import {
 import {
   getSecondSettlementPreview,
   isHumanFirstSettlementTurn,
+  isHumanSecondSettlementTurn,
   recommendStrategy,
+  recommendStrategyForSecondSettlement,
 } from './catan/strategyAdvisor';
 import { findHarborStrategyOpportunities, harborOpportunityKey, type HarborStrategyOpportunity } from './catan/harborStrategy';
 import {
@@ -81,6 +83,8 @@ function App() {
   const [highlightEdge, setHighlightEdge] = useState<string | null>(null);
   const [highlightCorner, setHighlightCorner] = useState<string | null>(null);
   const [hydrated] = useState(() => restoredSession !== null);
+  /** Unngå å overskrive manuell strategibytte midt i landsby #2-turen. */
+  const secondStrategyAppliedRef = useRef<string | null>(null);
 
   const boardMapping = useMemo(() => getBoardMapping(boardSize), [boardSize]);
   const activeStrategy = useMemo(() => getStrategyProfile(strategyProfile), [strategyProfile]);
@@ -170,6 +174,8 @@ function App() {
 
   const startSimulation = () => {
     if (!board) return;
+    setStrategyProfile('general');
+    secondStrategyAppliedRef.current = null;
     setSimulation(createSimulation(board, simulationConfig));
     setSelectedVertex(null);
     setSelectedHarborPlanKey(null);
@@ -193,13 +199,45 @@ function App() {
   const strategyRecommendation = useMemo(() => {
     if (!board || !simulation || !isYourTurn) return null;
     const human = simulation.config.humanPlayerIndex;
-    if (!isHumanFirstSettlementTurn(simulation.placements, human)) return null;
-    return recommendStrategy(
+    if (isHumanFirstSettlementTurn(simulation.placements, human)) {
+      return recommendStrategy(
+        board,
+        simulation.placements,
+        human,
+        simulation.playerCount
+      );
+    }
+    if (isHumanSecondSettlementTurn(simulation.placements, human)) {
+      return recommendStrategyForSecondSettlement(
+        board,
+        simulation.placements,
+        human
+      );
+    }
+    return null;
+  }, [board, simulation, isYourTurn]);
+
+  // Ved landsby #2: bytt automatisk til beste strategi ut fra gjenværende posisjoner.
+  // Balansert er default ved start; denne revurderingen gjelder kun «deg».
+  useEffect(() => {
+    if (!board || !simulation || !isYourTurn) return;
+    const human = simulation.config.humanPlayerIndex;
+    if (isHumanFirstSettlementTurn(simulation.placements, human)) {
+      secondStrategyAppliedRef.current = null;
+      return;
+    }
+    if (!isHumanSecondSettlementTurn(simulation.placements, human)) return;
+
+    const key = `step-${simulation.currentStep}`;
+    if (secondStrategyAppliedRef.current === key) return;
+    secondStrategyAppliedRef.current = key;
+
+    const rec = recommendStrategyForSecondSettlement(
       board,
       simulation.placements,
-      human,
-      simulation.playerCount
+      human
     );
+    setStrategyProfile(rec.recommendedProfileId);
   }, [board, simulation, isYourTurn]);
 
   const harborOpportunities = useMemo(() => {
@@ -480,7 +518,7 @@ function App() {
                 />
 
                 <label className="field">
-                  Strategiprofil
+                  Din strategiprofil
                   <select
                     value={strategyProfile}
                     onChange={(e) =>
@@ -559,7 +597,7 @@ function App() {
                 />
 
                 <label className="field">
-                  Strategiprofil
+                  Din strategiprofil
                   <select
                     value={strategyProfile}
                     onChange={(e) =>
@@ -577,8 +615,9 @@ function App() {
                 <p className="muted small strategy-hint">{activeStrategy.description}</p>
 
                 <p className="muted small scoring-hint">
-                  Poeng: vektet produksjon (lett justert for knapphet) + dekning og pip etter
-                  valgt strategi. Ved første landsby foreslås strategi ut fra parpotensial.
+                  Strategiprofilen gjelder bare deg. Motspillere følger alltid balansert
+                  strategi. Hver simulering starter balansert; ved landsby #2 revurderes
+                  beste strategi ut fra gjenværende posisjoner.
                 </p>
 
                 {!simActive ? (
@@ -607,7 +646,9 @@ function App() {
                 <div className="panel sim-placeholder">
                   <p className="muted small">
                     Velg hvem du er, gi spillere navn og farger. Alle plasseres manuelt i
-                    draft-rekkefølge. Du får strategianbefaling og par-preview når det er din tur.
+                    draft-rekkefølge. Strategiprofilen gjelder bare deg — motspillere er
+                    alltid balansert. Ved landsby #2 byttes strategien automatisk ut fra
+                    gjenværende posisjoner.
                   </p>
                 </div>
               )}

@@ -5,6 +5,7 @@ import type {
   ResourceWeights,
   SettlementScore,
 } from './types';
+import { DEFAULT_RESOURCE_WEIGHTS } from './types';
 import {
   STRATEGY_PROFILES,
   type StrategyProfile,
@@ -42,7 +43,11 @@ export interface StrategyRecommendation {
 
 /**
  * Simuler motspillere til det er din andre landsby-tur.
- * Bruker samme PSM som live: myopisk #1, par-score på #2.
+ * Motstandere bruker alltid balansert strategi (DEFAULT) — uavhengig av
+ * menneskets valgte profil. PSM: myopisk #1, par-score på #2.
+ *
+ * `weights` er bevart for bakoverkompatibilitet, men brukes ikke for
+ * motspillervalg (alltid DEFAULT_RESOURCE_WEIGHTS).
  */
 export function simulateToHumanSecondTurn(
   board: Board,
@@ -50,8 +55,9 @@ export function simulateToHumanSecondTurn(
   humanPlayer: number,
   playerCount: PlayerCount,
   humanFirstVertex: string,
-  weights?: ResourceWeights
+  _weights?: ResourceWeights
 ): PlacedSettlement[] | null {
+  void _weights;
   let simulated: PlacedSettlement[] = [
     ...placed,
     { vertexId: humanFirstVertex, player: humanPlayer, isCity: false },
@@ -68,7 +74,12 @@ export function simulateToHumanSecondTurn(
       return simulated;
     }
 
-    const pickVertexId = pickOpponentVertex(board, simulated, player, weights);
+    const pickVertexId = pickOpponentVertex(
+      board,
+      simulated,
+      player,
+      DEFAULT_RESOURCE_WEIGHTS
+    );
     if (!pickVertexId) return null;
 
     simulated = [...simulated, { vertexId: pickVertexId, player, isCity: false }];
@@ -302,4 +313,84 @@ export function isHumanFirstSettlementTurn(
   humanPlayer: number
 ): boolean {
   return placed.filter((p) => p.player === humanPlayer).length === 0;
+}
+
+/** Din tur til landsby #2 (én landsby allerede plassert). */
+export function isHumanSecondSettlementTurn(
+  placed: PlacedSettlement[],
+  humanPlayer: number
+): boolean {
+  return placed.filter((p) => p.player === humanPlayer).length === 1;
+}
+
+/**
+ * Anbefal strategi for landsby #2 ut fra gjenværende posisjoner
+ * og synerget med din første landsby.
+ */
+export function recommendStrategyForSecondSettlement(
+  board: Board,
+  placed: PlacedSettlement[],
+  humanPlayer: number
+): StrategyRecommendation {
+  const firstVertexId = placed.find((p) => p.player === humanPlayer)?.vertexId;
+  const evaluations: ProfileStrategyEvaluation[] = [];
+
+  if (!firstVertexId) {
+    const fallback = STRATEGY_PROFILES[0]!;
+    return {
+      recommendedProfileId: fallback.id,
+      recommendedProfile: fallback,
+      reason: 'Ingen første landsby funnet – bruker balansert profil.',
+      evaluations: STRATEGY_PROFILES.map((profile) => ({ profile, bestPath: null })),
+      suggestedPaths: [],
+    };
+  }
+
+  for (const profile of STRATEGY_PROFILES) {
+    const weights = profile.weights;
+    const econ = computeBoardEconomics(board, weights);
+    const secondOptions = getValidVertices(placed)
+      .map((id) => scoreSecondSettlement(id, firstVertexId, board, econ))
+      .sort((a, b) => b.total - a.total);
+    const best = secondOptions[0];
+    if (!best) {
+      evaluations.push({ profile, bestPath: null });
+      continue;
+    }
+    const firstScore = scoreVertex(firstVertexId, board, econ);
+    evaluations.push({
+      profile,
+      bestPath: {
+        firstVertexId,
+        firstScore: firstScore.total,
+        bestSecondVertexId: best.vertexId,
+        pairScore: best.total,
+      },
+    });
+  }
+
+  const ranked = [...evaluations].sort(
+    (a, b) => (b.bestPath?.pairScore ?? 0) - (a.bestPath?.pairScore ?? 0)
+  );
+  const winner = ranked[0];
+  const recommendedProfile = winner?.profile ?? STRATEGY_PROFILES[0]!;
+  const winnerPath = winner?.bestPath;
+
+  let reason = 'Ingen gyldige plasseringer igjen – bruker balansert profil.';
+  if (winnerPath) {
+    reason = `Ut fra gjenværende posisjoner passer ${recommendedProfile.label} best for landsby #2 (parscore ${winnerPath.pairScore.toFixed(2)}). Motspillere følger alltid balansert strategi.`;
+  }
+
+  const suggestedPaths = ranked
+    .map((e) => e.bestPath)
+    .filter((p): p is FirstSettlementPath => p !== null)
+    .slice(0, 5);
+
+  return {
+    recommendedProfileId: recommendedProfile.id,
+    recommendedProfile,
+    reason,
+    evaluations: ranked,
+    suggestedPaths,
+  };
 }

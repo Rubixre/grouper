@@ -70,7 +70,10 @@ export function isHumanTurn(state: SimulationState): boolean {
   return player !== null && player === state.config.humanPlayerIndex;
 }
 
-/** Rangér gyldige plasseringer for spilleren som har tur */
+/**
+ * Rangér gyldige plasseringer for spilleren som har tur.
+ * `weights` gjelder kun «deg» — motstandere bruker alltid balansert (DEFAULT).
+ */
 export function getOptionsForCurrentTurn(
   state: SimulationState,
   weights?: ResourceWeights
@@ -78,9 +81,11 @@ export function getOptionsForCurrentTurn(
   const player = currentPlayer(state);
   if (player === null) return [];
 
-  const resolvedWeights = weights ?? DEFAULT_RESOURCE_WEIGHTS;
-  const ownCount = state.placements.filter((p) => p.player === player).length;
   const isHuman = player === state.config.humanPlayerIndex;
+  const resolvedWeights = isHuman
+    ? (weights ?? DEFAULT_RESOURCE_WEIGHTS)
+    : DEFAULT_RESOURCE_WEIGHTS;
+  const ownCount = state.placements.filter((p) => p.player === player).length;
 
   // Første landsby:
   // - Mennesket (deg): lookahead mot forventet par (#1+#2)
@@ -142,7 +147,11 @@ export function undoLastPlacement(state: SimulationState): SimulationState {
   };
 }
 
-/** Motspillere plasserer automatisk på toppvalg til det er din tur */
+/**
+ * Motspillere plasserer automatisk på toppvalg (alltid balansert strategi)
+ * til det er din tur. `weights` brukes kun hvis et menneske-trekk skulle
+ * dukke opp midt i løkken (skjer normalt ikke).
+ */
 export function advanceToHumanTurn(
   state: SimulationState,
   weights?: ResourceWeights
@@ -151,6 +160,7 @@ export function advanceToHumanTurn(
   let next = state;
 
   while (!next.finished && currentPlayer(next) !== human) {
+    // Motstandere ignorerer weights internt (alltid DEFAULT)
     const options = getOptionsForCurrentTurn(next, weights);
     if (options.length === 0) break;
     next = placeSettlement(next, options[0].vertexId);
