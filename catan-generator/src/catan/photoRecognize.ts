@@ -9,7 +9,7 @@ import {
   type PhotoBoardNumber,
 } from './boardFromPhoto';
 
-/** Transformasjon som mapper aksiale hex-koordinater → bildepiksler. */
+/** Transformasjon som mapper aksiale hex-koordinater → bildepiksler (fast hex-overlay). */
 export interface ImageOverlayTransform {
   /** Hex-senter (q=0,r=0) i bildekoordinater */
   centerX: number;
@@ -18,6 +18,72 @@ export interface ImageOverlayTransform {
   hexSize: number;
   /** Rotasjon i grader (positiv = med klokken) */
   rotationDeg: number;
+}
+
+/**
+ * Justering av selve bildet under et fast hex-nett.
+ * Pan/zoom/rotasjon er i bildepiksel-rom (natural size), rundt bildesenter.
+ */
+export interface ImageAdjust {
+  panX: number;
+  panY: number;
+  zoom: number;
+  rotationDeg: number;
+}
+
+export function defaultImageAdjust(): ImageAdjust {
+  return { panX: 0, panY: 0, zoom: 1, rotationDeg: 0 };
+}
+
+export function nudgeImageAdjust(
+  adjust: ImageAdjust,
+  patch: Partial<ImageAdjust>
+): ImageAdjust {
+  return {
+    panX: patch.panX ?? adjust.panX,
+    panY: patch.panY ?? adjust.panY,
+    zoom: clamp(patch.zoom ?? adjust.zoom, 0.4, 3),
+    rotationDeg: patch.rotationDeg ?? adjust.rotationDeg,
+  };
+}
+
+export function scaleImageAdjustForRecognition(
+  adjust: ImageAdjust,
+  scale: number
+): ImageAdjust {
+  if (scale === 1) return adjust;
+  return {
+    ...adjust,
+    panX: adjust.panX * scale,
+    panY: adjust.panY * scale,
+  };
+}
+
+/**
+ * Map overlay-/visningspiksel (fast hex-nett) → kildebildepiksel
+ * etter at bildet er panet/zoomet/rotert rundt sentrum.
+ */
+export function displayToImagePixel(
+  x: number,
+  y: number,
+  imageWidth: number,
+  imageHeight: number,
+  adjust: ImageAdjust
+): { x: number; y: number } {
+  const cx = imageWidth / 2;
+  const cy = imageHeight / 2;
+  const dx = x - cx - adjust.panX;
+  const dy = y - cy - adjust.panY;
+  const rad = (-adjust.rotationDeg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const rx = dx * cos - dy * sin;
+  const ry = dx * sin + dy * cos;
+  const z = adjust.zoom === 0 ? 1 : adjust.zoom;
+  return {
+    x: cx + rx / z,
+    y: cy + ry / z,
+  };
 }
 
 export interface ResourceGuess {
@@ -457,14 +523,23 @@ export function guessNumberFromCenter(
 export function recognizeBoardFromImageData(
   imageData: RgbaImageBuffer,
   transform: ImageOverlayTransform,
-  boardSize: BoardSize = 'base'
+  boardSize: BoardSize = 'base',
+  imageAdjust: ImageAdjust = defaultImageAdjust()
 ): BoardRecognitionResult {
   const landCoords = getLandHexCoords(boardSize);
   const hexes: HexRecognitionResult[] = [];
+  const sampleHexSize = transform.hexSize / (imageAdjust.zoom || 1);
 
   for (const coord of landCoords) {
-    const { x, y } = axialToImagePixel(coord, transform);
-    const terrain = sampleTerrainColor(imageData, x, y, transform.hexSize);
+    const display = axialToImagePixel(coord, transform);
+    const { x, y } = displayToImagePixel(
+      display.x,
+      display.y,
+      imageData.width,
+      imageData.height,
+      imageAdjust
+    );
+    const terrain = sampleTerrainColor(imageData, x, y, sampleHexSize);
 
     let resourceGuess: ResourceGuess | null = terrain
       ? classifyResourceFromRgb(terrain)
@@ -474,7 +549,7 @@ export function recognizeBoardFromImageData(
       imageData,
       x,
       y,
-      transform.hexSize,
+      sampleHexSize,
       resourceGuess?.resource ?? null
     );
 

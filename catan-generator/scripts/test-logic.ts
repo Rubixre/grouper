@@ -1340,6 +1340,7 @@ import {
   axialToImagePixel,
   classifyResourceFromRgb,
   defaultOverlayTransform,
+  displayToImagePixel,
   mapPipsToNumber,
   preferFiveOverNine,
   recognizeBoardFromImageData,
@@ -1391,6 +1392,37 @@ import { getLandHexCoords } from '../src/catan/boardLayout.ts';
   const transform = defaultOverlayTransform(800, 800, coords);
   assert(transform.hexSize > 0, 'Default overlay has positive hex size');
   assert(transform.centerX > 0 && transform.centerY > 0, 'Default overlay centered');
+
+  const identityMapped = displayToImagePixel(120, 80, 400, 300, {
+    panX: 0,
+    panY: 0,
+    zoom: 1,
+    rotationDeg: 0,
+  });
+  assert(
+    Math.abs(identityMapped.x - 120) < 1e-6 && Math.abs(identityMapped.y - 80) < 1e-6,
+    'Identity image adjust leaves display pixels unchanged'
+  );
+  const zoomMapped = displayToImagePixel(200, 150, 400, 300, {
+    panX: 0,
+    panY: 0,
+    zoom: 2,
+    rotationDeg: 0,
+  });
+  assert(
+    Math.abs(zoomMapped.x - 200) < 1e-6 && Math.abs(zoomMapped.y - 150) < 1e-6,
+    'Zoom around center maps center pixel to itself'
+  );
+  const panMapped = displayToImagePixel(220, 150, 400, 300, {
+    panX: 20,
+    panY: 0,
+    zoom: 1,
+    rotationDeg: 0,
+  });
+  assert(
+    Math.abs(panMapped.x - 200) < 1e-6 && Math.abs(panMapped.y - 150) < 1e-6,
+    'Pan maps display pixel back to unshifted source'
+  );
 
   // Synthetic board image: paint each land hex ring with a known resource color
   const W = 600;
