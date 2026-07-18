@@ -759,6 +759,38 @@ if (board) {
     Math.abs(blendLookaheadScore(1, 3, 0.5) - 2) < 1e-9,
     'Blend is confidence-weighted average of spot and pair'
   );
+  {
+    const levels = buildStrategyRelativeLevels(
+      [
+        {
+          profile: STRATEGY_PROFILES[0]!,
+          bestPath: {
+            firstVertexId: 'a',
+            firstScore: 1,
+            bestSecondVertexId: 'b',
+            pairScore: 2,
+            pathConfidence: 1,
+            adjustedPairScore: 2,
+          },
+        },
+        {
+          profile: STRATEGY_PROFILES[1]!,
+          bestPath: {
+            firstVertexId: 'a',
+            firstScore: 1,
+            bestSecondVertexId: 'c',
+            pairScore: 1,
+            pathConfidence: 1,
+            adjustedPairScore: 1,
+          },
+        },
+      ],
+      2.5
+    );
+    assert(levels.harbor === 100, 'Best strategy level is 100');
+    assert(levels.general === 80, 'Weaker strategy is relative percent of best');
+    assert(levels.longestRoad === 40, 'Lowest strategy scales correctly');
+  }
   const topPath = evaluateFirstSettlementPath(
     board,
     sim.placements,
