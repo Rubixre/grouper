@@ -77,11 +77,13 @@ export function SettingsModal({
             </label>
             <p className="muted small">
               Utvidelse legger til 11 landhexer og 4 enkelt-hex kantbrikker (B7–B10).
+              Bonanzabrett er bare tilgjengelig for grunnspill.
             </p>
           </section>
 
           <SettingsPanel
             embedded
+            boardSize={boardSize}
             settings={settings}
             onChange={onSettingsChange}
           />

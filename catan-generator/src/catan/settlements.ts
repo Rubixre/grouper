@@ -22,6 +22,11 @@ import {
   scoreFirstPlacement,
   scorePairPlacement,
 } from './placementModel';
+import {
+  expansionPotentialScore,
+  pairExpansionPotentialScore,
+  pairSpacingPenalty,
+} from './placementExpansion';
 
 export { NUMBER_PROB } from './placementModel';
 
@@ -166,6 +171,7 @@ function buildProductionProfile(
   let producingHexCount = 0;
   let desertNeighbors = 0;
   let hasRedNumber = false;
+  let redNumberCount = 0;
 
   for (const hex of vertex.hexes) {
     const tile = board.hexes.find((h) => h.coord.q === hex.q && h.coord.r === hex.r);
@@ -185,7 +191,10 @@ function buildProductionProfile(
     resources.add(resource);
     producingHexCount++;
     pipTotal += probability;
-    if (tile.number === 6 || tile.number === 8) hasRedNumber = true;
+    if (tile.number === 6 || tile.number === 8) {
+      hasRedNumber = true;
+      redNumberCount += 1;
+    }
 
     byResource[resource] = (byResource[resource] ?? 0) + value;
     byNumber[tile.number] = (byNumber[tile.number] ?? 0) + value;
@@ -211,6 +220,7 @@ function buildProductionProfile(
     producingHexCount,
     desertNeighbors,
     hasRedNumber,
+    redNumberCount,
     resources,
     breakdown,
   };
@@ -243,21 +253,48 @@ function scoreToResult(
     pairPipBonus: c.pairPipBonus,
     complementScore: c.complementScore,
     coordination: c.coordination,
+    expansionPotential: c.expansionPotential,
+    spacingPenalty: c.spacingPenalty,
     placementKind,
     breakdown: profile.breakdown,
   };
 }
 
+/** Billig hotspot-proxy til ekspansjonslag (ikke full PSM — unngår rekursjon). */
+function hotspotValue(
+  vertexId: string,
+  board: Board,
+  economics: BoardEconomics
+): number {
+  const profile = buildProductionProfile(vertexId, board, economics.dynamicWeights);
+  // Produksjon + lett pip-kvalitet; low-hex dempes allerede i selve kandidaten
+  return profile.total + profile.pipTotal * 0.35;
+}
+
 export function scoreVertex(
   vertexId: string,
   board: Board,
-  economics?: BoardEconomics
+  economics?: BoardEconomics,
+  placed: PlacedSettlement[] = []
 ): SettlementScore {
   const econ = economics ?? computeBoardEconomics(board);
   const profile = buildProductionProfile(vertexId, board, econ.dynamicWeights);
   const harbors = getHarborsForVertex(vertexId, board.harbors);
   const harbor = harborBonusForProfile(profile, harbors);
-  const scored = scoreFirstPlacement(profile, econ.strategyWeights, harbor);
+  const vertices = getVertices();
+  const hypothetical: PlacedSettlement[] = [
+    ...placed,
+    { vertexId, player: -1, isCity: false },
+  ];
+  const expansion = expansionPotentialScore(
+    vertexId,
+    hypothetical,
+    vertices,
+    (id) => hotspotValue(id, board, econ)
+  );
+  const scored = scoreFirstPlacement(profile, econ.strategyWeights, harbor, {
+    expansionPotential: expansion,
+  });
   return scoreToResult(vertexId, 'first', profile, scored);
 }
 
@@ -266,7 +303,8 @@ export function scoreSecondSettlement(
   secondVertexId: string,
   firstVertexId: string,
   board: Board,
-  economics?: BoardEconomics
+  economics?: BoardEconomics,
+  placed: PlacedSettlement[] = []
 ): SettlementScore {
   const econ = economics ?? computeBoardEconomics(board);
   const first = buildProductionProfile(firstVertexId, board, econ.dynamicWeights);
@@ -281,7 +319,20 @@ export function scoreSecondSettlement(
       combinedResources.size
     );
 
-  const scored = scorePairPlacement(first, second, econ.strategyWeights, harbor);
+  const vertices = getVertices();
+  const expansion = pairExpansionPotentialScore(
+    firstVertexId,
+    secondVertexId,
+    placed,
+    vertices,
+    (id) => hotspotValue(id, board, econ)
+  );
+  const spacing = pairSpacingPenalty(firstVertexId, secondVertexId, vertices);
+
+  const scored = scorePairPlacement(first, second, econ.strategyWeights, harbor, {
+    expansionPotential: expansion,
+    spacingPenalty: spacing,
+  });
   return scoreToResult(secondVertexId, 'second', second, scored, {
     firstProduction: first.total,
     secondProduction: second.total,
@@ -312,6 +363,33 @@ export function vertexPipTotal(vertexId: string, board: Board): number {
     pip += NUMBER_PROB[tile.number] ?? 0;
   }
   return pip;
+}
+
+/** Rå forventet produksjon (pip) per ressurs på et hjørne */
+export function vertexRawByResource(
+  vertexId: string,
+  board: Board
+): Partial<Record<ProdResource, number>> {
+  const vertices = getVertices();
+  const vertex = vertices.get(vertexId);
+  const raw: Partial<Record<ProdResource, number>> = {};
+  if (!vertex) return raw;
+
+  for (const hex of vertex.hexes) {
+    const tile = board.hexes.find((h) => h.coord.q === hex.q && h.coord.r === hex.r);
+    if (
+      !tile ||
+      tile.kind !== 'land' ||
+      !tile.resource ||
+      tile.resource === 'desert' ||
+      !tile.number
+    ) {
+      continue;
+    }
+    const resource = tile.resource as ProdResource;
+    raw[resource] = (raw[resource] ?? 0) + (NUMBER_PROB[tile.number] ?? 0);
+  }
+  return raw;
 }
 
 /**
@@ -352,6 +430,64 @@ export function pickGreedyOpponentVertex(
   return bestId;
 }
 
+/**
+ * Motspillermodell som matcher UI bedre enn ren pip:
+ * 1. landsby = høyest PSM (scoreVertex), 2. = høyest pair-score.
+ */
+export function pickOpponentVertex(
+  board: Board,
+  placed: PlacedSettlement[],
+  player: number,
+  weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS
+): string | null {
+  const valid = getValidVertices(placed);
+  if (valid.length === 0) return null;
+
+  const econ = computeBoardEconomics(board, weights);
+  const existing = placed.find((p) => p.player === player);
+
+  if (existing) {
+    let bestId: string | null = null;
+    let bestTotal = -Infinity;
+    for (const vertexId of valid) {
+      const score = scoreSecondSettlement(
+        vertexId,
+        existing.vertexId,
+        board,
+        econ,
+        placed
+      );
+      if (
+        score.total > bestTotal + 1e-12 ||
+        (Math.abs(score.total - bestTotal) <= 1e-12 &&
+          vertexId < (bestId ?? ''))
+      ) {
+        bestTotal = score.total;
+        bestId = vertexId;
+      }
+    }
+    return bestId;
+  }
+
+  let bestId: string | null = null;
+  let bestTotal = -Infinity;
+  let bestPip = -1;
+  for (const vertexId of valid) {
+    const score = scoreVertex(vertexId, board, econ, placed);
+    const pip = vertexPipTotal(vertexId, board);
+    if (
+      score.total > bestTotal + 1e-12 ||
+      (Math.abs(score.total - bestTotal) <= 1e-12 &&
+        (pip > bestPip || (pip === bestPip && vertexId < (bestId ?? ''))))
+    ) {
+      bestTotal = score.total;
+      bestPip = pip;
+      bestId = vertexId;
+    }
+  }
+  return bestId;
+}
+
 export function rankVertices(
   board: Board,
   placed: PlacedSettlement[],
@@ -365,13 +501,13 @@ export function rankVertices(
     if (playerSettlements.length === 1) {
       const firstVertexId = playerSettlements[0].vertexId;
       return getValidVertices(placed)
-        .map((id) => scoreSecondSettlement(id, firstVertexId, board, econ))
+        .map((id) => scoreSecondSettlement(id, firstVertexId, board, econ, placed))
         .sort((a, b) => b.total - a.total);
     }
   }
 
   return getValidVertices(placed)
-    .map((id) => scoreVertex(id, board, econ))
+    .map((id) => scoreVertex(id, board, econ, placed))
     .sort((a, b) => b.total - a.total);
 }
 
@@ -402,6 +538,8 @@ export interface ScoreExplanation {
   coordination?: number;
   portfolio?: number;
   overlap?: number;
+  expansionPotential?: number;
+  spacingPenalty?: number;
   netPortfolio?: number;
   total: number;
   coveredResources: string[];
@@ -460,6 +598,8 @@ export function explainPlacementScore(
     pairPipBonus: score.pairPipBonus,
     complementScore: score.complementScore,
     coordination: score.coordination,
+    expansionPotential: score.expansionPotential,
+    spacingPenalty: score.spacingPenalty,
     total: score.total,
   };
 

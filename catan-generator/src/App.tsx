@@ -19,11 +19,13 @@ import {
   isHumanFirstSettlementTurn,
   recommendStrategy,
 } from './catan/strategyAdvisor';
+import { findHarborStrategyOpportunities, harborOpportunityKey, type HarborStrategyOpportunity } from './catan/harborStrategy';
 import {
   createSimulation,
   getOptionsForCurrentTurn,
   isHumanTurn,
   placeSettlement,
+  undoLastPlacement,
   type SimulationState,
 } from './catan/simulator';
 import {
@@ -36,6 +38,7 @@ import { BoardStoryPanel } from './components/BoardStoryPanel';
 import { MappingPanel } from './components/MappingPanel';
 import { PlayerSetupPanel, syncConfigPlayerCount } from './components/PlayerSetupPanel';
 import { SettingsModal } from './components/SettingsModal';
+import { PhotoBoardModal } from './components/PhotoBoardModal';
 import { SettlementSimulator } from './components/SettlementSimulator';
 import { SimulationSummaryPanel } from './components/SimulationSummary';
 import { createBoardStory, type BoardStory } from './catan/boardStory';
@@ -67,12 +70,14 @@ function App() {
   const [selectedVertex, setSelectedVertex] = useState<string | null>(
     () => restoredSession?.selectedVertex ?? null
   );
+  const [selectedHarborPlanKey, setSelectedHarborPlanKey] = useState<string | null>(null);
   const [boardStory, setBoardStory] = useState<BoardStory | null>(
     () => restoredSession?.boardStory ?? null
   );
   const [mode, setMode] = useState<AppMode>(() => restoredSession?.mode ?? 'view');
   const [mappingMode, setMappingMode] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [photoBoardOpen, setPhotoBoardOpen] = useState(false);
   const [highlightEdge, setHighlightEdge] = useState<string | null>(null);
   const [highlightCorner, setHighlightCorner] = useState<string | null>(null);
   const [hydrated] = useState(() => restoredSession !== null);
@@ -84,6 +89,9 @@ function App() {
 
   const handleBoardSizeChange = (size: BoardSize) => {
     setBoardSize(size);
+    if (size !== 'base' && settings.bonanzaBoard) {
+      setSettings((prev) => ({ ...prev, bonanzaBoard: false }));
+    }
     if (size === 'base' && playerCount > 4) {
       const nextCount = 4 as PlayerCount;
       setPlayerCount(nextCount);
@@ -112,8 +120,20 @@ function App() {
     setBoardStory(createBoardStory(result));
     setSimulation(null);
     setSelectedVertex(null);
+    setSelectedHarborPlanKey(null);
     setMode('view');
   }, [settings, boardSize]);
+
+  const handleApplyPhotoBoard = useCallback((next: Board) => {
+    setError(null);
+    setBoardSize(next.boardSize);
+    setBoard(next);
+    setBoardStory(createBoardStory(next));
+    setSimulation(null);
+    setSelectedVertex(null);
+    setMode('view');
+    setMappingMode(false);
+  }, []);
 
   useEffect(() => {
     if (!hydrated && !board) {
@@ -152,12 +172,14 @@ function App() {
     if (!board) return;
     setSimulation(createSimulation(board, simulationConfig));
     setSelectedVertex(null);
+    setSelectedHarborPlanKey(null);
     setMode('simulate');
   };
 
   const resetSimulation = () => {
     setSimulation(null);
     setSelectedVertex(null);
+    setSelectedHarborPlanKey(null);
     setMode('view');
   };
 
@@ -180,8 +202,28 @@ function App() {
     );
   }, [board, simulation, isYourTurn]);
 
+  const harborOpportunities = useMemo(() => {
+    if (!board || !simulation || !isYourTurn) return [];
+    return findHarborStrategyOpportunities(
+      board,
+      simulation.placements,
+      simulation.config.humanPlayerIndex,
+      simulation.playerCount,
+      strategyWeights
+    );
+  }, [board, simulation, isYourTurn, strategyWeights]);
+
+  const activeHarborPlan = useMemo(() => {
+    if (!selectedHarborPlanKey) return null;
+    return (
+      harborOpportunities.find((o) => harborOpportunityKey(o) === selectedHarborPlanKey) ??
+      null
+    );
+  }, [selectedHarborPlanKey, harborOpportunities]);
+
   const secondPreviewVertex = useMemo(() => {
     if (!board || !simulation || !selectedVertex || !isYourTurn) return null;
+    if (activeHarborPlan?.secondVertexId) return activeHarborPlan.secondVertexId;
     const human = simulation.config.humanPlayerIndex;
     if (!isHumanFirstSettlementTurn(simulation.placements, human)) return null;
     return getSecondSettlementPreview(
@@ -192,12 +234,54 @@ function App() {
       selectedVertex,
       strategyWeights
     );
-  }, [board, simulation, selectedVertex, isYourTurn, strategyWeights]);
+  }, [
+    board,
+    simulation,
+    selectedVertex,
+    isYourTurn,
+    strategyWeights,
+    activeHarborPlan,
+  ]);
+
+  const harborPlanHighlight = activeHarborPlan
+    ? {
+        firstVertexId: activeHarborPlan.firstVertexId,
+        secondVertexId: activeHarborPlan.secondVertexId,
+        harborNodeVertexIds: activeHarborPlan.harborNodeVertexIds,
+      }
+    : null;
+
+  const handleSelectVertex = (vertexId: string) => {
+    setSelectedVertex(vertexId);
+    if (
+      selectedHarborPlanKey &&
+      !harborOpportunities.some(
+        (o) =>
+          harborOpportunityKey(o) === selectedHarborPlanKey &&
+          o.firstVertexId === vertexId
+      )
+    ) {
+      setSelectedHarborPlanKey(null);
+    }
+  };
+
+  const handleSelectHarborPlan = (opp: HarborStrategyOpportunity) => {
+    setSelectedHarborPlanKey(harborOpportunityKey(opp));
+    setSelectedVertex(opp.firstVertexId);
+  };
 
   const handleConfirm = () => {
     if (!simulation || !selectedVertex) return;
     setSimulation(placeSettlement(simulation, selectedVertex));
     setSelectedVertex(null);
+    setSelectedHarborPlanKey(null);
+  };
+
+  const handleUndo = () => {
+    if (!simulation || simulation.placements.length === 0) return;
+    setSimulation(undoLastPlacement(simulation));
+    setSelectedVertex(null);
+    setSelectedHarborPlanKey(null);
   };
 
   const toggleMapping = () => {
@@ -218,11 +302,13 @@ function App() {
                 {boardStory.islandName}
                 <span className="subtitle-sep"> · </span>
                 {BOARD_SIZE_CONFIG[boardSize].label}
+                {settings.bonanzaBoard && boardSize === 'base' ? ' · Bonanza' : ''}
               </>
             ) : (
               <>
                 {BOARD_SIZE_CONFIG[boardSize].totalHexes} hex ·{' '}
                 {BOARD_SIZE_CONFIG[boardSize].label}
+                {settings.bonanzaBoard && boardSize === 'base' ? ' · Bonanza' : ''}
               </>
             )}
           </p>
@@ -242,6 +328,13 @@ function App() {
           >
             Innstillinger
           </button>
+          <button
+            type="button"
+            className="btn header-btn"
+            onClick={() => setPhotoBoardOpen(true)}
+          >
+            Fra bilde
+          </button>
           <button type="button" className="btn primary" onClick={handleGenerate}>
             Generer brett
           </button>
@@ -257,6 +350,14 @@ function App() {
         onBoardSizeChange={handleBoardSizeChange}
       />
 
+      <PhotoBoardModal
+        open={photoBoardOpen}
+        onClose={() => setPhotoBoardOpen(false)}
+        boardSize={boardSize}
+        settings={settings}
+        onApply={handleApplyPhotoBoard}
+      />
+
       {error && <div className="error-banner">{error}</div>}
 
       <div className={`layout layout-two-col ${simPlacing ? 'layout-simulating' : ''}`}>
@@ -270,7 +371,8 @@ function App() {
                 highlightedVertices={simPlacing ? rankedOptions : []}
                 previewSecondVertex={secondPreviewVertex}
                 selectedVertex={selectedVertex}
-                onVertexClick={simPlacing ? setSelectedVertex : undefined}
+                harborPlanHighlight={harborPlanHighlight}
+                onVertexClick={simPlacing ? handleSelectVertex : undefined}
                 interactive={Boolean(simPlacing)}
                 mappingMode={mappingMode}
                 mapping={boardMapping}
@@ -293,7 +395,9 @@ function App() {
                     )}
                   </div>
                   <span className="placement-legend-hint">
-                    #1 = best forventet par · stiplet ring = landsby nr. 2
+                    {activeHarborPlan
+                      ? 'Oransje 1 / turkis 2 = havnstrategi · blå = havn'
+                      : '#1 = best forventet par · stiplet ring = landsby nr. 2'}
                   </span>
                 </div>
               )}
@@ -340,7 +444,7 @@ function App() {
               onHighlightEdge={setHighlightEdge}
               onHighlightCorner={setHighlightCorner}
             />
-          ) : simPlacing ? (
+          ) : simActive && simulation ? (
             <>
               <details className="panel sim-setup-details">
                 <summary>
@@ -369,7 +473,7 @@ function App() {
 
                 <PlayerSetupPanel
                   playerCount={playerCount}
-                  config={simulation?.config ?? simulationConfig}
+                  config={simulation.config}
                   disabled
                   compact
                   onConfigChange={setSimulationConfig}
@@ -400,18 +504,23 @@ function App() {
                 </button>
               </details>
 
-              {simulation && board && (
+              {board && (
                 <SettlementSimulator
                   state={simulation}
                   board={board}
+                  boardSize={boardSize}
                   options={rankedOptions}
                   selectedVertex={selectedVertex}
+                  selectedHarborPlanKey={selectedHarborPlanKey}
                   strategyProfile={activeStrategy}
                   strategyWeights={strategyWeights}
                   strategyRecommendation={strategyRecommendation}
+                  harborOpportunities={harborOpportunities}
                   secondPreviewVertex={secondPreviewVertex}
-                  onSelectVertex={setSelectedVertex}
+                  onSelectVertex={handleSelectVertex}
+                  onSelectHarborPlan={handleSelectHarborPlan}
                   onConfirm={handleConfirm}
+                  onUndo={handleUndo}
                   onApplyRecommendedStrategy={setStrategyProfile}
                 />
               )}
@@ -493,22 +602,6 @@ function App() {
                   </div>
                 )}
               </div>
-
-              {simActive && simulation?.finished && board && (
-                <SettlementSimulator
-                  state={simulation}
-                  board={board}
-                  options={rankedOptions}
-                  selectedVertex={selectedVertex}
-                  strategyProfile={activeStrategy}
-                  strategyWeights={strategyWeights}
-                  strategyRecommendation={strategyRecommendation}
-                  secondPreviewVertex={secondPreviewVertex}
-                  onSelectVertex={setSelectedVertex}
-                  onConfirm={handleConfirm}
-                  onApplyRecommendedStrategy={setStrategyProfile}
-                />
-              )}
 
               {!simActive && (
                 <div className="panel sim-placeholder">

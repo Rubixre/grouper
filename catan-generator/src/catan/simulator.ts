@@ -121,6 +121,21 @@ export function placeSettlement(
   };
 }
 
+/** Angre siste plassering (ett steg tilbake). */
+export function undoLastPlacement(state: SimulationState): SimulationState {
+  if (state.placements.length === 0 || state.currentStep === 0) return state;
+
+  const placements = state.placements.slice(0, -1);
+  const currentStep = state.currentStep - 1;
+
+  return {
+    ...state,
+    placements,
+    currentStep,
+    finished: false,
+  };
+}
+
 /** Motspillere plasserer automatisk på toppvalg til det er din tur */
 export function advanceToHumanTurn(
   state: SimulationState,
