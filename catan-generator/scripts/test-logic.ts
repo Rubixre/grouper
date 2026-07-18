@@ -1047,9 +1047,24 @@ assert(verdictFromEffectiveRelative(0.8).verdict === 'weaker', 'Effective 80% is
   };
   const vs = buildHarborVsBalanced(sample, 1.0, 0.9, DEFAULT_RESOURCE_WEIGHTS);
   assert(vs.planScore === 0.9, 'Comparison keeps plan score');
+  assert(vs.rawPlanScore === 0.9, 'Comparison stores raw plan score');
+  assert(vs.pathConfidence === 1, 'Default path confidence is 1');
   assert(vs.tradeBonus > 0, 'Comparison adds positive trade bonus for 2:1');
   assert(vs.effectiveScore > vs.planScore, 'Effective score includes trade bonus');
   assert(vs.effectiveRelative > vs.relative, 'Effective relative is above raw relative');
+  const vsUncertain = buildHarborVsBalanced(
+    sample,
+    1.0,
+    0.9,
+    DEFAULT_RESOURCE_WEIGHTS,
+    0.5,
+    1.2
+  );
+  assert(vsUncertain.rawPlanScore === 1.2, 'Raw plan score can differ from adjusted');
+  assert(
+    Math.abs(vsUncertain.tradeBonus - vs.tradeBonus * 0.5) < 1e-9,
+    'Trade bonus scales with path confidence'
+  );
 }
 
 {
@@ -1157,6 +1172,25 @@ if (board) {
       harborPlacementScores[0]!.expectedSecondVertexId !== undefined ||
         opportunities.some((o) => o.firstVertexId === harborPlacementScores[0]!.vertexId),
       'Harbor placement scores map to opportunity first vertices'
+    );
+  }
+  const pairPlans = opportunities.filter((o) => o.secondVertexId != null);
+  for (const plan of pairPlans) {
+    assert(
+      plan.pathConfidence !== undefined &&
+        plan.pathConfidence > 0 &&
+        plan.pathConfidence <= 1,
+      'Harbor #2 plans include path confidence'
+    );
+    assert(
+      plan.vsBalanced?.pathConfidence !== undefined,
+      'Harbor vsBalanced includes path confidence'
+    );
+  }
+  if (pairPlans.length > 0) {
+    assert(
+      harborPlacementScores.some((s) => s.lookaheadConfidence !== undefined),
+      'Harbor placement scores expose lookahead confidence'
     );
   }
 

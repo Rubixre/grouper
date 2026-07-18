@@ -155,7 +155,7 @@ export function SettlementSimulator({
 
   const turnHint = isYourTurn
     ? harborMode
-      ? 'Havnmodus — samme plasseringsliste; stiplet ring = #2'
+      ? 'Havnmodus — % sikker = forutsigbar sti til #2; stiplet ring = #2'
       : isSecond
         ? 'Andre landsby — gul kant = anbefalt strategi (byttes ikke automatisk)'
         : isFirstHuman
@@ -173,6 +173,12 @@ export function SettlementSimulator({
         opp.vsBalanced != null
           ? Math.round(opp.vsBalanced.effectiveRelative * 100)
           : null;
+      const confidence =
+        opp.pathConfidence ?? opp.vsBalanced?.pathConfidence ?? undefined;
+      const confidenceHint =
+        confidence !== undefined && opp.secondVertexId
+          ? ` · ${Math.round(confidence * 100)}% sikker`
+          : '';
       const secondHint = opp.secondVertexId
         ? ` · #2 ${shortVertexLabel(boardSize, opp.secondVertexId)}`
         : '';
@@ -184,8 +190,8 @@ export function SettlementSimulator({
         resources: `${ratio} ${RESOURCE_LABELS[opp.resource]}`,
         meta:
           vsPct != null
-            ? `${vsPct}% vs balansert${secondHint}`
-            : `${opp.harborReachLabel}${secondHint}`,
+            ? `${vsPct}% vs balansert${confidenceHint}${secondHint}`
+            : `${opp.harborReachLabel}${confidenceHint}${secondHint}`,
         selected: selectedHarborPlanKey === planKey,
       };
     });
@@ -347,7 +353,7 @@ export function SettlementSimulator({
                     onClick={() => onSelectHarborPlan(row.opp)}
                     title={
                       row.opp.vsBalanced
-                        ? `PSM ${row.opp.vsBalanced.planScore.toFixed(2)} + havn ${row.opp.vsBalanced.tradeBonus.toFixed(2)} = ${row.opp.vsBalanced.effectiveScore.toFixed(2)} vs balansert ${row.opp.vsBalanced.bestBalancedScore.toFixed(2)}`
+                        ? `Justert PSM ${row.opp.vsBalanced.planScore.toFixed(2)} (rå par ${row.opp.vsBalanced.rawPlanScore.toFixed(2)}) + havn ${row.opp.vsBalanced.tradeBonus.toFixed(2)} = ${row.opp.vsBalanced.effectiveScore.toFixed(2)} vs balansert ${row.opp.vsBalanced.bestBalancedScore.toFixed(2)} · ${Math.round(row.opp.vsBalanced.pathConfidence * 100)}% sikker sti`
                         : row.opp.summary
                     }
                   >
