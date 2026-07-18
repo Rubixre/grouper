@@ -2103,11 +2103,15 @@ body {
 }
 
 .strategy-pick-btn.is-selected .strategy-pick-level {
-  color: #1a5276;
+  color: #d5e4ef;
 }
 
 .strategy-pick-btn.is-recommended .strategy-pick-level {
   color: #9a7208;
+}
+
+.strategy-pick-btn.is-selected.is-recommended .strategy-pick-level {
+  color: #f3e2a8;
 }
 
 .strategy-pick-btn:hover:not(:disabled) {
@@ -2116,10 +2120,16 @@ body {
 }
 
 .strategy-pick-btn.is-selected {
-  border-color: #1a5276;
-  background: #e4eef6;
-  color: #122f44;
-  box-shadow: inset 0 0 0 1px rgba(26, 82, 118, 0.2);
+  border-color: #0f2f45;
+  background: #1a3a52;
+  color: #f4f7fa;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.strategy-pick-btn.is-selected:hover:not(:disabled) {
+  border-color: #0c283b;
+  background: #163247;
+  color: #f4f7fa;
 }
 
 .strategy-pick-btn.is-recommended {
@@ -2132,12 +2142,18 @@ body {
 }
 
 .strategy-pick-btn.is-selected.is-recommended {
-  border-color: #c9950c;
-  background: linear-gradient(180deg, #fff8e1 0%, #e8f0f7 100%);
+  border-color: #e0b43a;
+  background: #243848;
+  color: #fff8e8;
   box-shadow:
-    0 0 0 1px rgba(212, 160, 23, 0.7),
+    0 0 0 1px rgba(212, 160, 23, 0.75),
     0 0 12px rgba(255, 214, 102, 0.7),
-    inset 0 0 0 1px rgba(26, 82, 118, 0.15);
+    inset 0 0 0 1px rgba(255, 236, 170, 0.25);
+}
+
+.strategy-pick-btn.is-selected.is-recommended:hover:not(:disabled) {
+  background: #1e3140;
+  color: #fff8e8;
 }
 
 .strategy-pick-btn:disabled {
