@@ -13,7 +13,7 @@ import {
 } from './resourceWeights';
 import {
   getValidVertices,
-  pickOpponentVertex,
+  pickOpponentChoice,
   scoreSecondSettlement,
   scoreVertex,
 } from './settlements';
@@ -24,7 +24,40 @@ export interface FirstSettlementPath {
   firstVertexId: string;
   firstScore: number;
   bestSecondVertexId: string;
+  /** Parscore hvis den simulerte motstander-stien holder */
   pairScore: number;
+  /** 0–1: forutsigbarhet i motstandertrekk mellom #1 og #2 */
+  pathConfidence: number;
+  /** Spot blandet med par etter pathConfidence */
+  adjustedPairScore: number;
+}
+
+export interface OpponentPathSimulation {
+  placements: PlacedSettlement[];
+  pathConfidence: number;
+}
+
+/** Geometrisk snitt — én usikker motstander-runde trekker stien ned. */
+export function aggregatePathConfidence(stepConfidences: number[]): number {
+  if (stepConfidences.length === 0) return 1;
+  const logSum = stepConfidences.reduce(
+    (sum, c) => sum + Math.log(Math.max(c, 1e-6)),
+    0
+  );
+  return Math.exp(logSum / stepConfidences.length);
+}
+
+/**
+ * Bland lokal spot-score med parscore etter tillit til motstander-stien.
+ * Høy tillit → stol på par; lav tillit → fall tilbake til «bra her og nå».
+ */
+export function blendLookaheadScore(
+  immediateScore: number,
+  pairScore: number,
+  confidence: number
+): number {
+  const c = Math.min(1, Math.max(0, confidence));
+  return immediateScore * (1 - c) + pairScore * c;
 }
 
 export interface ProfileStrategyEvaluation {
@@ -42,21 +75,21 @@ export interface StrategyRecommendation {
 }
 
 /**
- * Simuler motspillere til det er din andre landsby-tur.
- * Motstandere bruker jevnere ressursvekter (OPPONENT_RESOURCE_WEIGHTS) —
- * uavhengig av menneskets valgte profil. PSM: myopisk #1, par-score på #2.
+ * Simuler motspillere til det er din andre landsby-tur, med usikkerhet
+ * i hvert motstandervalg (klar favoritt vs. mange jevngode).
  *
+ * Motstandere bruker jevnere ressursvekter (OPPONENT_RESOURCE_WEIGHTS).
  * `weights` er bevart for bakoverkompatibilitet, men brukes ikke for
  * motspillervalg.
  */
-export function simulateToHumanSecondTurn(
+export function simulateToHumanSecondTurnDetailed(
   board: Board,
   placed: PlacedSettlement[],
   humanPlayer: number,
   playerCount: PlayerCount,
   humanFirstVertex: string,
   _weights?: ResourceWeights
-): PlacedSettlement[] | null {
+): OpponentPathSimulation | null {
   void _weights;
   let simulated: PlacedSettlement[] = [
     ...placed,
@@ -65,28 +98,57 @@ export function simulateToHumanSecondTurn(
 
   const order = getPlacementOrder(playerCount);
   let step = simulated.length;
+  const stepConfidences: number[] = [];
 
   while (step < order.length) {
     const player = order[step];
     const humanCount = simulated.filter((p) => p.player === humanPlayer).length;
 
     if (player === humanPlayer && humanCount === 1) {
-      return simulated;
+      return {
+        placements: simulated,
+        pathConfidence: aggregatePathConfidence(stepConfidences),
+      };
     }
 
-    const pickVertexId = pickOpponentVertex(
+    const choice = pickOpponentChoice(
       board,
       simulated,
       player,
       OPPONENT_RESOURCE_WEIGHTS
     );
-    if (!pickVertexId) return null;
+    if (!choice) return null;
 
-    simulated = [...simulated, { vertexId: pickVertexId, player, isCity: false }];
+    stepConfidences.push(choice.confidence);
+    simulated = [
+      ...simulated,
+      { vertexId: choice.vertexId, player, isCity: false },
+    ];
     step += 1;
   }
 
   return null;
+}
+
+/** Bakoverkompatibel wrapper — kun plasseringer. */
+export function simulateToHumanSecondTurn(
+  board: Board,
+  placed: PlacedSettlement[],
+  humanPlayer: number,
+  playerCount: PlayerCount,
+  humanFirstVertex: string,
+  weights?: ResourceWeights
+): PlacedSettlement[] | null {
+  return (
+    simulateToHumanSecondTurnDetailed(
+      board,
+      placed,
+      humanPlayer,
+      playerCount,
+      humanFirstVertex,
+      weights
+    )?.placements ?? null
+  );
 }
 
 export function evaluateFirstSettlementPath(
@@ -97,7 +159,7 @@ export function evaluateFirstSettlementPath(
   firstVertexId: string,
   weights: ResourceWeights
 ): FirstSettlementPath | null {
-  const simulated = simulateToHumanSecondTurn(
+  const simulated = simulateToHumanSecondTurnDetailed(
     board,
     placed,
     humanPlayer,
@@ -108,27 +170,36 @@ export function evaluateFirstSettlementPath(
   if (!simulated) return null;
 
   const econ = computeBoardEconomics(board, weights);
-  const secondOptions = getValidVertices(simulated)
+  const secondOptions = getValidVertices(simulated.placements)
     .map((id) => scoreSecondSettlement(id, firstVertexId, board, econ))
     .sort((a, b) => b.total - a.total);
   if (secondOptions.length === 0) return null;
 
   const bestSecond = secondOptions[0]!;
   const firstScore = scoreVertex(firstVertexId, board, econ);
+  const pathConfidence = simulated.pathConfidence;
+  const pairScore = bestSecond.total;
 
   return {
     firstVertexId,
     firstScore: firstScore.total,
     bestSecondVertexId: bestSecond.vertexId,
-    pairScore: bestSecond.total,
+    pairScore,
+    pathConfidence,
+    adjustedPairScore: blendLookaheadScore(
+      firstScore.total,
+      pairScore,
+      pathConfidence
+    ),
   };
 }
 
 const DEFAULT_LOOKAHEAD_CANDIDATES = 12;
 
 /**
- * Rangér første-landsbyer etter forventet parscore:
- * toppskårere lokalt → simuler greedy-motspillere → beste landsby #2.
+ * Rangér første-landsbyer med lookahead:
+ * lokal score → simuler motstandere → beste #2.
+ * Rangering bruker justert parscore (par blandet med spot etter tillit).
  */
 export function rankFirstSettlementsWithLookahead(
   board: Board,
@@ -162,6 +233,7 @@ export function rankFirstSettlementsWithLookahead(
         ...spot,
         immediateScore: spot.total,
         expectedPairScore: spot.total,
+        lookaheadConfidence: 0,
       };
     }
     return {
@@ -169,13 +241,16 @@ export function rankFirstSettlementsWithLookahead(
       immediateScore: spot.total,
       expectedPairScore: path.pairScore,
       expectedSecondVertexId: path.bestSecondVertexId,
-      // Rangér og vis hovedsakelig på forventet par
-      total: path.pairScore,
+      lookaheadConfidence: path.pathConfidence,
+      // Rangér på justert par (usikker sti → mer vekt på lokal spot)
+      total: path.adjustedPairScore,
     };
   });
 
   withLookahead.sort((a, b) => {
-    const pairDiff = (b.expectedPairScore ?? b.total) - (a.expectedPairScore ?? a.total);
+    const adjDiff = b.total - a.total;
+    if (Math.abs(adjDiff) > 1e-9) return adjDiff;
+    const pairDiff = (b.expectedPairScore ?? 0) - (a.expectedPairScore ?? 0);
     if (Math.abs(pairDiff) > 1e-9) return pairDiff;
     return (b.immediateScore ?? 0) - (a.immediateScore ?? 0);
   });
@@ -365,6 +440,9 @@ export function recommendStrategyForSecondSettlement(
         firstScore: firstScore.total,
         bestSecondVertexId: best.vertexId,
         pairScore: best.total,
+        // Motstandere har allerede plassert — ingen lookahead-usikkerhet
+        pathConfidence: 1,
+        adjustedPairScore: best.total,
       },
     });
   }

@@ -651,8 +651,17 @@ import {
   rankFirstSettlementsWithLookahead,
   evaluateFirstSettlementPath,
   isHumanSecondSettlementTurn,
+  blendLookaheadScore,
+  aggregatePathConfidence,
 } from '../src/catan/strategyAdvisor.ts';
-import { getValidVertices, pickGreedyOpponentVertex, pickOpponentVertex, vertexPipTotal, vertexProducingHexCount } from '../src/catan/settlements.ts';
+import {
+  getValidVertices,
+  pickGreedyOpponentVertex,
+  pickOpponentVertex,
+  confidenceFromRankedOptions,
+  vertexPipTotal,
+  vertexProducingHexCount,
+} from '../src/catan/settlements.ts';
 import { DEFAULT_RESOURCE_WEIGHTS } from '../src/catan/types.ts';
 import { OPPONENT_RESOURCE_WEIGHTS } from '../src/catan/resourceWeights.ts';
 if (board) {
@@ -712,6 +721,35 @@ if (board) {
     lookaheadOpts[0]!.expectedSecondVertexId !== undefined,
     'Top first settlements include expected second vertex'
   );
+  assert(
+    lookaheadOpts[0]!.lookaheadConfidence !== undefined &&
+      lookaheadOpts[0]!.lookaheadConfidence! > 0 &&
+      lookaheadOpts[0]!.lookaheadConfidence! <= 1,
+    'Lookahead options include path confidence'
+  );
+  assert(
+    Math.abs(confidenceFromRankedOptions([{ total: 2 } as never]) - 1) < 1e-9,
+    'Single option is fully confident'
+  );
+  assert(
+    confidenceFromRankedOptions([
+      { total: 2 } as never,
+      { total: 1.99 } as never,
+    ]) <
+      confidenceFromRankedOptions([
+        { total: 2 } as never,
+        { total: 1.5 } as never,
+      ]),
+    'Tight top-2 gap lowers pick confidence'
+  );
+  assert(
+    Math.abs(aggregatePathConfidence([0.81, 0.81]) - 0.81) < 1e-9,
+    'Aggregate confidence geometric-means equal steps'
+  );
+  assert(
+    Math.abs(blendLookaheadScore(1, 3, 0.5) - 2) < 1e-9,
+    'Blend is confidence-weighted average of spot and pair'
+  );
   const topPath = evaluateFirstSettlementPath(
     board,
     sim.placements,
@@ -723,7 +761,11 @@ if (board) {
   assert(topPath !== null, 'Lookahead top option has a valid path');
   assert(
     Math.abs((lookaheadOpts[0]!.expectedPairScore ?? 0) - (topPath?.pairScore ?? -1)) < 1e-9,
-    'Lookahead total matches evaluateFirstSettlementPath pair score'
+    'Lookahead expected pair matches evaluateFirstSettlementPath pair score'
+  );
+  assert(
+    Math.abs((lookaheadOpts[0]!.total ?? 0) - (topPath?.adjustedPairScore ?? -1)) < 1e-9,
+    'Lookahead ranking total uses confidence-adjusted pair score'
   );
 
   const turnOpts = getOptionsForCurrentTurn(sim);

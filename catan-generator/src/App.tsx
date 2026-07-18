@@ -435,7 +435,7 @@ function App() {
                   <span className="placement-legend-hint">
                     {activeHarborPlan
                       ? 'Oransje 1 / turkis 2 = havnstrategi · blå = havn'
-                      : '#1 = best forventet par · stiplet ring = landsby nr. 2'}
+                      : '#1 = best justert par · % sikker = forutsigbar sti · stiplet = #2'}
                   </span>
                 </div>
               )}

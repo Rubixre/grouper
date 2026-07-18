@@ -69,7 +69,11 @@ function optionMeta(
   }
   if (opt.expectedPairScore !== undefined) {
     const local = opt.immediateScore ?? opt.production;
-    return `Forventet par ${opt.expectedPairScore.toFixed(2)} · Spot ${local.toFixed(2)}`;
+    const confidence =
+      opt.lookaheadConfidence !== undefined
+        ? ` · ${Math.round(opt.lookaheadConfidence * 100)}% sikker`
+        : '';
+    return `Forventet par ${opt.expectedPairScore.toFixed(2)}${confidence} · Spot ${local.toFixed(2)}`;
   }
   const pair = path ? ` · Par ${path.pairScore.toFixed(2)}` : '';
   return `Prod ${opt.production.toFixed(2)} · Dekk ${opt.diversity.toFixed(2)}${pair}`;
@@ -139,7 +143,7 @@ export function SettlementSimulator({
     ? isSecond
       ? 'Andre landsby — strategi revurdert ut fra gjenværende posisjoner'
       : isFirstHuman
-        ? 'Rangert på forventet par (balansert start). Stiplet ring = #2'
+        ? 'Rangert på justert par (% sikker = forutsigbare motstandere). Stiplet ring = #2'
         : 'Første landsby'
     : 'Motspillere bruker jevnere ressursvekter · velg hjørne';
 

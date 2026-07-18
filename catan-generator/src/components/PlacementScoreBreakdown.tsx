@@ -60,8 +60,27 @@ export function PlacementScoreBreakdown({
       </p>
       {score.expectedPairScore !== undefined && (
         <p className="score-breakdown-formula muted small">
-          Rangering bruker forventet parscore {fmt(score.expectedPairScore, 2)} (etter
-          lookahead). Under: lokal score for dette hjørnet.
+          Forventet par {fmt(score.expectedPairScore, 2)}
+          {score.lookaheadConfidence !== undefined && (
+            <>
+              {' '}
+              · {Math.round(score.lookaheadConfidence * 100)}% sikker sti
+            </>
+          )}
+          {score.immediateScore !== undefined &&
+            score.lookaheadConfidence !== undefined && (
+              <>
+                {' '}
+                → rangering{' '}
+                {fmt(
+                  score.immediateScore * (1 - score.lookaheadConfidence) +
+                    score.expectedPairScore * score.lookaheadConfidence,
+                  2
+                )}{' '}
+                (blander spot og par)
+              </>
+            )}
+          . Under: lokal score for dette hjørnet.
         </p>
       )}
       <p className="score-breakdown-formula muted small">
