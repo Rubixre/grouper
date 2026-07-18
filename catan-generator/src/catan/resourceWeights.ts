@@ -187,10 +187,35 @@ export function totalResourceWeightSum(weights: ResourceWeights): number {
   return PROD_RESOURCES.reduce((sum, r) => sum + weights[r], 0);
 }
 
+/**
+ * Soft diversity for PSM.
+ *
+ * Strategy weights already steer production scoring. Raw type-count coverage
+ * can therefore hurt: a weaker 3-resource corner beats a stronger 2-resource
+ * spot that already covers the strategy's key goods.
+ *
+ * We saturate once ~the strategy's weight mass is covered, and keep the
+ * absolute scale small so diversity stays a tie-breaker — not a override.
+ */
+/** Share of strategy weight that earns a full coverage bonus. */
+const COVERAGE_SATURATION = 0.58;
+/** Extra types beyond saturation still add a little (keeps full > partial). */
+const COVERAGE_TAIL = 0.22;
+/** Default first-settlement coverage scale (was 0.3). */
+export const DEFAULT_COVERAGE_SCALE = 0.12;
+
+function saturatedCoverageShare(share: number): number {
+  if (share <= COVERAGE_SATURATION) {
+    return share / COVERAGE_SATURATION;
+  }
+  const tailProgress = (share - COVERAGE_SATURATION) / (1 - COVERAGE_SATURATION);
+  return 1 + tailProgress * COVERAGE_TAIL;
+}
+
 export function coverageBonus(
   coveredResources: Set<string>,
   weights: ResourceWeights,
-  scale = 0.3
+  scale = DEFAULT_COVERAGE_SCALE
 ): number {
   const total = totalResourceWeightSum(weights);
   if (total <= 0) return 0;
@@ -201,5 +226,8 @@ export function coverageBonus(
       covered += weights[resource];
     }
   }
-  return (covered / total) * scale;
+  const share = covered / total;
+  const saturated = saturatedCoverageShare(share);
+  const full = saturatedCoverageShare(1);
+  return (saturated / full) * scale;
 }

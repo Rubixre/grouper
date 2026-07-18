@@ -87,7 +87,8 @@ const LOW_HEX_ELITE_PIP = 10 / 36;
 const LOW_HEX_PENALTY_1 = 0.22;
 const LOW_HEX_PENALTY_2 = 0.14;
 const LOW_HEX_PENALTY_2_ELITE = 0.07;
-const PAIR_DIVERSITY_SCALE = 0.25;
+/** Pair coverage — soft tie-breaker; mono/portfolio handle real diversity needs */
+const PAIR_DIVERSITY_SCALE = 0.1;
 const ROAD_SYNERGY_SCALE = 0.35;
 const CITY_SYNERGY_SCALE = 0.3;
 const SETTLEMENT_SYNERGY_SCALE = 0.25;

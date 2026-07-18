@@ -146,7 +146,7 @@ export function PlacementScoreBreakdown({
 
       <ul className="score-breakdown-lines">
         <li>
-          <span>Dekning ({explanation.coveredResources.length}/5 typer)</span>
+          <span>Dekning (strategivektet, myk)</span>
           <strong>+{fmt(explanation.diversity)}</strong>
         </li>
         <BonusLine label="Pip-kvalitet" value={explanation.pipBonus} />

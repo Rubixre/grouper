@@ -427,6 +427,21 @@ assert(
   'Full resource coverage scores higher'
 );
 
+// City strategy: wheat+ore alone should nearly saturate — a third type must not
+// outweigh objectively better production on the two key resources.
+{
+  const city = WEIGHTS_LARGEST_ARMY_ONLY;
+  const keyTwo = coverageBonus(new Set(['wheat', 'ore']), city);
+  const keyTwoPlusSheep = coverageBonus(new Set(['wheat', 'ore', 'sheep']), city);
+  const threeWeak = coverageBonus(new Set(['wood', 'brick', 'sheep']), city);
+  assert(keyTwo > threeWeak, 'City coverage: wheat+ore beats three weak types');
+  assert(
+    keyTwoPlusSheep - keyTwo < 0.025,
+    'City coverage: third type adds only a tiny bump after key resources'
+  );
+  assert(keyTwo >= 0.08, 'City coverage: key two resources earn most of the bonus');
+}
+
 console.log('\nSupply-based scarcity');
 {
   const makeLand = (
