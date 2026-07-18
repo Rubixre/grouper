@@ -23,7 +23,12 @@ import {
   recommendStrategy,
   recommendStrategyForSecondSettlement,
 } from './catan/strategyAdvisor';
-import { findHarborStrategyOpportunities, harborOpportunityKey, type HarborStrategyOpportunity } from './catan/harborStrategy';
+import {
+  findHarborStrategyOpportunities,
+  harborOpportunitiesAsPlacementScores,
+  harborOpportunityKey,
+  type HarborStrategyOpportunity,
+} from './catan/harborStrategy';
 import {
   createSimulation,
   getOptionsForCurrentTurn,
@@ -198,11 +203,6 @@ function App() {
 
   const simPlacing = simulation && simActive && !simulation.finished;
 
-  const rankedOptions =
-    simPlacing && strategyChoice !== 'harbor'
-      ? getOptionsForCurrentTurn(simulation, strategyWeights)
-      : [];
-
   const isYourTurn = simulation && simActive && isHumanTurn(simulation);
 
   const strategyRecommendation = useMemo(() => {
@@ -236,6 +236,20 @@ function App() {
       strategyWeights
     );
   }, [board, simulation, isYourTurn, strategyWeights]);
+
+  const rankedOptions = useMemo(() => {
+    if (!simPlacing || !simulation) return [];
+    if (strategyChoice === 'harbor') {
+      return harborOpportunitiesAsPlacementScores(harborOpportunities);
+    }
+    return getOptionsForCurrentTurn(simulation, strategyWeights);
+  }, [
+    simPlacing,
+    simulation,
+    strategyChoice,
+    harborOpportunities,
+    strategyWeights,
+  ]);
 
   const strategyLevels = useMemo(() => {
     if (!isYourTurn || !strategyRecommendation) return null;
@@ -328,6 +342,12 @@ function App() {
 
   const handleSelectVertex = (vertexId: string) => {
     setSelectedVertex(vertexId);
+    if (strategyChoice === 'harbor') {
+      const match =
+        harborOpportunities.find((o) => o.firstVertexId === vertexId) ?? null;
+      setSelectedHarborPlanKey(match ? harborOpportunityKey(match) : null);
+      return;
+    }
     if (
       selectedHarborPlanKey &&
       !harborOpportunities.some(

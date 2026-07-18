@@ -936,6 +936,7 @@ if (board) {
 console.log('\nHarbor strategy alternative');
 import {
   findHarborStrategyOpportunities,
+  harborOpportunitiesAsPlacementScores,
   HARBOR_STRATEGY_OTHER_WEIGHT,
   HARBOR_STRATEGY_PIP_THRESHOLD,
   HARBOR_STRATEGY_VALID_ROAD_DISTANCES,
@@ -1141,6 +1142,22 @@ if (board) {
     assert(opp.vsBalanced !== undefined, 'Harbor opportunity includes balanced comparison');
     assert(opp.vsBalanced!.bestBalancedScore > 0, 'Balanced reference score is positive');
     assert(opp.vsBalanced!.effectiveRelative > 0, 'Effective relative is positive');
+  }
+  const harborPlacementScores = harborOpportunitiesAsPlacementScores(opportunities);
+  assert(
+    harborPlacementScores.length <= opportunities.length,
+    'Harbor placement scores dedupe by first vertex'
+  );
+  if (harborPlacementScores.length > 0) {
+    assert(
+      harborPlacementScores.every((s, i, arr) => i === 0 || arr[i - 1]!.total >= s.total),
+      'Harbor placement scores are sorted by total'
+    );
+    assert(
+      harborPlacementScores[0]!.expectedSecondVertexId !== undefined ||
+        opportunities.some((o) => o.firstVertexId === harborPlacementScores[0]!.vertexId),
+      'Harbor placement scores map to opportunity first vertices'
+    );
   }
 
   for (const a of opportunities) {

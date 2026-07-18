@@ -5,6 +5,7 @@ import type {
   PlacedSettlement,
   PlayerCount,
   ResourceWeights,
+  SettlementScore,
 } from './types';
 import { DEFAULT_RESOURCE_WEIGHTS } from './types';
 import {
@@ -125,6 +126,37 @@ export function harborOpportunityKey(o: HarborStrategyOpportunity): string {
     o.harborRoadDistance,
     o.harborName,
   ].join('|');
+}
+
+/**
+ * Konverter havnplaner til SettlementScore for heatmap / felles plasseringsliste.
+ * Ved flere planer på samme #1-hjørne beholdes høyeste effektive score.
+ */
+export function harborOpportunitiesAsPlacementScores(
+  opportunities: HarborStrategyOpportunity[]
+): SettlementScore[] {
+  const byVertex = new Map<string, SettlementScore>();
+
+  for (const opp of opportunities) {
+    const total = opp.vsBalanced?.effectiveScore ?? opp.totalPip;
+    const existing = byVertex.get(opp.firstVertexId);
+    if (existing && existing.total >= total) continue;
+
+    byVertex.set(opp.firstVertexId, {
+      vertexId: opp.firstVertexId,
+      total,
+      production: opp.vsBalanced?.planScore ?? opp.totalPip,
+      diversity: 0,
+      harbor: opp.vsBalanced?.tradeBonus ?? 0,
+      expectedPairScore: opp.vsBalanced?.effectiveScore ?? total,
+      expectedSecondVertexId: opp.secondVertexId,
+      immediateScore: opp.vsBalanced?.planScore ?? opp.totalPip,
+      placementKind: 'first',
+      breakdown: [{ resource: opp.resource, value: opp.resourcePip }],
+    });
+  }
+
+  return [...byVertex.values()].sort((a, b) => b.total - a.total);
 }
 
 function harborMatchesResource(harbor: HarborType, resource: ProdResource): HarborStrategyKind | null {
