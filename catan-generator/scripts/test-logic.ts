@@ -33,7 +33,10 @@ import {
   DEFAULT_SETTINGS,
   verifyExtensionSingleHarborNodes,
 } from '../src/catan/index.ts';
-import { computeSimulationSummary } from '../src/catan/playerStats.ts';
+import {
+  computePlacementAwards,
+  computeSimulationSummary,
+} from '../src/catan/playerStats.ts';
 import { hexCorner, hexToPixel } from '../src/catan/hex.ts';
 
 resetVertices();
@@ -1526,6 +1529,35 @@ if (board) {
   assert(
     Math.abs(startingSum - (p0.secondSettlement?.totalPerRoll ?? 0)) < 1e-9,
     'Starting hand matches second settlement production'
+  );
+
+  const awards = computePlacementAwards(summary);
+  assert(awards.awards.length >= 5, 'Placement awards include core categories');
+  assert(awards.boardFacts.length >= 3, 'Board facts include table-level stats');
+  assert(awards.resourceCrowns.length >= 1, 'Resource crowns exist when production exists');
+  for (const award of awards.awards) {
+    assert(award.winners.length >= 1, `${award.title} has at least one winner`);
+  }
+
+  // Tied winners: force equal production on two players
+  const tiedSummary = {
+    ...summary,
+    players: summary.players.map((p, i) =>
+      i < 2
+        ? {
+            ...p,
+            combined: { ...p.combined, totalPerRoll: 1.25, resourceCount: 5 },
+            shareOfTable: 0.25,
+          }
+        : p
+    ),
+  };
+  const tiedAwards = computePlacementAwards(tiedSummary);
+  const prodAward = tiedAwards.awards.find((a) => a.id === 'production');
+  assert(prodAward !== undefined, 'Tied summary still has production award');
+  assert(
+    prodAward!.winners.length >= 2,
+    'Equal top scores produce multiple winners'
   );
 }
 
