@@ -1989,6 +1989,12 @@ body {
   margin: 0.4rem 0 0;
 }
 
+.options-list-subheader {
+  margin: 0.55rem 0 0.2rem;
+  padding: 0 0.15rem;
+  font-weight: 600;
+}
+
 @keyframes strategy-gold-shimmer {
   0%,
   100% {

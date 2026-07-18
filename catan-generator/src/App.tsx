@@ -239,13 +239,22 @@ function App() {
 
   const rankedOptions = useMemo(() => {
     if (!simPlacing || !simulation) return [];
-    if (strategyChoice === 'harbor') {
-      return harborOpportunitiesAsPlacementScores(harborOpportunities);
+
+    // Motstandere / ikke-havn: alltid vanlig PSM. Strategivalg gjelder bare deg.
+    if (!isYourTurn || strategyChoice !== 'harbor') {
+      return getOptionsForCurrentTurn(simulation, strategyWeights);
     }
-    return getOptionsForCurrentTurn(simulation, strategyWeights);
+
+    // Havn for deg: havnplaner først, men behold alle gyldige plasseringer klikkbare.
+    const harborScores = harborOpportunitiesAsPlacementScores(harborOpportunities);
+    const allOptions = getOptionsForCurrentTurn(simulation, strategyWeights);
+    const harborIds = new Set(harborScores.map((score) => score.vertexId));
+    const rest = allOptions.filter((opt) => !harborIds.has(opt.vertexId));
+    return [...harborScores, ...rest];
   }, [
     simPlacing,
     simulation,
+    isYourTurn,
     strategyChoice,
     harborOpportunities,
     strategyWeights,
@@ -332,13 +341,15 @@ function App() {
     activeHarborPlan,
   ]);
 
-  const harborPlanHighlight = activeHarborPlan
-    ? {
-        firstVertexId: activeHarborPlan.firstVertexId,
-        secondVertexId: activeHarborPlan.secondVertexId,
-        harborNodeVertexIds: activeHarborPlan.harborNodeVertexIds,
-      }
-    : null;
+  // Havnmarkering bare på din tur — skal ikke låse motstanderens plassering.
+  const harborPlanHighlight =
+    isYourTurn && activeHarborPlan
+      ? {
+          firstVertexId: activeHarborPlan.firstVertexId,
+          secondVertexId: activeHarborPlan.secondVertexId,
+          harborNodeVertexIds: activeHarborPlan.harborNodeVertexIds,
+        }
+      : null;
 
   const handleSelectVertex = (vertexId: string) => {
     setSelectedVertex(vertexId);

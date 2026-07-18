@@ -123,7 +123,8 @@ export function SettlementSimulator({
   const isSecond = options[0]?.placementKind === 'second';
   const isFirstHuman = isHumanFirstSettlementTurn(state.placements, human);
   const isSecondHuman = isHumanSecondSettlementTurn(state.placements, human);
-  const harborMode = strategyChoice === 'harbor';
+  // Havn-UI bare på din tur — motstandere skal ikke påvirkes av ditt strategivalg.
+  const harborMode = strategyChoice === 'harbor' && isYourTurn;
   const listTotal = harborMode ? harborOpportunities.length : options.length;
   const visibleCount = showAllOptions ? listTotal : DEFAULT_VISIBLE_OPTIONS;
   const visibleOptions = options.slice(0, visibleCount);
@@ -203,8 +204,27 @@ export function SettlementSimulator({
     selectedHarborPlanKey,
   ]);
 
-  const listCount = listTotal;
-  const visibleHarborRows = harborRows.slice(0, visibleCount);
+  const harborVertexIds = useMemo(
+    () => new Set(harborOpportunities.map((opp) => opp.firstVertexId)),
+    [harborOpportunities]
+  );
+  const otherPlacementOptions = useMemo(
+    () =>
+      harborMode
+        ? options.filter((opt) => !harborVertexIds.has(opt.vertexId))
+        : options,
+    [harborMode, options, harborVertexIds]
+  );
+  const listCount = harborMode
+    ? harborRows.length + otherPlacementOptions.length
+    : listTotal;
+  const visibleHarborRows = showAllOptions
+    ? harborRows
+    : harborRows.slice(0, DEFAULT_VISIBLE_OPTIONS);
+  const otherSlots = showAllOptions
+    ? otherPlacementOptions.length
+    : Math.max(0, DEFAULT_VISIBLE_OPTIONS - visibleHarborRows.length);
+  const visibleOtherPlacements = otherPlacementOptions.slice(0, otherSlots);
   const visiblePlacementOptions = harborMode ? [] : visibleOptions;
 
   const strategyHint = useMemo(() => {
@@ -340,34 +360,69 @@ export function SettlementSimulator({
             </div>
 
             {harborMode && isYourTurn ? (
-              harborRows.length === 0 ? (
-                <p className="muted small">
-                  Ingen sterke havnplaner akkurat nå. Velg en annen strategi over.
-                </p>
-              ) : (
-                visibleHarborRows.map((row) => (
-                  <button
-                    key={row.key}
-                    type="button"
-                    className={`option-row-compact ${row.selected ? 'selected' : ''}`}
-                    onClick={() => onSelectHarborPlan(row.opp)}
-                    title={
-                      row.opp.vsBalanced
-                        ? `Justert PSM ${row.opp.vsBalanced.planScore.toFixed(2)} (rå par ${row.opp.vsBalanced.rawPlanScore.toFixed(2)}) + havn ${row.opp.vsBalanced.tradeBonus.toFixed(2)} = ${row.opp.vsBalanced.effectiveScore.toFixed(2)} vs balansert ${row.opp.vsBalanced.bestBalancedScore.toFixed(2)} · ${Math.round(row.opp.vsBalanced.pathConfidence * 100)}% sikker sti`
-                        : row.opp.summary
-                    }
-                  >
-                    <span className="option-row-rank" data-rank={row.index + 1}>
-                      #{row.index + 1}
-                    </span>
-                    <span className="option-row-score">{row.score.toFixed(2)}</span>
-                    <span className="option-row-detail">
-                      <span className="option-row-resources">{row.resources}</span>
-                      <span className="option-row-meta">{row.meta}</span>
-                    </span>
-                  </button>
-                ))
-              )
+              <>
+                {harborRows.length === 0 ? (
+                  <p className="muted small">
+                    Ingen sterke havnplaner akkurat nå — velg fritt blant gyldige
+                    plasseringer under, eller bytt strategi.
+                  </p>
+                ) : (
+                  visibleHarborRows.map((row) => (
+                    <button
+                      key={row.key}
+                      type="button"
+                      className={`option-row-compact ${row.selected ? 'selected' : ''}`}
+                      onClick={() => onSelectHarborPlan(row.opp)}
+                      title={
+                        row.opp.vsBalanced
+                          ? `Justert PSM ${row.opp.vsBalanced.planScore.toFixed(2)} (rå par ${row.opp.vsBalanced.rawPlanScore.toFixed(2)}) + havn ${row.opp.vsBalanced.tradeBonus.toFixed(2)} = ${row.opp.vsBalanced.effectiveScore.toFixed(2)} vs balansert ${row.opp.vsBalanced.bestBalancedScore.toFixed(2)} · ${Math.round(row.opp.vsBalanced.pathConfidence * 100)}% sikker sti`
+                          : row.opp.summary
+                      }
+                    >
+                      <span className="option-row-rank" data-rank={row.index + 1}>
+                        #{row.index + 1}
+                      </span>
+                      <span className="option-row-score">{row.score.toFixed(2)}</span>
+                      <span className="option-row-detail">
+                        <span className="option-row-resources">{row.resources}</span>
+                        <span className="option-row-meta">{row.meta}</span>
+                      </span>
+                    </button>
+                  ))
+                )}
+
+                {visibleOtherPlacements.length > 0 && (
+                  <>
+                    <div className="options-list-subheader muted small">
+                      Andre gyldige plasseringer
+                    </div>
+                    {visibleOtherPlacements.map((opt, i) => {
+                      const rank = harborRows.length + i + 1;
+                      return (
+                        <button
+                          key={opt.vertexId}
+                          type="button"
+                          className={`option-row-compact ${selectedVertex === opt.vertexId ? 'selected' : ''}`}
+                          onClick={() => onSelectVertex(opt.vertexId)}
+                        >
+                          <span className="option-row-rank" data-rank={rank}>
+                            #{rank}
+                          </span>
+                          <span className="option-row-score">{opt.total.toFixed(2)}</span>
+                          <span className="option-row-detail">
+                            <span className="option-row-resources">
+                              {resourceSummary(opt)}
+                            </span>
+                            <span className="option-row-meta">
+                              {optionMeta(opt, undefined)}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </>
+                )}
+              </>
             ) : (
               visiblePlacementOptions.map((opt, i) => {
                 const path =
@@ -396,7 +451,14 @@ export function SettlementSimulator({
               })
             )}
 
-            {!harborMode && selectedOption && selectedRank > visibleCount && (
+            {selectedOption &&
+              selectedRank > 0 &&
+              ((harborMode &&
+                !harborVertexIds.has(selectedOption.vertexId) &&
+                !visibleOtherPlacements.some(
+                  (opt) => opt.vertexId === selectedOption.vertexId
+                )) ||
+                (!harborMode && selectedRank > visibleCount)) && (
               <div className="option-row-compact selected custom-placement">
                 <span className="option-row-rank">#{selectedRank}</span>
                 <span className="option-row-score">{selectedOption.total.toFixed(2)}</span>
