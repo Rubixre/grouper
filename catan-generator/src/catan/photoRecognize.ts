@@ -5,9 +5,11 @@ import {
   createEmptyLandDraft,
   isPhotoBoardNumber,
   landDraftKey,
+  PHOTO_BOARD_NUMBERS,
   type LandHexDraft,
   type PhotoBoardNumber,
 } from './boardFromPhoto';
+import { NUMBERS_BASE, NUMBERS_EXTENSION_56 } from './generator';
 
 /** Transformasjon som mapper aksiale hex-koordinater → bildepiksler (fast hex-overlay). */
 export interface ImageOverlayTransform {
@@ -151,8 +153,9 @@ export function isTerrainSamplePixel(rgb: Rgb): boolean {
   const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
   // Hav / blå duk
   if (hsv.h >= 175 && hsv.h <= 260 && hsv.s > 0.18 && hsv.v > 0.2) return false;
-  // Lys tallskive (krem/hvit)
-  if (hsv.v > 0.82 && hsv.s < 0.22) return false;
+  // Lys tallskive (krem/hvit) — ikke terreng
+  if (hsv.v > 0.78 && hsv.s < 0.28) return false;
+  if (hsv.v > 0.85 && hsv.s < 0.35) return false;
   // Nesten svart (vei/skygge)
   if (hsv.v < 0.12) return false;
   return true;
@@ -203,12 +206,16 @@ export function classifyResourceFromRgb(rgb: Rgb): ResourceGuess {
   }
 
   // Malm: kjølig grå, lav metning, ikke varm beige
-  if (s <= 0.22 && v >= 0.22 && v <= 0.72) {
+  if (s <= 0.28 && v >= 0.22 && v <= 0.78) {
     const warm = h >= 25 && h <= 55;
-    if (!warm || s < 0.12) {
+    if (!warm || s < 0.14) {
       cands.push({
         resource: 'ore',
-        score: 0.4 + (0.22 - s) * 0.8 + (v > 0.35 && v < 0.6 ? 0.12 : 0),
+        score:
+          0.42 +
+          (0.28 - s) * 0.7 +
+          (v > 0.32 && v < 0.62 ? 0.14 : 0) +
+          (warm ? -0.12 : 0.08),
       });
     }
   }
@@ -227,6 +234,19 @@ export function classifyResourceFromRgb(rgb: Rgb): ResourceGuess {
   if (wheat && desert) {
     if (s >= 0.4) desert.score *= 0.45;
     else wheat.score *= 0.55;
+  }
+
+  // Malm vs ørken: kjølig/mørk → malm, varm/lys → ørken
+  const ore = cands.find((c) => c.resource === 'ore');
+  if (ore && desert) {
+    const warmBeige = h >= 22 && h <= 58 && s >= 0.1;
+    if (warmBeige && v >= 0.55) {
+      ore.score *= 0.45;
+      desert.score += 0.12;
+    } else if (!warmBeige || v < 0.5 || s < 0.1) {
+      desert.score *= 0.4;
+      ore.score += 0.12;
+    }
   }
 
   cands.sort((a, b) => b.score - a.score);
@@ -290,24 +310,26 @@ export function defaultOverlayTransform(
 }
 
 /**
- * Sample terreng i ring rundt tallskiven.
+ * Sample terreng i ring rundt tallskiven (tallbrikken ligger oppå ressursen).
  * Filtrerer bort krem/hav; bruker median for robusthet mot støy.
  */
 export function sampleTerrainColor(
   imageData: RgbaImageBuffer,
   cx: number,
   cy: number,
-  hexSize: number
+  hexSize: number,
+  excludeRadius = 0
 ): Rgb | null {
-  const inner = hexSize * 0.34;
-  const outer = hexSize * 0.58;
+  // Start utenfor tallskiven — ikke sample kremflaten som «ørkenbeige»
+  const inner = Math.max(hexSize * 0.36, excludeRadius * 1.12, hexSize * 0.28);
+  const outer = Math.max(inner + hexSize * 0.12, hexSize * 0.6);
   const rs: number[] = [];
   const gs: number[] = [];
   const bs: number[] = [];
 
-  for (let ring = 0; ring < 4; ring++) {
-    const rad = inner + ((ring + 0.5) / 4) * (outer - inner);
-    const count = 20 + ring * 8;
+  for (let ring = 0; ring < 5; ring++) {
+    const rad = inner + ((ring + 0.5) / 5) * (outer - inner);
+    const count = 24 + ring * 8;
     for (let i = 0; i < count; i++) {
       const ang = (i / count) * Math.PI * 2;
       const px = readPixel(imageData, cx + Math.cos(ang) * rad, cy + Math.sin(ang) * rad);
@@ -347,23 +369,303 @@ function luminance(rgb: Rgb): number {
   return 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b;
 }
 
+/** Forventet pip-antall på standard Catan-tallskive. */
+export function expectedPipCount(n: number): number {
+  switch (n) {
+    case 2:
+    case 12:
+      return 1;
+    case 3:
+    case 11:
+      return 2;
+    case 4:
+    case 10:
+      return 3;
+    case 5:
+    case 9:
+      return 4;
+    case 6:
+    case 8:
+      return 5;
+    default:
+      return 0;
+  }
+}
+
+export function numberPoolForBoardSize(boardSize: BoardSize): number[] {
+  return boardSize === 'base' ? [...NUMBERS_BASE] : [...NUMBERS_EXTENSION_56];
+}
+
+interface CreamDisc {
+  x: number;
+  y: number;
+  radius: number;
+  score: number;
+}
+
 /**
- * Analyser tallskiven i sentrum: pip-antall + rød sifferfarge + bredde (1 vs 2 siffer).
- *
- * Pip → {1,2,3,4,5}; rød + 5 → 6, sort + 5 → 8;
- * bredt blekk → tosifret (10/11/12), smalt → 2/3/4/5/9.
+ * Finn kremfarget tallskive nær hex-senter.
+ * Start i hex-senter (stabilt); små nudges bare hvis det øker scoren klart.
  */
-export function guessNumberFromCenterPatch(
+export function locateCreamDisc(
   imageData: RgbaImageBuffer,
   cx: number,
   cy: number,
-  hexSize: number,
-  resource: ResourceType | null
-): { number: number | null; confidence: number } {
-  const isDesert = resource === 'desert';
-  if (isDesert) return { number: null, confidence: 0.92 };
+  hexSize: number
+): CreamDisc | null {
+  const radii = [hexSize * 0.185, hexSize * 0.2, hexSize * 0.215, hexSize * 0.23];
+  let best: CreamDisc | null = null;
 
-  const radius = Math.max(6, hexSize * 0.22);
+  for (const radius of radii) {
+    const score = creamDiscScore(imageData, cx, cy, radius);
+    if (!best || score > best.score) {
+      best = { x: cx, y: cy, radius, score };
+    }
+  }
+
+  const searchR = hexSize * 0.055;
+  const step = Math.max(1.2, hexSize * 0.03);
+  for (let oy = -searchR; oy <= searchR; oy += step) {
+    for (let ox = -searchR; ox <= searchR; ox += step) {
+      if (ox === 0 && oy === 0) continue;
+      if (ox * ox + oy * oy > searchR * searchR) continue;
+      const centerBias = 1 - (Math.hypot(ox, oy) / (searchR + 1)) * 0.55;
+      for (const radius of radii) {
+        const raw = creamDiscScore(imageData, cx + ox, cy + oy, radius);
+        const score = raw * centerBias;
+        if (best && score > best.score + 0.05) {
+          best = { x: cx + ox, y: cy + oy, radius, score };
+        }
+      }
+    }
+  }
+
+  if (!best || best.score < 0.35) return null;
+  return best;
+}
+
+function creamDiscScore(
+  imageData: RgbaImageBuffer,
+  cx: number,
+  cy: number,
+  radius: number
+): number {
+  let cream = 0;
+  let total = 0;
+  let ink = 0;
+  let outerCream = 0;
+  let outerTotal = 0;
+
+  const innerSamples = 36;
+  for (let i = 0; i < innerSamples; i++) {
+    const ang = (i / innerSamples) * Math.PI * 2;
+    for (const rFrac of [0.25, 0.5, 0.72]) {
+      const r = radius * rFrac;
+      const px = readPixel(imageData, cx + Math.cos(ang) * r, cy + Math.sin(ang) * r);
+      if (!px) continue;
+      total += 1;
+      const hsv = rgbToHsv(px.r, px.g, px.b);
+      const lum = luminance(px);
+      if (hsv.v >= 0.65 && hsv.s <= 0.32) cream += 1;
+      else if (hsv.v >= 0.72 && hsv.s <= 0.42) cream += 0.55;
+      if (lum < 150 && (hsv.v < 0.75 || hsv.s > 0.4)) ink += 1;
+    }
+    const outerPx = readPixel(
+      imageData,
+      cx + Math.cos(ang) * radius * 0.9,
+      cy + Math.sin(ang) * radius * 0.9
+    );
+    if (outerPx) {
+      outerTotal += 1;
+      const hsv = rgbToHsv(outerPx.r, outerPx.g, outerPx.b);
+      if (hsv.v >= 0.62 && hsv.s <= 0.38) outerCream += 1;
+    }
+  }
+  if (total < 12) return 0;
+
+  const creamRatio = cream / total;
+  const outerCreamRatio = outerTotal > 0 ? outerCream / outerTotal : 0;
+  const inkRatio = ink / total;
+
+  // Må være en kremskive — ikke terreng med litt lyst midtparti
+  if (creamRatio < 0.35 || outerCreamRatio < 0.4) return creamRatio * 0.1;
+
+  // Tallbrikke har sifferblekk; ørkensand kan være krem uten blekk
+  if (inkRatio < 0.012) return creamRatio * 0.12 + outerCreamRatio * 0.05;
+
+  const inkTerm =
+    inkRatio >= 0.015 && inkRatio <= 0.5 ? 0.3 : inkRatio < 0.012 ? -0.2 : 0.08;
+
+  return creamRatio * 0.45 + outerCreamRatio * 0.22 + inkTerm;
+}
+
+/** True når vi har en ekte tallbrikke (krem + blekk), ikke bare lyst terreng. */
+export function isNumberTokenDisc(disc: CreamDisc | null): boolean {
+  return !!disc && disc.score >= 0.35;
+}
+
+export interface NumberTokenFeatures {
+  isRed: boolean;
+  wideDigit: boolean;
+  /** Blekk øverst / nederst i token-lokal orientering (9 > 5). */
+  topHeavyRatio: number;
+  /** Blekk nederst / øverst (6 > 8). */
+  bottomHeavyRatio: number;
+  inkRatio: number;
+  discScore: number;
+  hasOrientationDot: boolean;
+  /** Estimert «ned»-vinkel (atan2) fra punktum bak tallet, eller null. */
+  downAngle: number | null;
+  /** Bredde/høyde for sifferets bbox. */
+  digitAspect: number;
+  /** Andel blekk i venstre halvdel (3/åpne siffer lavere). */
+  leftInkRatio: number;
+}
+
+/** Roter punkt slik at token-«ned» blir +Y. */
+export function toTokenLocal(
+  x: number,
+  y: number,
+  downAngle: number
+): { x: number; y: number } {
+  const rot = Math.PI / 2 - downAngle;
+  const cos = Math.cos(rot);
+  const sin = Math.sin(rot);
+  return { x: x * cos - y * sin, y: x * sin + y * cos };
+}
+
+/**
+ * Finn orienteringspunktum («punktum bak tallet»).
+ * Returnerer tyngdepunktet til en liten, isolert blekk-klump utenfor hovedsifferet.
+ */
+export function findOrientationDot(
+  inkPixels: { x: number; y: number }[],
+  radius: number
+): { x: number; y: number } | null {
+  if (inkPixels.length < 6) return null;
+
+  // Enkel grid-clustering
+  const cell = Math.max(1.2, radius * 0.06);
+  const buckets = new Map<string, { x: number; y: number; n: number }>();
+  for (const p of inkPixels) {
+    const kx = Math.round(p.x / cell);
+    const ky = Math.round(p.y / cell);
+    const key = `${kx},${ky}`;
+    const b = buckets.get(key);
+    if (b) {
+      b.x += p.x;
+      b.y += p.y;
+      b.n += 1;
+    } else {
+      buckets.set(key, { x: p.x, y: p.y, n: 1 });
+    }
+  }
+
+  type Comp = { x: number; y: number; n: number; cells: string[] };
+  const cellKeys = [...buckets.keys()];
+  const visited = new Set<string>();
+  const comps: Comp[] = [];
+
+  const neighbors = (key: string): string[] => {
+    const [xs, ys] = key.split(',');
+    const x = Number(xs);
+    const y = Number(ys);
+    const out: string[] = [];
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const k = `${x + dx},${y + dy}`;
+        if (buckets.has(k)) out.push(k);
+      }
+    }
+    return out;
+  };
+
+  for (const start of cellKeys) {
+    if (visited.has(start)) continue;
+    const stack = [start];
+    visited.add(start);
+    let sx = 0;
+    let sy = 0;
+    let n = 0;
+    const cells: string[] = [];
+    while (stack.length) {
+      const k = stack.pop()!;
+      cells.push(k);
+      const b = buckets.get(k)!;
+      sx += b.x;
+      sy += b.y;
+      n += b.n;
+      for (const nb of neighbors(k)) {
+        if (visited.has(nb)) continue;
+        visited.add(nb);
+        stack.push(nb);
+      }
+    }
+    comps.push({ x: sx / n, y: sy / n, n, cells });
+  }
+
+  if (comps.length === 0) return null;
+  comps.sort((a, b) => b.n - a.n);
+  const main = comps[0]!;
+  const mainR = Math.hypot(main.x, main.y);
+
+  // Punktum: liten komponent, ikke for nær siffer-kjernen, innenfor skiven
+  const minDot = Math.max(2, inkPixels.length * 0.01);
+  const maxDot = Math.max(8, inkPixels.length * 0.18);
+  let best: Comp | null = null;
+  let bestScore = -Infinity;
+  for (const c of comps.slice(1)) {
+    if (c.n < minDot || c.n > maxDot) continue;
+    const r = Math.hypot(c.x, c.y);
+    if (r < radius * 0.2 || r > radius * 0.95) continue;
+    // Helst litt utenfor hovedsifferets radius
+    const distMain = Math.hypot(c.x - main.x, c.y - main.y);
+    if (distMain < radius * 0.15) continue;
+    const score =
+      (1 - c.n / (maxDot + 1)) * 0.5 +
+      Math.min(1, distMain / (radius * 0.4)) * 0.35 +
+      (r > mainR ? 0.15 : 0);
+    if (score > bestScore) {
+      bestScore = score;
+      best = c;
+    }
+  }
+  if (!best) return null;
+  return { x: best.x, y: best.y };
+}
+
+/**
+ * Estimer brikkens «ned»-retning fra orienteringspunktum bak tallet.
+ * Faller tilbake til null hvis punktum ikke finnes.
+ */
+export function estimateTokenDownAngle(
+  inkPixels: { x: number; y: number }[],
+  radius: number
+): number | null {
+  const dot = findOrientationDot(inkPixels, radius);
+  if (!dot) return null;
+  return Math.atan2(dot.y, dot.x);
+}
+
+/** @deprecated Pip-bue brukes ikke lenger — beholdt for bakoverkompatibilitet. */
+export function countPipsBottomArc(
+  inkPixels: { x: number; y: number }[],
+  radius: number
+): number {
+  const dot = findOrientationDot(inkPixels, radius);
+  return dot ? 1 : 0;
+}
+
+/**
+ * Trekk trekk ut fra tallskiven.
+ * Orientering fra punktum bak tallet; 6/8 er røde; ingen pip-bue.
+ */
+export function extractNumberTokenFeatures(
+  imageData: RgbaImageBuffer,
+  disc: CreamDisc
+): NumberTokenFeatures | null {
+  const { x: cx, y: cy, radius } = disc;
   const samples: { x: number; y: number; rgb: Rgb; lum: number; hsv: Hsv }[] = [];
 
   for (let dy = -radius; dy <= radius; dy++) {
@@ -380,114 +682,418 @@ export function guessNumberFromCenterPatch(
       });
     }
   }
-
-  if (samples.length < 20) return { number: null, confidence: 0 };
+  if (samples.length < 24) return null;
 
   const lums = samples.map((s) => s.lum).sort((a, b) => a - b);
   const medianLum = lums[Math.floor(lums.length / 2)]!;
-  const p20 = lums[Math.floor(lums.length * 0.2)]!;
+  const creamLums = samples
+    .filter((s) => s.hsv.v >= 0.62 && s.hsv.s <= 0.35)
+    .map((s) => s.lum)
+    .sort((a, b) => a - b);
+  const creamMedian =
+    creamLums.length >= 8
+      ? creamLums[Math.floor(creamLums.length / 2)]!
+      : medianLum;
+  const darkThresh = Math.min(creamMedian - 35, 160);
 
-  // Tallskive er typisk lysere enn terreng; hvis hele senteret er mørkt/sandete → ofte ørkenfeil
-  const brightShare =
-    samples.filter((s) => s.lum > medianLum * 0.9 && s.hsv.v > 0.55).length / samples.length;
-
-  // Mørke piksler = siffer + pips
-  const darkThresh = Math.min(p20 + 18, medianLum - 25);
-  const dark = samples.filter((s) => s.lum < darkThresh && s.hsv.v < 0.55);
-  if (dark.length < 6) {
-    // Lite blekk — kanskje ørken uten skive, eller undereksponert
-    if (brightShare < 0.25) {
-      return { number: null, confidence: 0.2 };
-    }
-    return { number: null, confidence: 0.15 };
+  const ink = samples.filter((s) => {
+    if (s.lum > darkThresh) return false;
+    if (s.lum > creamMedian * 0.78) return false;
+    return true;
+  });
+  if (ink.length < 4) {
+    return {
+      isRed: false,
+      wideDigit: false,
+      topHeavyRatio: 1,
+      bottomHeavyRatio: 1,
+      inkRatio: ink.length / samples.length,
+      discScore: disc.score,
+      hasOrientationDot: false,
+      downAngle: null,
+      digitAspect: 1,
+      leftInkRatio: 0.5,
+    };
   }
 
-  // Rød andel blant mørke (6/8 er røde)
-  const redDark = dark.filter((s) => {
+  const redInk = ink.filter((s) => {
     const { h, s: sat } = s.hsv;
-    return sat > 0.25 && (h <= 25 || h >= 345);
+    return sat > 0.35 && (h <= 35 || h >= 335);
   });
-  const isRedNumber = redDark.length / dark.length > 0.18;
+  const isRed = redInk.length / ink.length > 0.22;
 
-  // Pip-sone: ytre ring av skiven
-  const pipInner = radius * 0.55;
-  const pipOuter = radius * 0.95;
-  const pipPixels = dark.filter((s) => {
+  const downAngle = estimateTokenDownAngle(ink, radius);
+  const hasOrientationDot = downAngle != null;
+  const localInk =
+    downAngle == null
+      ? ink
+      : ink.map((p) => {
+          const loc = toTokenLocal(p.x, p.y, downAngle);
+          return { ...p, x: loc.x, y: loc.y };
+        });
+
+  // Ekskluder punktum (nedre ytre) fra sifferanalyse når vi har orientering
+  const digitInk = localInk.filter((s) => {
     const r = Math.hypot(s.x, s.y);
-    return r >= pipInner && r <= pipOuter;
+    if (r >= radius * 0.55) return false;
+    // Punktum bak tallet ligger typisk «ned» og litt utenfor sifferet
+    if (hasOrientationDot && s.y > radius * 0.28 && r > radius * 0.22) return false;
+    return true;
   });
 
-  // Enkel vinkel-clustering for pip-telling
-  const pipCount = countPipsByAngle(pipPixels, radius);
-
-  // Sifferbredde i indre sirkel
-  const digitPixels = dark.filter((s) => Math.hypot(s.x, s.y) < radius * 0.5);
   let minX = Infinity;
   let maxX = -Infinity;
-  for (const p of digitPixels) {
-    minX = Math.min(minX, p.x);
-    maxX = Math.max(maxX, p.x);
-  }
-  const digitWidth = digitPixels.length > 4 ? maxX - minX : 0;
-  const wideDigit = digitWidth > radius * 0.72; // tosifret
-
+  let minY = Infinity;
+  let maxY = -Infinity;
   let upper = 0;
   let lower = 0;
-  for (const p of digitPixels) {
-    if (p.y < 0) upper += 1;
+  let left = 0;
+  let right = 0;
+  for (const p of digitInk) {
+    minX = Math.min(minX, p.x);
+    maxX = Math.max(maxX, p.x);
+    minY = Math.min(minY, p.y);
+    maxY = Math.max(maxY, p.y);
+    if (p.y < -radius * 0.02) upper += 1;
     else lower += 1;
+    if (p.x < 0) left += 1;
+    else right += 1;
   }
-  const topHeavy = lower === 0 ? 2 : upper / lower;
+  const digitWidth = digitInk.length > 5 ? maxX - minX : 0;
+  const digitHeight = digitInk.length > 5 ? maxY - minY : 0;
+  const wideDigit = digitWidth > radius * 0.55;
+  const digitAspect =
+    digitHeight > 1e-3 ? digitWidth / digitHeight : wideDigit ? 1.2 : 0.7;
+  const topHeavyRatio =
+    upper + lower === 0 ? 1 : lower === 0 ? 1 : upper / lower;
+  const bottomHeavyRatio =
+    upper + lower === 0 ? 1 : upper === 0 ? 2 : lower / upper;
+  const leftInkRatio =
+    left + right === 0 ? 0.5 : left / (left + right);
 
-  let mapped = mapPipsToNumber(pipCount, isRedNumber, wideDigit);
-  if (mapped === 5 || (pipCount === 4 && mapped != null)) {
-    mapped = preferFiveOverNine(topHeavy) ? 5 : 9;
-  }
-  if (mapped == null) return { number: null, confidence: 0.2 };
-
-  let confidence = 0.45 + Math.min(pipCount, 5) * 0.06;
-  if (pipCount === 5) confidence += 0.15; // 6/8 skilles tydelig av farge
-  if (wideDigit || pipCount <= 3) confidence += 0.08;
-  confidence = clamp(confidence, 0.35, 0.9);
-
-  return { number: mapped, confidence };
+  return {
+    isRed,
+    wideDigit,
+    topHeavyRatio,
+    bottomHeavyRatio,
+    inkRatio: ink.length / samples.length,
+    discScore: disc.score,
+    hasOrientationDot,
+    downAngle,
+    digitAspect,
+    leftInkRatio,
+  };
 }
 
-function countPipsByAngle(
-  pipPixels: { x: number; y: number }[],
-  radius: number
-): number {
-  if (pipPixels.length < 3) return 0;
-  const bins = new Array(24).fill(0) as number[];
-  for (const p of pipPixels) {
-    let ang = Math.atan2(p.y, p.x); // -pi..pi
-    if (ang < 0) ang += Math.PI * 2;
-    const bin = Math.min(23, Math.floor((ang / (Math.PI * 2)) * 24));
-    bins[bin]! += 1;
-  }
-  const thresh = Math.max(2, pipPixels.length / 30);
-  let clusters = 0;
-  let inCluster = false;
-  for (let i = 0; i < 24; i++) {
-    const hot = bins[i]! >= thresh;
-    if (hot && !inCluster) {
-      clusters += 1;
-      inCluster = true;
-    } else if (!hot) {
-      inCluster = false;
+/** Soft-score for hvert lovlige tall: rød=6/8, punktum-orientering, sifferform (ingen pip-bue). */
+export function scoreNumberHypotheses(
+  features: NumberTokenFeatures
+): Partial<Record<PhotoBoardNumber, number>> {
+  const scores: Partial<Record<PhotoBoardNumber, number>> = {};
+  if (features.inkRatio < 0.02) return scores;
+
+  const clearlyFive = features.topHeavyRatio < 0.9;
+  const clearlyNine = features.topHeavyRatio > 1.35;
+  const preferSix = features.bottomHeavyRatio >= 1.15;
+  const orientBoost = features.hasOrientationDot ? 0.1 : 0;
+
+  // Rødt blekk ⇒ 6 eller 8. Skill på tyngde (6 mer nederst) og punktum.
+  if (features.isRed) {
+    scores[6] = (preferSix ? 0.92 : 0.7) + orientBoost;
+    scores[8] = (preferSix ? 0.68 : 0.92) + orientBoost;
+    if (features.hasOrientationDot && preferSix) scores[6]! += 0.08;
+    for (const n of PHOTO_BOARD_NUMBERS) {
+      if (n !== 6 && n !== 8) scores[n] = -0.25;
     }
-  }
-  // Wrap-around: første og siste bin samme cluster
-  if (bins[0]! >= thresh && bins[23]! >= thresh && clusters >= 2) {
-    clusters -= 1;
+    return scores;
   }
 
-  // Fallback: estimer fra pip-piksler / typisk pip-størrelse
-  if (clusters === 0) {
-    const approx = Math.round(pipPixels.length / Math.max(8, radius * 0.35));
-    return clamp(approx, 0, 5);
+  for (const n of PHOTO_BOARD_NUMBERS) {
+    if (n === 6 || n === 8) {
+      scores[n] = -0.25; // ikke rød → ikke 6/8
+      continue;
+    }
+
+    let score = 0.4 + orientBoost + Math.min(0.08, features.discScore * 0.1);
+    const expectWide = n >= 10;
+    if (features.wideDigit === expectWide) score += 0.32;
+    else score -= 0.3;
+
+    if (n === 5) {
+      if (clearlyFive) score += 0.28;
+      else if (clearlyNine) score -= 0.12;
+      else score += 0.02;
+    }
+    if (n === 9) {
+      if (clearlyNine) score += 0.32;
+      else if (clearlyFive) score -= 0.1;
+      else score += 0.04;
+      // 9 har typisk punktum bak for å skille fra 6
+      if (features.hasOrientationDot) score += 0.1;
+    }
+
+    if (n === 10) score += features.digitAspect > 0.95 ? 0.1 : 0.02;
+    if (n === 11) score += features.digitAspect > 1.05 ? 0.12 : features.wideDigit ? 0.05 : -0.05;
+    if (n === 12) score += features.digitAspect > 0.9 ? 0.08 : 0;
+
+    if (n === 2) score += 0.06;
+    if (n === 3) score += features.leftInkRatio < 0.42 ? 0.12 : 0.04;
+    if (n === 4) score += features.digitAspect < 0.85 ? 0.1 : 0.05;
+
+    scores[n] = score;
   }
-  return clamp(clusters, 0, 5);
+  return scores;
+}
+
+export function bestNumberFromFeatures(
+  features: NumberTokenFeatures
+): { number: PhotoBoardNumber | null; confidence: number } {
+  const scores = scoreNumberHypotheses(features);
+  let best: PhotoBoardNumber | null = null;
+  let bestScore = -Infinity;
+  let second = -Infinity;
+  for (const n of PHOTO_BOARD_NUMBERS) {
+    const s = scores[n];
+    if (s == null) continue;
+    if (s > bestScore) {
+      second = bestScore;
+      bestScore = s;
+      best = n;
+    } else if (s > second) {
+      second = s;
+    }
+  }
+  if (best == null || bestScore < 0.2) {
+    return { number: null, confidence: 0.15 };
+  }
+  const margin = bestScore - (Number.isFinite(second) ? second : 0);
+  const confidence = clamp(0.35 + bestScore * 0.35 + margin * 0.4, 0.3, 0.95);
+  return { number: best, confidence };
+}
+
+/**
+ * Analyser tallskiven: krever bekreftet krem-tallbrikke med blekk.
+ * Ørken har aldri tallbrikke — kall ikke denne for ørken-hex.
+ */
+export function guessNumberFromCenterPatch(
+  imageData: RgbaImageBuffer,
+  cx: number,
+  cy: number,
+  hexSize: number,
+  resource: ResourceType | null,
+  disc?: CreamDisc | null
+): {
+  number: number | null;
+  confidence: number;
+  scores?: Partial<Record<PhotoBoardNumber, number>>;
+  hasDisc?: boolean;
+} {
+  if (resource === 'desert') {
+    return { number: null, confidence: 0.95, scores: {}, hasDisc: false };
+  }
+
+  const found = disc === undefined ? locateCreamDisc(imageData, cx, cy, hexSize) : disc;
+  if (!isNumberTokenDisc(found)) {
+    // Ingen tallbrikke → ikke gjett tall fra terrengtekstur
+    return { number: null, confidence: 0.08, scores: {}, hasDisc: false };
+  }
+
+  const features = extractNumberTokenFeatures(imageData, found!);
+  if (!features || features.inkRatio < 0.02) {
+    return { number: null, confidence: 0.15, scores: {}, hasDisc: true };
+  }
+
+  const scores = scoreNumberHypotheses(features);
+  const best = bestNumberFromFeatures(features);
+  return { ...best, scores, hasDisc: true };
+}
+
+/** Hvor ørken-aktig er en terrengfarge (høyere = mer ørken). */
+export function desertLikeness(rgb: Rgb): number {
+  const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+  const warm = hsv.h >= 20 && hsv.h <= 60 ? 1 : hsv.h >= 15 && hsv.h <= 70 ? 0.45 : 0;
+  const satOk = hsv.s >= 0.08 && hsv.s <= 0.5 ? 1 - Math.abs(hsv.s - 0.28) : 0.15;
+  const valOk = hsv.v >= 0.42 && hsv.v <= 0.95 ? hsv.v : 0.2;
+  return warm * 0.45 + satOk * 0.25 + valOk * 0.3;
+}
+
+/**
+ * Klassifiser ressurs på nytt uten ørken-kandidat (når tallbrikke finnes).
+ */
+export function classifyNonDesertResource(rgb: Rgb): ResourceGuess {
+  const base = classifyResourceFromRgb(rgb);
+  if (base.resource !== 'desert') return base;
+  // Fall tilbake til malm for beige som egentlig var tallskive-lekkasje / lys malm
+  const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+  if (hsv.s < 0.22 || hsv.v < 0.55) {
+    return { resource: 'ore', confidence: Math.max(base.confidence, 0.5), rgb };
+  }
+  // Varm og mettet uten ørken-lov → korn
+  if (hsv.h >= 35 && hsv.h <= 70 && hsv.s >= 0.28) {
+    return { resource: 'wheat', confidence: 0.45, rgb };
+  }
+  return { resource: 'ore', confidence: 0.48, rgb };
+}
+
+export function expectedDesertCount(boardSize: BoardSize): number {
+  return boardSize === 'base' ? 1 : 2;
+}
+
+/**
+ * Tilordne ørken hardt: ørken har ALDRI tallbrikke.
+ * Hex med tallbrikke kan ikke være ørken. Blant hex uten tallbrikke
+ * plukkes de mest ørken-aktige opp til forventet antall.
+ */
+export function assignDesertsByNumberTokens(
+  entries: {
+    resource: ResourceGuess | null;
+    hasNumberToken: boolean;
+    terrainRgb: Rgb | null;
+  }[],
+  desertCount: number
+): (ResourceGuess | null)[] {
+  const out = entries.map((e) => e.resource);
+
+  // 1) Tallbrikke ⇒ aldri ørken
+  for (let i = 0; i < entries.length; i++) {
+    if (!entries[i]!.hasNumberToken) continue;
+    const g = out[i];
+    if (g?.resource === 'desert') {
+      out[i] = entries[i]!.terrainRgb
+        ? classifyNonDesertResource(entries[i]!.terrainRgb!)
+        : { resource: 'ore', confidence: 0.55, rgb: g.rgb };
+    }
+  }
+
+  // 2) Kandidater uten tallbrikke
+  const candidates = entries
+    .map((e, i) => ({
+      i,
+      score: e.hasNumberToken
+        ? -1
+        : e.terrainRgb
+          ? desertLikeness(e.terrainRgb)
+          : 0.2,
+    }))
+    .filter((c) => c.score >= 0)
+    .sort((a, b) => b.score - a.score);
+
+  const desertIdx = new Set(
+    candidates.slice(0, Math.max(0, desertCount)).map((c) => c.i)
+  );
+
+  for (let i = 0; i < entries.length; i++) {
+    if (entries[i]!.hasNumberToken) continue;
+    if (desertIdx.has(i)) {
+      const rgb = entries[i]!.terrainRgb ?? out[i]?.rgb ?? { r: 200, g: 180, b: 125 };
+      out[i] = { resource: 'desert', confidence: 0.85, rgb };
+    } else if (out[i]?.resource === 'desert') {
+      // Ekstra «ørken» uten tallbrikke men ikke valgt → malm
+      out[i] = entries[i]!.terrainRgb
+        ? classifyNonDesertResource(entries[i]!.terrainRgb!)
+        : { resource: 'ore', confidence: 0.5, rgb: out[i]!.rgb };
+    }
+  }
+
+  return out;
+}
+
+/**
+ * @deprecated Bruk assignDesertsByNumberTokens. Beholdt for tester.
+ * Kremskive ⇒ ikke ørken; ingen skive alene avgjør ikke ørken lenger.
+ */
+export function reconcileOreDesertWithDisc(
+  guess: ResourceGuess | null,
+  hasCreamDisc: boolean
+): ResourceGuess | null {
+  if (!guess) return guess;
+  if (hasCreamDisc && guess.resource === 'desert') {
+    return classifyNonDesertResource(guess.rgb);
+  }
+  return guess;
+}
+
+/**
+ * Tilordne tall globalt mot kjent Catan-pool.
+ * Kun sterke lokale treff — fyller IKKE inn svake gjetninger (bedre tomt enn feil).
+ */
+export function assignNumbersWithPool(
+  hexScores: {
+    scores: Partial<Record<PhotoBoardNumber, number>>;
+    localNumber: number | null;
+    localConfidence: number;
+    hasToken?: boolean;
+  }[],
+  pool: number[]
+): { number: PhotoBoardNumber | null; confidence: number }[] {
+  const n = hexScores.length;
+  const result: { number: PhotoBoardNumber | null; confidence: number }[] = hexScores.map(
+    () => ({ number: null, confidence: 0.2 })
+  );
+
+  const available = [...pool];
+  const usedHex = new Set<number>();
+
+  type Cand = { hi: number; num: PhotoBoardNumber; score: number };
+  const cands: Cand[] = [];
+  for (let hi = 0; hi < n; hi++) {
+    if (hexScores[hi]!.hasToken === false) continue;
+    const scores = hexScores[hi]!.scores;
+    // Finn beste og nest beste for margin
+    let bestNum: PhotoBoardNumber | null = null;
+    let bestScore = -Infinity;
+    let second = -Infinity;
+    for (const num of PHOTO_BOARD_NUMBERS) {
+      const score = scores[num];
+      if (score == null) continue;
+      if (score > bestScore) {
+        second = bestScore;
+        bestScore = score;
+        bestNum = num;
+      } else if (score > second) {
+        second = score;
+      }
+    }
+    if (bestNum == null || bestScore < 0.45) continue;
+    const margin = bestScore - (Number.isFinite(second) ? second : 0);
+    // Rød 6/8: lavere margin-krav; ellers krev tydelig vinner
+    const isRedPair = bestNum === 6 || bestNum === 8;
+    if (!isRedPair && margin < 0.06 && bestScore < 0.7) continue;
+    cands.push({
+      hi,
+      num: bestNum,
+      score: bestScore + margin * 0.5,
+    });
+  }
+  cands.sort((a, b) => b.score - a.score);
+
+  for (const c of cands) {
+    if (usedHex.has(c.hi)) continue;
+    const idx = available.indexOf(c.num);
+    if (idx < 0) {
+      // Prøv alternativ for rød: 6↔8
+      if (c.num === 6 || c.num === 8) {
+        const alt = c.num === 6 ? 8 : 6;
+        const altIdx = available.indexOf(alt);
+        if (altIdx < 0) continue;
+        available.splice(altIdx, 1);
+        usedHex.add(c.hi);
+        result[c.hi] = {
+          number: alt,
+          confidence: clamp(0.45 + c.score * 0.3, 0.4, 0.9),
+        };
+      }
+      continue;
+    }
+    available.splice(idx, 1);
+    usedHex.add(c.hi);
+    result[c.hi] = {
+      number: c.num,
+      confidence: clamp(0.45 + c.score * 0.35, 0.42, 0.96),
+    };
+  }
+
+  return result;
 }
 
 export function mapPipsToNumber(
@@ -498,17 +1104,16 @@ export function mapPipsToNumber(
   const p = clamp(Math.round(pipCount), 0, 5);
   if (p <= 0) return null;
   if (p === 5) return isRed ? 6 : 8;
-  if (p === 4) return 5; // justeres til 9 av caller ved behov
+  if (p === 4) return 5;
   if (p === 3) return wideDigit ? 10 : 4;
   if (p === 2) return wideDigit ? 11 : 3;
   if (p === 1) return wideDigit ? 12 : 2;
   return null;
 }
 
-/** 5 vs 9: 9 har mer blekk øverst (løkke). */
+/** 5 vs 9: 9 har mer blekk øverst (løkke). Ambivalent → ingen sterk preferanse. */
 export function preferFiveOverNine(topHeavyRatio: number): boolean {
-  // topHeavyRatio = darkInUpper / darkInLower; 9 typisk > 1.15
-  return topHeavyRatio < 1.12;
+  return topHeavyRatio < 0.95;
 }
 
 /** Bakoverkompatibel stub — bruk guessNumberFromCenterPatch. */
@@ -527,8 +1132,20 @@ export function recognizeBoardFromImageData(
   imageAdjust: ImageAdjust = defaultImageAdjust()
 ): BoardRecognitionResult {
   const landCoords = getLandHexCoords(boardSize);
-  const hexes: HexRecognitionResult[] = [];
   const sampleHexSize = transform.hexSize / (imageAdjust.zoom || 1);
+
+  type Pending = {
+    coord: HexCoord;
+    terrainRgb: Rgb | null;
+    resource: ResourceGuess | null;
+    disc: CreamDisc | null;
+    hasNumberToken: boolean;
+    localNumber: number | null;
+    localConfidence: number;
+    scores: Partial<Record<PhotoBoardNumber, number>>;
+  };
+
+  const pending: Pending[] = [];
 
   for (const coord of landCoords) {
     const display = axialToImagePixel(coord, transform);
@@ -539,49 +1156,128 @@ export function recognizeBoardFromImageData(
       imageData.height,
       imageAdjust
     );
-    const terrain = sampleTerrainColor(imageData, x, y, sampleHexSize);
 
-    let resourceGuess: ResourceGuess | null = terrain
+    // Tallbrikken ligger oppå ressursen — finn den først
+    const disc = locateCreamDisc(imageData, x, y, sampleHexSize);
+    const hasNumberToken = isNumberTokenDisc(disc);
+
+    const terrain = sampleTerrainColor(
+      imageData,
+      x,
+      y,
+      sampleHexSize,
+      hasNumberToken && disc ? disc.radius : sampleHexSize * 0.2
+    );
+
+    const resourceGuess: ResourceGuess | null = terrain
       ? classifyResourceFromRgb(terrain)
       : null;
 
+    pending.push({
+      coord,
+      terrainRgb: terrain,
+      resource: resourceGuess,
+      disc,
+      hasNumberToken,
+      localNumber: null,
+      localConfidence: 0.1,
+      scores: {},
+    });
+  }
+
+  // Ørken = ingen tallbrikke (hard regel + forventet antall)
+  const desertAssigned = assignDesertsByNumberTokens(
+    pending.map((p) => ({
+      resource: p.resource,
+      hasNumberToken: p.hasNumberToken,
+      terrainRgb: p.terrainRgb,
+    })),
+    expectedDesertCount(boardSize)
+  );
+  for (let i = 0; i < pending.length; i++) {
+    pending[i]!.resource = desertAssigned[i] ?? pending[i]!.resource;
+  }
+
+  // Tall kun der det finnes tallbrikke (ørken har aldri)
+  for (const p of pending) {
+    if (p.resource?.resource === 'desert' || !p.hasNumberToken) {
+      p.localNumber = null;
+      p.localConfidence = p.resource?.resource === 'desert' ? 0.95 : 0.08;
+      p.scores = {};
+      continue;
+    }
+    const display = axialToImagePixel(p.coord, transform);
+    const { x, y } = displayToImagePixel(
+      display.x,
+      display.y,
+      imageData.width,
+      imageData.height,
+      imageAdjust
+    );
     const numberGuess = guessNumberFromCenterPatch(
       imageData,
       x,
       y,
       sampleHexSize,
-      resourceGuess?.resource ?? null
+      p.resource?.resource ?? null,
+      p.disc
     );
+    p.localNumber = numberGuess.number;
+    p.localConfidence = numberGuess.confidence;
+    p.scores = numberGuess.scores ?? {};
+  }
 
-    // Ingen tallskive + usikker malm/ørken → hell heller ørken
-    if (
-      resourceGuess &&
-      (resourceGuess.resource === 'ore' || resourceGuess.resource === 'desert') &&
-      numberGuess.number === null &&
-      numberGuess.confidence >= 0.8 &&
-      resourceGuess.confidence < 0.55
-    ) {
-      resourceGuess = {
-        ...resourceGuess,
-        resource: 'desert',
-        confidence: Math.max(resourceGuess.confidence, 0.55),
+  const numberedIdx: number[] = [];
+  for (let i = 0; i < pending.length; i++) {
+    const p = pending[i]!;
+    if (p.resource?.resource === 'desert') continue;
+    if (!p.hasNumberToken) continue;
+    numberedIdx.push(i);
+  }
+
+  const pool = numberPoolForBoardSize(boardSize);
+  const assignment = assignNumbersWithPool(
+    numberedIdx.map((i) => ({
+      scores: pending[i]!.scores,
+      localNumber: pending[i]!.localNumber,
+      localConfidence: pending[i]!.localConfidence,
+      hasToken: true,
+    })),
+    numberedIdx.length === pool.length
+      ? pool
+      : pickPoolSubset(pool, numberedIdx.length)
+  );
+
+  const hexes: HexRecognitionResult[] = pending.map((p, i) => {
+    if (p.resource?.resource === 'desert') {
+      return {
+        coord: p.coord,
+        resource: p.resource,
+        number: null,
+        numberConfidence: 0.95,
       };
     }
-
+    const slot = numberedIdx.indexOf(i);
+    if (slot < 0) {
+      return {
+        coord: p.coord,
+        resource: p.resource,
+        number: null,
+        numberConfidence: 0.1,
+      };
+    }
+    const assigned = assignment[slot];
     const number =
-      resourceGuess?.resource === 'desert'
-        ? null
-        : numberGuess.number !== null && isPhotoBoardNumber(numberGuess.number)
-          ? numberGuess.number
-          : null;
-
-    hexes.push({
-      coord,
-      resource: resourceGuess,
+      assigned?.number != null && isPhotoBoardNumber(assigned.number)
+        ? assigned.number
+        : null;
+    return {
+      coord: p.coord,
+      resource: p.resource,
       number,
-      numberConfidence: numberGuess.confidence,
-    });
-  }
+      numberConfidence: assigned?.confidence ?? p.localConfidence,
+    };
+  });
 
   return {
     hexes,
@@ -590,6 +1286,18 @@ export function recognizeBoardFromImageData(
       (h) => h.resource?.resource === 'desert' || h.number !== null
     ).length,
   };
+}
+
+/** Velg en lovlig delmengde av tallpoolen (bevarer relative antall best mulig). */
+function pickPoolSubset(pool: number[], count: number): number[] {
+  if (count >= pool.length) return [...pool];
+  // Foretrekk å beholde vanlige tall (4–10) når vi må kutte
+  const sorted = [...pool].sort((a, b) => {
+    const rank = (n: number) =>
+      n === 6 || n === 8 ? 0 : n === 5 || n === 9 ? 1 : n === 4 || n === 10 ? 2 : 3;
+    return rank(a) - rank(b) || a - b;
+  });
+  return sorted.slice(0, count);
 }
 
 /** Slå gjenkjenningsresultat inn i et land-utkast. */

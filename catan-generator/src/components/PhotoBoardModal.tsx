@@ -343,8 +343,9 @@ export function PhotoBoardModal({
         <div className="modal-body photo-board-body">
           <p className="muted small photo-board-intro">
             Last opp et bilde mest mulig rett ovenfra. Hex-nettet ligger fast —
-            dra, skaler og roter bildet til brikkene treffer. Kjør gjenkjenning,
-            og rett feil i gridet før du bruker brettet.
+            dra, skaler og roter bildet til brikkene treffer. Tallbrikkene ligger
+            oppå ressursene (ørken har ingen tallbrikke). Kjør gjenkjenning, og
+            rett feil i gridet før du bruker brettet.
           </p>
 
           <div className="photo-board-layout">
