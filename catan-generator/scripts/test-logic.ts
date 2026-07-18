@@ -363,10 +363,17 @@ import {
   blendTowardEqualWeights,
   coverageBonus,
   getStrategyWeights,
+  isStrategyChoice,
+  resolveStrategyProfileId,
+  strategyChoiceLabel,
 } from '../src/catan/resourceWeights.ts';
 import { DEFAULT_RESOURCE_WEIGHTS } from '../src/catan/types.ts';
 
 assert(Math.abs(DEFAULT_RESOURCE_WEIGHTS.wheat - WEIGHTS_GENERAL.wheat) < 0.01, 'Default matches general average');
+assert(isStrategyChoice('harbor') && isStrategyChoice('general'), 'Harbor and profiles are strategy choices');
+assert(!isStrategyChoice('nope'), 'Unknown strategy choice rejected');
+assert(resolveStrategyProfileId('harbor') === 'general', 'Harbor resolves to general weights');
+assert(strategyChoiceLabel('harbor') === 'Havn', 'Harbor short label');
 assert(
   OPPONENT_RESOURCE_WEIGHTS.wheat < WEIGHTS_GENERAL.wheat &&
     OPPONENT_RESOURCE_WEIGHTS.ore < WEIGHTS_GENERAL.ore &&
