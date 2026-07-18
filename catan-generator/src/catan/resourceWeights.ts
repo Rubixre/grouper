@@ -79,7 +79,7 @@ export function blendTowardEqualWeights(
  */
 export const OPPONENT_RESOURCE_WEIGHTS: ResourceWeights = blendTowardEqualWeights(
   WEIGHTS_GENERAL,
-  0.7
+  0.8
 );
 
 export type StrategyProfileId =
