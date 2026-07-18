@@ -25,6 +25,7 @@ import { RESOURCE_LABELS } from './playerStats';
 import {
   blendLookaheadScore,
   evaluateFirstSettlementPath,
+  pairTrustFromConfidence,
   simulateToHumanSecondTurnDetailed,
 } from './strategyAdvisor';
 import { coordKey } from './hex';
@@ -799,9 +800,9 @@ export function buildHarborVsBalanced(
   rawPlanScore = planScore
 ): HarborVsBalanced {
   const rawTradeBonus = estimateHarborTradeBonus(opportunity, weights);
-  // Handelsbonus forutsetter at #2-planen holder — skaler med tillit
+  // Handelsbonus forutsetter at #2-planen holder — samme konservative tillit som parblend
   const confidence = Math.min(1, Math.max(0, pathConfidence));
-  const tradeBonus = rawTradeBonus * confidence;
+  const tradeBonus = rawTradeBonus * pairTrustFromConfidence(confidence);
   const effectiveScore = planScore + tradeBonus;
   const safeBest = Math.max(bestBalancedScore, 1e-6);
   const relative = planScore / safeBest;

@@ -367,17 +367,20 @@ export function vertexProducingHexCount(vertexId: string, board: Board): number 
 /**
  * Hvor klar er toppvalget blant rangerte alternativer?
  * Stor relativ avstand til #2 → høy tillit; jevne toppvalg → lav.
+ *
+ * Gulvet er bevisst lavt: jevne motstandervalg skal gi lav sti-sikkerhet,
+ * slik at spot dominerer i blendLookaheadScore (via c²).
  */
 export function confidenceFromRankedOptions(ranked: SettlementScore[]): number {
   if (ranked.length <= 1) return 1;
   const best = ranked[0]!.total;
   const second = ranked[1]!.total;
-  if (best <= 1e-9) return 0.5;
+  if (best <= 1e-9) return 0.35;
   const relativeGap = Math.max(0, (best - second) / best);
-  const MIN = 0.4;
+  const MIN = 0.25;
   const MAX = 0.98;
-  /** ~12 % gap mot #2 regnes som «klart favorittvalg» */
-  const CLEAR_GAP = 0.12;
+  /** ~15 % gap mot #2 regnes som «klart favorittvalg» */
+  const CLEAR_GAP = 0.15;
   return Math.min(MAX, Math.max(MIN, MIN + (relativeGap / CLEAR_GAP) * (MAX - MIN)));
 }
 

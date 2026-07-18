@@ -160,7 +160,7 @@ export function SettlementSimulator({
       : isSecond
         ? 'Andre landsby — gul kant = anbefalt strategi (byttes ikke automatisk)'
         : isFirstHuman
-          ? 'Rangert på justert par. Gullkant = anbefalt strategi'
+          ? 'Rangert med konservativ parvekt (usikker sti → spot dominerer)'
           : 'Første landsby'
     : 'Motspillere bruker jevnere ressursvekter · velg hjørne';
 

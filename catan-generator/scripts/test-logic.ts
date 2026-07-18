@@ -662,6 +662,7 @@ import {
   evaluateFirstSettlementPath,
   isHumanSecondSettlementTurn,
   blendLookaheadScore,
+  pairTrustFromConfidence,
   aggregatePathConfidence,
   buildStrategyRelativeLevels,
 } from '../src/catan/strategyAdvisor.ts';
@@ -759,8 +760,23 @@ if (board) {
     'Aggregate confidence geometric-means equal steps'
   );
   assert(
-    Math.abs(blendLookaheadScore(1, 3, 0.5) - 2) < 1e-9,
-    'Blend is confidence-weighted average of spot and pair'
+    Math.abs(pairTrustFromConfidence(0.5) - 0.25) < 1e-9,
+    'Pair trust squares confidence (50% sikker → 25% parvekt)'
+  );
+  assert(
+    Math.abs(blendLookaheadScore(1, 3, 0.5) - 1.5) < 1e-9,
+    'At 50% path confidence, blend is 75% spot / 25% pair'
+  );
+  assert(
+    blendLookaheadScore(1, 3, 0.5) < blendLookaheadScore(1, 3, 0.8),
+    'Higher path confidence increases pair influence'
+  );
+  assert(
+    confidenceFromRankedOptions([
+      { total: 2 } as never,
+      { total: 1.99 } as never,
+    ]) < 0.35,
+    'Near-tied opponent options yield low path confidence'
   );
   {
     const levels = buildStrategyRelativeLevels(
@@ -1065,8 +1081,8 @@ assert(verdictFromEffectiveRelative(0.8).verdict === 'weaker', 'Effective 80% is
   );
   assert(vsUncertain.rawPlanScore === 1.2, 'Raw plan score can differ from adjusted');
   assert(
-    Math.abs(vsUncertain.tradeBonus - vs.tradeBonus * 0.5) < 1e-9,
-    'Trade bonus scales with path confidence'
+    Math.abs(vsUncertain.tradeBonus - vs.tradeBonus * 0.25) < 1e-9,
+    'Trade bonus scales with conservative pair trust (c²)'
   );
 }
 

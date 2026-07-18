@@ -4,6 +4,10 @@ import { explainPlacementScore } from '../catan/settlements';
 import type { StrategyProfile } from '../catan/resourceWeights';
 import { RESOURCE_LABELS } from '../catan/playerStats';
 import type { ProdResource } from '../catan/playerStats';
+import {
+  blendLookaheadScore,
+  pairTrustFromConfidence,
+} from '../catan/strategyAdvisor';
 
 interface PlacementScoreBreakdownProps {
   score: SettlementScore;
@@ -65,6 +69,9 @@ export function PlacementScoreBreakdown({
             <>
               {' '}
               · {Math.round(score.lookaheadConfidence * 100)}% sikker sti
+              {' '}
+              → {Math.round(pairTrustFromConfidence(score.lookaheadConfidence) * 100)}%
+              parvekt
             </>
           )}
           {score.immediateScore !== undefined &&
@@ -73,11 +80,14 @@ export function PlacementScoreBreakdown({
                 {' '}
                 → rangering{' '}
                 {fmt(
-                  score.immediateScore * (1 - score.lookaheadConfidence) +
-                    score.expectedPairScore * score.lookaheadConfidence,
+                  blendLookaheadScore(
+                    score.immediateScore,
+                    score.expectedPairScore,
+                    score.lookaheadConfidence
+                  ),
                   2
                 )}{' '}
-                (blander spot og par)
+                (spot dominerer ved usikker sti)
               </>
             )}
           . Under: lokal score for dette hjørnet.

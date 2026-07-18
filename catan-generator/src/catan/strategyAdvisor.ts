@@ -49,16 +49,31 @@ export function aggregatePathConfidence(stepConfidences: number[]): number {
 }
 
 /**
- * Bland lokal spot-score med parscore etter tillit til motstander-stien.
- * Høy tillit → stol på par; lav tillit → fall tilbake til «bra her og nå».
+ * Par-tillit brukt i rangering (ikke det samme som vist «% sikker»).
+ *
+ * Sti-sikkerhet c mappes konservativt: middels usikkerhet skal la spot
+ * dominere, fordi forventet #2 er skjørt når motstandere har mange jevngode valg.
+ *
+ *   c = 0.50 → parvekt 0.25 (spot 75 %)
+ *   c = 0.70 → parvekt 0.49
+ *   c = 0.90 → parvekt 0.81
+ */
+export function pairTrustFromConfidence(confidence: number): number {
+  const c = Math.min(1, Math.max(0, confidence));
+  return c * c;
+}
+
+/**
+ * Bland lokal spot-score med parscore etter sti-sikkerhet.
+ * Bruker konservativ par-tillit (c²), ikke lineær 50/50 ved 50 % sikker.
  */
 export function blendLookaheadScore(
   immediateScore: number,
   pairScore: number,
   confidence: number
 ): number {
-  const c = Math.min(1, Math.max(0, confidence));
-  return immediateScore * (1 - c) + pairScore * c;
+  const pairWeight = pairTrustFromConfidence(confidence);
+  return immediateScore * (1 - pairWeight) + pairScore * pairWeight;
 }
 
 export interface ProfileStrategyEvaluation {
