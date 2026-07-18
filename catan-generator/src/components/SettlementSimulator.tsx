@@ -10,7 +10,10 @@ import {
   OPPONENT_RESOURCE_WEIGHTS,
   strategyChoiceLabel,
 } from '../catan/resourceWeights';
-import type { StrategyRecommendation } from '../catan/strategyAdvisor';
+import type {
+  StrategyRecommendation,
+  StrategyRelativeLevels,
+} from '../catan/strategyAdvisor';
 import {
   isHumanFirstSettlementTurn,
   isHumanSecondSettlementTurn,
@@ -48,6 +51,7 @@ interface SettlementSimulatorProps {
   strategyWeights: ResourceWeights;
   strategyRecommendation: StrategyRecommendation | null;
   recommendedStrategyChoice: StrategyChoice | null;
+  strategyLevels: StrategyRelativeLevels | null;
   harborOpportunities: HarborStrategyOpportunity[];
   secondPreviewVertex: string | null;
   onSelectVertex: (vertexId: string) => void;
@@ -97,6 +101,7 @@ export function SettlementSimulator({
   strategyWeights,
   strategyRecommendation,
   recommendedStrategyChoice,
+  strategyLevels,
   harborOpportunities,
   secondPreviewVertex,
   onSelectVertex,
@@ -160,14 +165,19 @@ export function SettlementSimulator({
   const strategyHint = useMemo(() => {
     if (!isYourTurn) return null;
     if (recommendedStrategyChoice === 'harbor') {
-      return 'Anbefalt: Havn (sterkere enn beste balanserte). Trykk knappen for å bruke.';
+      const level = strategyLevels?.harbor;
+      return level != null
+        ? `Anbefalt: Havn (${level}%). Prosent = relativ styrke (beste = 100).`
+        : 'Anbefalt: Havn. Trykk knappen for å bruke.';
     }
     if (strategyRecommendation && recommendedStrategyChoice) {
       const label = strategyChoiceLabel(recommendedStrategyChoice);
+      const level = strategyLevels?.[recommendedStrategyChoice];
+      const levelTxt = level != null ? ` (${level}%)` : '';
       if (isSecondHuman) {
-        return `Anbefalt ut fra gjenværende posisjoner: ${label}.`;
+        return `Anbefalt ut fra gjenværende posisjoner: ${label}${levelTxt}.`;
       }
-      return `Anbefalt: ${label}. Gullkant markerer forslaget — du velger selv.`;
+      return `Anbefalt: ${label}${levelTxt}. Gullkant = forslag · % = relativ styrke.`;
     }
     if (harborMode) return HARBOR_STRATEGY_CHOICE.description;
     return strategyProfile.description;
@@ -175,6 +185,7 @@ export function SettlementSimulator({
     isYourTurn,
     recommendedStrategyChoice,
     strategyRecommendation,
+    strategyLevels,
     isSecondHuman,
     harborMode,
     strategyProfile.description,
@@ -233,6 +244,7 @@ export function SettlementSimulator({
             recommended={recommendedStrategyChoice}
             harborEnabled={harborOpportunities.length > 0}
             harborCount={harborOpportunities.length}
+            levels={strategyLevels}
             onChange={onStrategyChoiceChange}
             hint={strategyHint}
           />

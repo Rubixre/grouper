@@ -8,6 +8,7 @@ import type {
 import {
   OPPONENT_RESOURCE_WEIGHTS,
   STRATEGY_PROFILES,
+  type StrategyChoice,
   type StrategyProfile,
   type StrategyProfileId,
 } from './resourceWeights';
@@ -72,6 +73,44 @@ export interface StrategyRecommendation {
   evaluations: ProfileStrategyEvaluation[];
   /** Topp første-landsbyer for anbefalt profil, med forventet nr. 2 */
   suggestedPaths: FirstSettlementPath[];
+}
+
+/** Relativ styrke 0–100 der beste strategi i settet = 100 */
+export type StrategyRelativeLevels = Partial<Record<StrategyChoice, number>>;
+
+/**
+ * Sammenlign strategier på samme skala (justert par / effektiv havnscore).
+ * Beste = 100; øvrige = avrundet prosent av beste.
+ */
+export function buildStrategyRelativeLevels(
+  evaluations: ProfileStrategyEvaluation[],
+  harborEffectiveScore: number | null = null
+): StrategyRelativeLevels {
+  const scores: { choice: StrategyChoice; score: number }[] = [];
+
+  for (const evaluation of evaluations) {
+    const path = evaluation.bestPath;
+    if (!path) continue;
+    scores.push({
+      choice: evaluation.profile.id,
+      score: path.adjustedPairScore ?? path.pairScore,
+    });
+  }
+
+  if (harborEffectiveScore != null && Number.isFinite(harborEffectiveScore)) {
+    scores.push({ choice: 'harbor', score: harborEffectiveScore });
+  }
+
+  if (scores.length === 0) return {};
+
+  const max = Math.max(...scores.map((entry) => entry.score));
+  if (max <= 1e-9) return {};
+
+  const levels: StrategyRelativeLevels = {};
+  for (const entry of scores) {
+    levels[entry.choice] = Math.round((entry.score / max) * 100);
+  }
+  return levels;
 }
 
 /**

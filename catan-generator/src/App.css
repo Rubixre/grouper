@@ -2072,16 +2072,42 @@ body {
   background: #f7f9fb;
   color: #243642;
   border-radius: 0.55rem;
-  padding: 0.45rem 0.35rem;
+  padding: 0.4rem 0.35rem 0.35rem;
   font-size: 0.78rem;
   font-weight: 600;
   line-height: 1.15;
   cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  min-height: 2.55rem;
   transition:
     border-color 0.15s ease,
     background 0.15s ease,
     box-shadow 0.15s ease,
     transform 0.12s ease;
+}
+
+.strategy-pick-name {
+  display: block;
+}
+
+.strategy-pick-level {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: #5a6a75;
+}
+
+.strategy-pick-btn.is-selected .strategy-pick-level {
+  color: #1a5276;
+}
+
+.strategy-pick-btn.is-recommended .strategy-pick-level {
+  color: #9a7208;
 }
 
 .strategy-pick-btn:hover:not(:disabled) {

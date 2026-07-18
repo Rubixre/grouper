@@ -3,6 +3,7 @@ import {
   STRATEGY_PROFILES,
   type StrategyChoice,
 } from '../catan/resourceWeights';
+import type { StrategyRelativeLevels } from '../catan/strategyAdvisor';
 
 interface StrategyPickerProps {
   value: StrategyChoice;
@@ -10,9 +11,17 @@ interface StrategyPickerProps {
   /** Skjul/disable havn når det ikke finnes planer (under simulering) */
   harborEnabled?: boolean;
   harborCount?: number;
+  /** Relativ styrke (beste = 100) vist bak strateginavnet */
+  levels?: StrategyRelativeLevels | null;
   onChange: (choice: StrategyChoice) => void;
   /** Kort hint under knappene */
   hint?: string | null;
+}
+
+function levelLabel(levels: StrategyRelativeLevels | null | undefined, choice: StrategyChoice): string | null {
+  const level = levels?.[choice];
+  if (level === undefined) return null;
+  return `${level}%`;
 }
 
 export function StrategyPicker({
@@ -20,6 +29,7 @@ export function StrategyPicker({
   recommended = null,
   harborEnabled = true,
   harborCount,
+  levels = null,
   onChange,
   hint,
 }: StrategyPickerProps) {
@@ -30,6 +40,7 @@ export function StrategyPicker({
         {STRATEGY_PROFILES.map((profile) => {
           const selected = value === profile.id;
           const isRecommended = recommended === profile.id;
+          const level = levelLabel(levels, profile.id);
           return (
             <button
               key={profile.id}
@@ -42,10 +53,15 @@ export function StrategyPicker({
                 .filter(Boolean)
                 .join(' ')}
               aria-pressed={selected}
-              title={profile.description}
+              title={
+                level
+                  ? `${profile.description} Relativ styrke: ${level} (beste = 100%).`
+                  : profile.description
+              }
               onClick={() => onChange(profile.id)}
             >
-              {profile.shortLabel}
+              <span className="strategy-pick-name">{profile.shortLabel}</span>
+              {level && <span className="strategy-pick-level">{level}</span>}
             </button>
           );
         })}
@@ -61,11 +77,20 @@ export function StrategyPicker({
             .join(' ')}
           aria-pressed={value === 'harbor'}
           disabled={!harborEnabled}
-          title={HARBOR_STRATEGY_CHOICE.description}
+          title={
+            levelLabel(levels, 'harbor')
+              ? `${HARBOR_STRATEGY_CHOICE.description} Relativ styrke: ${levelLabel(levels, 'harbor')} (beste = 100%).`
+              : HARBOR_STRATEGY_CHOICE.description
+          }
           onClick={() => onChange('harbor')}
         >
-          {HARBOR_STRATEGY_CHOICE.shortLabel}
-          {typeof harborCount === 'number' && harborCount > 0 ? ` (${harborCount})` : ''}
+          <span className="strategy-pick-name">
+            {HARBOR_STRATEGY_CHOICE.shortLabel}
+            {typeof harborCount === 'number' && harborCount > 0 ? ` · ${harborCount}` : ''}
+          </span>
+          {levelLabel(levels, 'harbor') && (
+            <span className="strategy-pick-level">{levelLabel(levels, 'harbor')}</span>
+          )}
         </button>
       </div>
       {hint && <p className="strategy-picker-hint muted small">{hint}</p>}

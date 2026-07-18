@@ -660,7 +660,9 @@ import {
   isHumanSecondSettlementTurn,
   blendLookaheadScore,
   aggregatePathConfidence,
+  buildStrategyRelativeLevels,
 } from '../src/catan/strategyAdvisor.ts';
+import { STRATEGY_PROFILES } from '../src/catan/resourceWeights.ts';
 import {
   getValidVertices,
   pickGreedyOpponentVertex,

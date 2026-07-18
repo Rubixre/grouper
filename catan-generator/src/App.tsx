@@ -16,6 +16,7 @@ import {
   type SimulationConfig,
 } from './catan/playerConfig';
 import {
+  buildStrategyRelativeLevels,
   getSecondSettlementPreview,
   isHumanFirstSettlementTurn,
   isHumanSecondSettlementTurn,
@@ -236,15 +237,34 @@ function App() {
     );
   }, [board, simulation, isYourTurn, strategyWeights]);
 
-  /** Gullkant: havn hvis den slår balansert, ellers beste ressursprofil. Byttes aldri automatisk. */
-  const recommendedStrategyChoice = useMemo((): StrategyChoice | null => {
-    if (!isYourTurn) return null;
-    const harborStronger = harborOpportunities.some(
-      (o) => (o.vsBalanced?.effectiveRelative ?? 0) > 1
+  const strategyLevels = useMemo(() => {
+    if (!isYourTurn || !strategyRecommendation) return null;
+    const topHarbor = harborOpportunities[0]?.vsBalanced?.effectiveScore ?? null;
+    const levels = buildStrategyRelativeLevels(
+      strategyRecommendation.evaluations,
+      topHarbor
     );
-    if (harborStronger) return 'harbor';
-    return strategyRecommendation?.recommendedProfileId ?? null;
-  }, [isYourTurn, harborOpportunities, strategyRecommendation]);
+    return Object.keys(levels).length > 0 ? levels : null;
+  }, [isYourTurn, strategyRecommendation, harborOpportunities]);
+
+  /** Gullkant: strategien med høyest relativ nivå (inkl. havn). Byttes aldri automatisk. */
+  const recommendedStrategyChoice = useMemo((): StrategyChoice | null => {
+    if (!isYourTurn || !strategyLevels) {
+      return strategyRecommendation?.recommendedProfileId ?? null;
+    }
+    let bestChoice: StrategyChoice | null = null;
+    let bestLevel = -1;
+    for (const [choice, level] of Object.entries(strategyLevels) as [
+      StrategyChoice,
+      number,
+    ][]) {
+      if (level > bestLevel) {
+        bestLevel = level;
+        bestChoice = choice;
+      }
+    }
+    return bestChoice;
+  }, [isYourTurn, strategyLevels, strategyRecommendation]);
 
   const handleStrategyChoiceChange = (choice: StrategyChoice) => {
     setStrategyChoice(choice);
@@ -556,6 +576,7 @@ function App() {
                   strategyWeights={strategyWeights}
                   strategyRecommendation={strategyRecommendation}
                   recommendedStrategyChoice={recommendedStrategyChoice}
+                  strategyLevels={strategyLevels}
                   harborOpportunities={harborOpportunities}
                   secondPreviewVertex={secondPreviewVertex}
                   onSelectVertex={handleSelectVertex}
