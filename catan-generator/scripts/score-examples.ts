@@ -15,8 +15,13 @@ const options = rankVertices(board, []);
 
 function printExplanation(label: string, score: ReturnType<typeof explainPlacementScore>) {
   console.log(`\n=== ${label} ===`);
-  console.log(`Formel: ${score.kind === 'first' ? 'prod + dekning + pip + havn − straff' : 'par prod. + synergi + utfylling − overlapp + dekning + havn'}`);
-  if (score.pipBonus) console.log(`Pip-bonus: +${score.pipBonus.toFixed(3)}`);
+  console.log(
+    `Formel: ${
+      score.kind === 'first'
+        ? 'prod + korrektiver − straff/robber'
+        : 'par prod. + portefølje/synergi + korrektiver − overlapp/straff/robber'
+    }`
+  );
   if (score.buildingSynergy) console.log(`Byggepakker: +${score.buildingSynergy.toFixed(3)}`);
   console.log('Hex-bidrag (sannsynlighet × ressursvekt):');
   for (const row of score.hexContributions) {
@@ -27,6 +32,8 @@ function printExplanation(label: string, score: ReturnType<typeof explainPlaceme
   }
   console.log(`Produksjon: ${score.production.toFixed(3)}`);
   console.log(`Dekning (${score.coveredResources.join(', ')}): +${score.diversity.toFixed(3)}`);
+  if (score.expansion) console.log(`Ekspansjon: +${score.expansion.toFixed(3)}`);
+  if (score.robberExposure) console.log(`Robber: −${score.robberExposure.toFixed(3)}`);
   if (score.kind === 'second') {
     console.log(`Utfylling: +${(score.portfolio ?? 0).toFixed(3)}`);
     console.log(`Overlapp: −${(score.overlap ?? 0).toFixed(3)}`);

@@ -86,7 +86,11 @@ function optionMeta(
     return `Forventet par ${opt.expectedPairScore.toFixed(2)}${confidence} · Spot ${local.toFixed(2)}`;
   }
   const pair = path ? ` · Par ${path.pairScore.toFixed(2)}` : '';
-  return `Prod ${opt.production.toFixed(2)} · Dekk ${opt.diversity.toFixed(2)}${pair}`;
+  const expansion =
+    (opt.expansion ?? 0) > 0 ? ` · Eks +${(opt.expansion ?? 0).toFixed(2)}` : '';
+  const robber =
+    (opt.robberExposure ?? 0) > 0 ? ` · Rob −${(opt.robberExposure ?? 0).toFixed(2)}` : '';
+  return `Prod ${opt.production.toFixed(2)}${expansion}${robber}${pair}`;
 }
 
 export function SettlementSimulator({
