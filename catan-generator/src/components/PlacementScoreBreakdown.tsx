@@ -150,7 +150,6 @@ export function PlacementScoreBreakdown({
           <strong>+{fmt(explanation.diversity)}</strong>
         </li>
         <BonusLine label="Pip-kvalitet" value={explanation.pipBonus} />
-        <BonusLine label="Rødt tall (6/8)" value={explanation.redAnchorBonus} />
         <BonusLine label="Ørken-straff" value={explanation.desertPenalty} negative />
         <BonusLine label="Få prod. hex" value={explanation.lowHexPenalty} negative />
         <BonusLine label="Ensidig ressurs" value={explanation.monoResourcePenalty} negative />

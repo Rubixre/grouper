@@ -665,7 +665,12 @@ import { scoreFirstPlacement } from '../src/catan/placementModel.ts';
     balancedScore.total > coastScore.total,
     'Solid 3-hex outranks elite 6+8 coast 2-hex'
   );
-  assert(monoScore.components.redAnchorBonus === 0, 'Red anchor bonus requires resource diversity');
+  assert(
+    balancedScore.components.redAnchorBonus === 0 &&
+      coastScore.components.redAnchorBonus === 0 &&
+      monoScore.components.redAnchorBonus === 0,
+    'Red 6/8 anchor bonus is disabled (probability already in production)'
+  );
 }
 
 console.log('\nStrategy advisor');
