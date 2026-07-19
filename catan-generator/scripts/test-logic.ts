@@ -33,7 +33,10 @@ import {
   DEFAULT_SETTINGS,
   verifyExtensionSingleHarborNodes,
 } from '../src/catan/index.ts';
-import { computeSimulationSummary } from '../src/catan/playerStats.ts';
+import {
+  computePlacementAwards,
+  computeSimulationSummary,
+} from '../src/catan/playerStats.ts';
 import { hexCorner, hexToPixel } from '../src/catan/hex.ts';
 
 resetVertices();
@@ -359,12 +362,36 @@ import {
   WEIGHTS_GENERAL,
   WEIGHTS_LONGEST_ROAD_ONLY,
   WEIGHTS_LARGEST_ARMY_ONLY,
+  OPPONENT_RESOURCE_WEIGHTS,
+  blendTowardEqualWeights,
   coverageBonus,
   getStrategyWeights,
+  isStrategyChoice,
+  resolveStrategyProfileId,
+  strategyChoiceLabel,
 } from '../src/catan/resourceWeights.ts';
 import { DEFAULT_RESOURCE_WEIGHTS } from '../src/catan/types.ts';
 
 assert(Math.abs(DEFAULT_RESOURCE_WEIGHTS.wheat - WEIGHTS_GENERAL.wheat) < 0.01, 'Default matches general average');
+assert(isStrategyChoice('harbor') && isStrategyChoice('general'), 'Harbor and profiles are strategy choices');
+assert(!isStrategyChoice('nope'), 'Unknown strategy choice rejected');
+assert(resolveStrategyProfileId('harbor') === 'general', 'Harbor resolves to general weights');
+assert(strategyChoiceLabel('harbor') === 'Havn', 'Harbor short label');
+assert(
+  OPPONENT_RESOURCE_WEIGHTS.wheat < WEIGHTS_GENERAL.wheat &&
+    OPPONENT_RESOURCE_WEIGHTS.ore < WEIGHTS_GENERAL.ore &&
+    OPPONENT_RESOURCE_WEIGHTS.wood > WEIGHTS_GENERAL.wood &&
+    OPPONENT_RESOURCE_WEIGHTS.sheep > WEIGHTS_GENERAL.sheep,
+  'Opponent weights are flatter than strategic balanced'
+);
+assert(
+  Math.abs(blendTowardEqualWeights(WEIGHTS_GENERAL, 0).wheat - WEIGHTS_GENERAL.wheat) < 1e-12,
+  'blendTowardEqual 0 keeps original'
+);
+assert(
+  Math.abs(blendTowardEqualWeights(WEIGHTS_GENERAL, 1).wheat - 1) < 1e-12,
+  'blendTowardEqual 1 yields equal weights'
+);
 assert(
   WEIGHTS_LONGEST_ROAD_ONLY.wood > WEIGHTS_GENERAL.wood,
   'Longest road profile has higher wood weight'
@@ -399,6 +426,21 @@ assert(
     highValueCoverage,
   'Full resource coverage scores higher'
 );
+
+// City strategy: wheat+ore alone should nearly saturate — a third type must not
+// outweigh objectively better production on the two key resources.
+{
+  const city = WEIGHTS_LARGEST_ARMY_ONLY;
+  const keyTwo = coverageBonus(new Set(['wheat', 'ore']), city);
+  const keyTwoPlusSheep = coverageBonus(new Set(['wheat', 'ore', 'sheep']), city);
+  const threeWeak = coverageBonus(new Set(['wood', 'brick', 'sheep']), city);
+  assert(keyTwo > threeWeak, 'City coverage: wheat+ore beats three weak types');
+  assert(
+    keyTwoPlusSheep - keyTwo < 0.025,
+    'City coverage: third type adds only a tiny bump after key resources'
+  );
+  assert(keyTwo >= 0.08, 'City coverage: key two resources earn most of the bonus');
+}
 
 console.log('\nSupply-based scarcity');
 {
@@ -623,18 +665,38 @@ import { scoreFirstPlacement } from '../src/catan/placementModel.ts';
     balancedScore.total > coastScore.total,
     'Solid 3-hex outranks elite 6+8 coast 2-hex'
   );
-  assert(monoScore.components.redAnchorBonus === 0, 'Red anchor bonus requires resource diversity');
+  assert(
+    balancedScore.components.redAnchorBonus === 0 &&
+      coastScore.components.redAnchorBonus === 0 &&
+      monoScore.components.redAnchorBonus === 0,
+    'Red 6/8 anchor bonus is disabled (probability already in production)'
+  );
 }
 
 console.log('\nStrategy advisor');
 import {
   recommendStrategy,
+  recommendStrategyForSecondSettlement,
   simulateToHumanSecondTurn,
   rankFirstSettlementsWithLookahead,
   evaluateFirstSettlementPath,
+  isHumanSecondSettlementTurn,
+  blendLookaheadScore,
+  pairTrustFromConfidence,
+  aggregatePathConfidence,
+  buildStrategyRelativeLevels,
 } from '../src/catan/strategyAdvisor.ts';
-import { getValidVertices, pickGreedyOpponentVertex, pickOpponentVertex, vertexPipTotal, vertexProducingHexCount } from '../src/catan/settlements.ts';
+import { STRATEGY_PROFILES } from '../src/catan/resourceWeights.ts';
+import {
+  getValidVertices,
+  pickGreedyOpponentVertex,
+  pickOpponentVertex,
+  confidenceFromRankedOptions,
+  vertexPipTotal,
+  vertexProducingHexCount,
+} from '../src/catan/settlements.ts';
 import { DEFAULT_RESOURCE_WEIGHTS } from '../src/catan/types.ts';
+import { OPPONENT_RESOURCE_WEIGHTS } from '../src/catan/resourceWeights.ts';
 if (board) {
   const config = createSimulationConfig(4, 0);
   const sim = createSimulation(board, config);
@@ -692,6 +754,82 @@ if (board) {
     lookaheadOpts[0]!.expectedSecondVertexId !== undefined,
     'Top first settlements include expected second vertex'
   );
+  assert(
+    lookaheadOpts[0]!.lookaheadConfidence !== undefined &&
+      lookaheadOpts[0]!.lookaheadConfidence! > 0 &&
+      lookaheadOpts[0]!.lookaheadConfidence! <= 1,
+    'Lookahead options include path confidence'
+  );
+  assert(
+    Math.abs(confidenceFromRankedOptions([{ total: 2 } as never]) - 1) < 1e-9,
+    'Single option is fully confident'
+  );
+  assert(
+    confidenceFromRankedOptions([
+      { total: 2 } as never,
+      { total: 1.99 } as never,
+    ]) <
+      confidenceFromRankedOptions([
+        { total: 2 } as never,
+        { total: 1.5 } as never,
+      ]),
+    'Tight top-2 gap lowers pick confidence'
+  );
+  assert(
+    Math.abs(aggregatePathConfidence([0.81, 0.81]) - 0.81) < 1e-9,
+    'Aggregate confidence geometric-means equal steps'
+  );
+  assert(
+    Math.abs(pairTrustFromConfidence(0.5) - 0.25) < 1e-9,
+    'Pair trust squares confidence (50% sikker → 25% parvekt)'
+  );
+  assert(
+    Math.abs(blendLookaheadScore(1, 3, 0.5) - 1.5) < 1e-9,
+    'At 50% path confidence, blend is 75% spot / 25% pair'
+  );
+  assert(
+    blendLookaheadScore(1, 3, 0.5) < blendLookaheadScore(1, 3, 0.8),
+    'Higher path confidence increases pair influence'
+  );
+  assert(
+    confidenceFromRankedOptions([
+      { total: 2 } as never,
+      { total: 1.99 } as never,
+    ]) < 0.35,
+    'Near-tied opponent options yield low path confidence'
+  );
+  {
+    const levels = buildStrategyRelativeLevels(
+      [
+        {
+          profile: STRATEGY_PROFILES[0]!,
+          bestPath: {
+            firstVertexId: 'a',
+            firstScore: 1,
+            bestSecondVertexId: 'b',
+            pairScore: 2,
+            pathConfidence: 1,
+            adjustedPairScore: 2,
+          },
+        },
+        {
+          profile: STRATEGY_PROFILES[1]!,
+          bestPath: {
+            firstVertexId: 'a',
+            firstScore: 1,
+            bestSecondVertexId: 'c',
+            pairScore: 1,
+            pathConfidence: 1,
+            adjustedPairScore: 1,
+          },
+        },
+      ],
+      2.5
+    );
+    assert(levels.harbor === 100, 'Best strategy level is 100');
+    assert(levels.general === 80, 'Weaker strategy is relative percent of best');
+    assert(levels.longestRoad === 40, 'Lowest strategy scales correctly');
+  }
   const topPath = evaluateFirstSettlementPath(
     board,
     sim.placements,
@@ -703,7 +841,11 @@ if (board) {
   assert(topPath !== null, 'Lookahead top option has a valid path');
   assert(
     Math.abs((lookaheadOpts[0]!.expectedPairScore ?? 0) - (topPath?.pairScore ?? -1)) < 1e-9,
-    'Lookahead total matches evaluateFirstSettlementPath pair score'
+    'Lookahead expected pair matches evaluateFirstSettlementPath pair score'
+  );
+  assert(
+    Math.abs((lookaheadOpts[0]!.total ?? 0) - (topPath?.adjustedPairScore ?? -1)) < 1e-9,
+    'Lookahead ranking total uses confidence-adjusted pair score'
   );
 
   const turnOpts = getOptionsForCurrentTurn(sim);
@@ -748,13 +890,84 @@ if (board) {
       board,
       afterHumanOnly,
       nextPlayer,
-      DEFAULT_RESOURCE_WEIGHTS
+      OPPONENT_RESOURCE_WEIGHTS
     );
     const actualPick = simPlaced!.find((p) => p.player === nextPlayer)?.vertexId;
     assert(expectedPick !== null, 'PSM opponent has a #1 pick');
     assert(
-      actualPick === expectedPick,
-      'Lookahead opponent #1 matches live PSM pickOpponentVertex'
+    actualPick === expectedPick,
+    'Lookahead opponent #1 matches live PSM pickOpponentVertex'
+  );
+  }
+
+  // Motstandere ignorerer menneskets strategiprofil — jevnere vekter
+  {
+    assert(
+      OPPONENT_RESOURCE_WEIGHTS.wheat < WEIGHTS_GENERAL.wheat &&
+        OPPONENT_RESOURCE_WEIGHTS.wood > WEIGHTS_GENERAL.wood,
+      'Opponent weights are flatter than strategic balanced'
+    );
+    const armyWeights = {
+      wheat: 1.45,
+      ore: 1.42,
+      wood: 0.65,
+      brick: 0.65,
+      sheep: 0.88,
+    };
+    const configOpp = createSimulationConfig(4, 0);
+    let stateOpp = createSimulation(board, configOpp);
+    const humanOpts = getOptionsForCurrentTurn(stateOpp, armyWeights);
+    assert(humanOpts.length > 0, 'Human options under army weights');
+    stateOpp = placeSettlement(stateOpp, humanOpts[0]!.vertexId);
+    const oppWithArmyArg = getOptionsForCurrentTurn(stateOpp, armyWeights);
+    const oppFlat = getOptionsForCurrentTurn(stateOpp, DEFAULT_RESOURCE_WEIGHTS);
+    assert(oppWithArmyArg.length > 0 && oppFlat.length > 0, 'Opponent has options');
+    assert(
+      oppWithArmyArg[0]!.vertexId === oppFlat[0]!.vertexId,
+      'Opponent #1 ignores human strategy weights (uses flat opponent weights)'
+    );
+    const directPick = pickOpponentVertex(board, stateOpp.placements, 1);
+    assert(
+      directPick === oppFlat[0]!.vertexId,
+      'pickOpponentVertex defaults to opponent flat weights'
+    );
+  }
+
+  // Revurder strategi ved landsby #2 ut fra gjenværende posisjoner
+  {
+    const config2 = createSimulationConfig(4, 0);
+    let state2 = createSimulation(board, config2);
+    // Plasser alle første-runde landsbyer + motstanderes andre til menneskets #2
+    while (!state2.finished) {
+      const player = state2.placementOrder[state2.currentStep];
+      const humanCount = state2.placements.filter(
+        (p) => p.player === config2.humanPlayerIndex
+      ).length;
+      if (player === config2.humanPlayerIndex && humanCount === 1) break;
+      const opts = getOptionsForCurrentTurn(state2, DEFAULT_RESOURCE_WEIGHTS);
+      if (opts.length === 0) break;
+      state2 = placeSettlement(state2, opts[0]!.vertexId);
+    }
+    assert(
+      isHumanSecondSettlementTurn(state2.placements, config2.humanPlayerIndex),
+      'Reached human second settlement turn'
+    );
+    const rec2 = recommendStrategyForSecondSettlement(
+      board,
+      state2.placements,
+      config2.humanPlayerIndex
+    );
+    assert(rec2.recommendedProfileId.length > 0, 'Second settlement recommends a profile');
+    assert(rec2.evaluations.length === 5, 'Second settlement evaluates all profiles');
+    assert(
+      rec2.suggestedPaths.length > 0,
+      'Second settlement recommendation includes a best path'
+    );
+    const topEval = rec2.evaluations[0];
+    assert(
+      topEval?.bestPath !== null &&
+        topEval?.profile.id === rec2.recommendedProfileId,
+      'Recommended profile has the highest remaining pair score'
     );
   }
 }
@@ -762,6 +975,7 @@ if (board) {
 console.log('\nHarbor strategy alternative');
 import {
   findHarborStrategyOpportunities,
+  harborOpportunitiesAsPlacementScores,
   HARBOR_STRATEGY_OTHER_WEIGHT,
   HARBOR_STRATEGY_PIP_THRESHOLD,
   HARBOR_STRATEGY_VALID_ROAD_DISTANCES,
@@ -872,9 +1086,24 @@ assert(verdictFromEffectiveRelative(0.8).verdict === 'weaker', 'Effective 80% is
   };
   const vs = buildHarborVsBalanced(sample, 1.0, 0.9, DEFAULT_RESOURCE_WEIGHTS);
   assert(vs.planScore === 0.9, 'Comparison keeps plan score');
+  assert(vs.rawPlanScore === 0.9, 'Comparison stores raw plan score');
+  assert(vs.pathConfidence === 1, 'Default path confidence is 1');
   assert(vs.tradeBonus > 0, 'Comparison adds positive trade bonus for 2:1');
   assert(vs.effectiveScore > vs.planScore, 'Effective score includes trade bonus');
   assert(vs.effectiveRelative > vs.relative, 'Effective relative is above raw relative');
+  const vsUncertain = buildHarborVsBalanced(
+    sample,
+    1.0,
+    0.9,
+    DEFAULT_RESOURCE_WEIGHTS,
+    0.5,
+    1.2
+  );
+  assert(vsUncertain.rawPlanScore === 1.2, 'Raw plan score can differ from adjusted');
+  assert(
+    Math.abs(vsUncertain.tradeBonus - vs.tradeBonus * 0.25) < 1e-9,
+    'Trade bonus scales with conservative pair trust (c²)'
+  );
 }
 
 {
@@ -967,6 +1196,41 @@ if (board) {
     assert(opp.vsBalanced !== undefined, 'Harbor opportunity includes balanced comparison');
     assert(opp.vsBalanced!.bestBalancedScore > 0, 'Balanced reference score is positive');
     assert(opp.vsBalanced!.effectiveRelative > 0, 'Effective relative is positive');
+  }
+  const harborPlacementScores = harborOpportunitiesAsPlacementScores(opportunities);
+  assert(
+    harborPlacementScores.length <= opportunities.length,
+    'Harbor placement scores dedupe by first vertex'
+  );
+  if (harborPlacementScores.length > 0) {
+    assert(
+      harborPlacementScores.every((s, i, arr) => i === 0 || arr[i - 1]!.total >= s.total),
+      'Harbor placement scores are sorted by total'
+    );
+    assert(
+      harborPlacementScores[0]!.expectedSecondVertexId !== undefined ||
+        opportunities.some((o) => o.firstVertexId === harborPlacementScores[0]!.vertexId),
+      'Harbor placement scores map to opportunity first vertices'
+    );
+  }
+  const pairPlans = opportunities.filter((o) => o.secondVertexId != null);
+  for (const plan of pairPlans) {
+    assert(
+      plan.pathConfidence !== undefined &&
+        plan.pathConfidence > 0 &&
+        plan.pathConfidence <= 1,
+      'Harbor #2 plans include path confidence'
+    );
+    assert(
+      plan.vsBalanced?.pathConfidence !== undefined,
+      'Harbor vsBalanced includes path confidence'
+    );
+  }
+  if (pairPlans.length > 0) {
+    assert(
+      harborPlacementScores.some((s) => s.lookaheadConfidence !== undefined),
+      'Harbor placement scores expose lookahead confidence'
+    );
   }
 
   for (const a of opportunities) {
@@ -1301,6 +1565,35 @@ if (board) {
   assert(
     Math.abs(startingSum - (p0.secondSettlement?.totalPerRoll ?? 0)) < 1e-9,
     'Starting hand matches second settlement production'
+  );
+
+  const awards = computePlacementAwards(summary);
+  assert(awards.awards.length >= 5, 'Placement awards include core categories');
+  assert(awards.boardFacts.length >= 3, 'Board facts include table-level stats');
+  assert(awards.resourceCrowns.length >= 1, 'Resource crowns exist when production exists');
+  for (const award of awards.awards) {
+    assert(award.winners.length >= 1, `${award.title} has at least one winner`);
+  }
+
+  // Tied winners: force equal production on two players
+  const tiedSummary = {
+    ...summary,
+    players: summary.players.map((p, i) =>
+      i < 2
+        ? {
+            ...p,
+            combined: { ...p.combined, totalPerRoll: 1.25, resourceCount: 5 },
+            shareOfTable: 0.25,
+          }
+        : p
+    ),
+  };
+  const tiedAwards = computePlacementAwards(tiedSummary);
+  const prodAward = tiedAwards.awards.find((a) => a.id === 'production');
+  assert(prodAward !== undefined, 'Tied summary still has production award');
+  assert(
+    prodAward!.winners.length >= 2,
+    'Equal top scores produce multiple winners'
   );
 }
 

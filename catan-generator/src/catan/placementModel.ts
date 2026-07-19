@@ -73,7 +73,6 @@ const PIP_PAIR_TARGET = 14 / 36;
 const PIP_PAIR_STRONG = 16 / 36;
 const PIP_QUALITY_SCALE = 0.12;
 const PAIR_PIP_BONUS_SCALE = 0.2;
-const RED_ANCHOR_BONUS = 0.03;
 const MONO_RESOURCE_PENALTY = 0.12;
 const MONO_SINGLE_HEX_EXTRA = 0.06;
 const DESERT_PENALTY_PER_HEX = 0.04;
@@ -87,7 +86,8 @@ const LOW_HEX_ELITE_PIP = 10 / 36;
 const LOW_HEX_PENALTY_1 = 0.22;
 const LOW_HEX_PENALTY_2 = 0.14;
 const LOW_HEX_PENALTY_2_ELITE = 0.07;
-const PAIR_DIVERSITY_SCALE = 0.25;
+/** Pair coverage — soft tie-breaker; mono/portfolio handle real diversity needs */
+const PAIR_DIVERSITY_SCALE = 0.1;
 const ROAD_SYNERGY_SCALE = 0.35;
 const CITY_SYNERGY_SCALE = 0.3;
 const SETTLEMENT_SYNERGY_SCALE = 0.25;
@@ -285,13 +285,6 @@ function pipQualityBonus(pipTotal: number): number {
   return Math.min((pipTotal - PIP_STRONG_SINGLE) * PIP_QUALITY_SCALE * 36, 0.08);
 }
 
-function redAnchorBonus(profile: ProductionProfile): number {
-  if (!profile.hasRedNumber) return 0;
-  // Ensidig 6/8 på én ressurs er for volatilt uten mangfold
-  if (profile.resources.size < 2) return 0;
-  return RED_ANCHOR_BONUS;
-}
-
 function monoResourcePenalty(profile: ProductionProfile): number {
   if (profile.resources.size !== 1) return 0;
   let penalty = MONO_RESOURCE_PENALTY;
@@ -436,7 +429,6 @@ export function scoreFirstPlacement(
 ): { total: number; components: PlacementComponents } {
   const diversity = coverageBonus(profile.resources, weights);
   const pipBonus = pipQualityBonus(profile.pipTotal);
-  const redAnchor = redAnchorBonus(profile);
   const desertPen = desertPenalty(profile);
   const lowHexPen = lowHexPenalty(profile);
   const monoPen = monoResourcePenalty(profile);
@@ -446,7 +438,8 @@ export function scoreFirstPlacement(
     diversity,
     harbor,
     pipBonus,
-    redAnchorBonus: redAnchor,
+    // Removed: flat 6/8 bonus double-counted NUMBER_PROB already in production.
+    redAnchorBonus: 0,
     desertPenalty: desertPen,
     lowHexPenalty: lowHexPen,
     monoResourcePenalty: monoPen,
@@ -462,8 +455,7 @@ export function scoreFirstPlacement(
     profile.total +
     diversity +
     harbor +
-    pipBonus +
-    redAnchor -
+    pipBonus -
     desertPen -
     lowHexPen -
     monoPen;

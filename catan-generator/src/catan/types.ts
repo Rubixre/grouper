@@ -161,13 +161,18 @@ export interface SettlementScore {
   placementKind?: 'first' | 'second';
   /**
    * Ved første landsby med lookahead: forventet parscore etter simulerte
-   * mellomtrekk og beste landsby nr. 2.
+   * mellomtrekk og beste landsby nr. 2 (hvis stien holder).
    */
   expectedPairScore?: number;
   /** Forventet landsby #2 under lookahead (hvis beregnet) */
   expectedSecondVertexId?: string;
   /** Umiddelbar lokale score før lookahead (kun første landsby) */
   immediateScore?: number;
+  /**
+   * 0–1: hvor forutsigbare motstandertrekkene var i lookahead-stien.
+   * Høy = klar favoritt hos motstandere; lav = mange jevngode valg.
+   */
+  lookaheadConfidence?: number;
   breakdown: { resource: ResourceType; value: number }[];
 }
 

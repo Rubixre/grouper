@@ -8,6 +8,7 @@ import type {
   Vertex,
 } from './types';
 import { DEFAULT_RESOURCE_WEIGHTS } from './types';
+import { OPPONENT_RESOURCE_WEIGHTS } from './resourceWeights';
 import { getHarborsForVertex } from './harbors';
 import { coordKey, hexNeighbor } from './hex';
 import { getBoardSet, getLandSet } from './boardLayout';
@@ -364,23 +365,52 @@ export function vertexProducingHexCount(vertexId: string, board: Board): number 
 }
 
 /**
+ * Hvor klar er toppvalget blant rangerte alternativer?
+ * Stor relativ avstand til #2 → høy tillit; jevne toppvalg → lav.
+ *
+ * Gulvet er bevisst lavt: jevne motstandervalg skal gi lav sti-sikkerhet,
+ * slik at spot dominerer i blendLookaheadScore (via c²).
+ */
+export function confidenceFromRankedOptions(ranked: SettlementScore[]): number {
+  if (ranked.length <= 1) return 1;
+  const best = ranked[0]!.total;
+  const second = ranked[1]!.total;
+  if (best <= 1e-9) return 0.35;
+  const relativeGap = Math.max(0, (best - second) / best);
+  const MIN = 0.25;
+  const MAX = 0.98;
+  /** ~15 % gap mot #2 regnes som «klart favorittvalg» */
+  const CLEAR_GAP = 0.15;
+  return Math.min(MAX, Math.max(MIN, MIN + (relativeGap / CLEAR_GAP) * (MAX - MIN)));
+}
+
+/**
  * Motspillervalg med samme modell som live auto-advance:
  * #1 → myopisk PSM (beste plass her og nå)
  * #2 → par-PSM med egen #1
  */
+export function pickOpponentChoice(
+  board: Board,
+  placed: PlacedSettlement[],
+  player: number,
+  weights: ResourceWeights = OPPONENT_RESOURCE_WEIGHTS
+): { vertexId: string; confidence: number } | null {
+  const ranked = rankVertices(board, placed, weights, player);
+  const top = ranked[0];
+  if (!top) return null;
+  return {
+    vertexId: top.vertexId,
+    confidence: confidenceFromRankedOptions(ranked),
+  };
+}
+
 export function pickOpponentVertex(
   board: Board,
   placed: PlacedSettlement[],
   player: number,
-  weights?: ResourceWeights
+  weights: ResourceWeights = OPPONENT_RESOURCE_WEIGHTS
 ): string | null {
-  const ranked = rankVertices(
-    board,
-    placed,
-    weights ?? DEFAULT_RESOURCE_WEIGHTS,
-    player
-  );
-  return ranked[0]?.vertexId ?? null;
+  return pickOpponentChoice(board, placed, player, weights)?.vertexId ?? null;
 }
 
 /**

@@ -5,6 +5,7 @@ import type {
   PlacedSettlement,
   PlayerCount,
   ResourceWeights,
+  SettlementScore,
 } from './types';
 import { DEFAULT_RESOURCE_WEIGHTS } from './types';
 import {
@@ -22,8 +23,10 @@ import {
 } from './placementModel';
 import { RESOURCE_LABELS } from './playerStats';
 import {
+  blendLookaheadScore,
   evaluateFirstSettlementPath,
-  simulateToHumanSecondTurn,
+  pairTrustFromConfidence,
+  simulateToHumanSecondTurnDetailed,
 } from './strategyAdvisor';
 import { coordKey } from './hex';
 
@@ -93,6 +96,11 @@ export interface HarborStrategyOpportunity {
   harborReachLabel: string;
   summary: string;
   strength: 'strong' | 'moderate';
+  /**
+   * 0–1: forutsigbarhet i motstanderstien før landsby #2.
+   * 1 når #2 allerede er aktuell tur (ingen lookahead).
+   */
+  pathConfidence?: number;
   /** Sammenligning mot beste balanserte plassering (hvis beregnet) */
   vsBalanced?: HarborVsBalanced;
 }
@@ -100,18 +108,22 @@ export interface HarborStrategyOpportunity {
 export type HarborVerdict = 'weaker' | 'close' | 'even' | 'stronger';
 
 export interface HarborVsBalanced {
-  /** PSM-score for denne havnplanen */
+  /** Justert PSM-score for planen (par blandet med spot etter tillit) */
   planScore: number;
-  /** Beste balanserte alternativ samme tur */
+  /** Rå par-/plan-score før usikkerhetsjustering */
+  rawPlanScore: number;
+  /** Beste balanserte alternativ samme tur (også justert) */
   bestBalancedScore: number;
   /** planScore / bestBalancedScore */
   relative: number;
-  /** Netto handelsjustering (inn-verdi via havn − delvis PSM-dobbelttelling) */
+  /** Handelsjustering skalert med pathConfidence */
   tradeBonus: number;
   /** planScore + tradeBonus */
   effectiveScore: number;
   /** effectiveScore / bestBalancedScore */
   effectiveRelative: number;
+  /** 0–1 sti-tillit brukt i justeringen */
+  pathConfidence: number;
   verdict: HarborVerdict;
   verdictLabel: string;
 }
@@ -125,6 +137,40 @@ export function harborOpportunityKey(o: HarborStrategyOpportunity): string {
     o.harborRoadDistance,
     o.harborName,
   ].join('|');
+}
+
+/**
+ * Konverter havnplaner til SettlementScore for heatmap / felles plasseringsliste.
+ * Ved flere planer på samme #1-hjørne beholdes høyeste effektive score.
+ */
+export function harborOpportunitiesAsPlacementScores(
+  opportunities: HarborStrategyOpportunity[]
+): SettlementScore[] {
+  const byVertex = new Map<string, SettlementScore>();
+
+  for (const opp of opportunities) {
+    const total = opp.vsBalanced?.effectiveScore ?? opp.totalPip;
+    const existing = byVertex.get(opp.firstVertexId);
+    if (existing && existing.total >= total) continue;
+    const confidence =
+      opp.pathConfidence ?? opp.vsBalanced?.pathConfidence ?? 1;
+
+    byVertex.set(opp.firstVertexId, {
+      vertexId: opp.firstVertexId,
+      total,
+      production: opp.vsBalanced?.rawPlanScore ?? opp.vsBalanced?.planScore ?? opp.totalPip,
+      diversity: 0,
+      harbor: opp.vsBalanced?.tradeBonus ?? 0,
+      expectedPairScore: opp.vsBalanced?.rawPlanScore ?? total,
+      expectedSecondVertexId: opp.secondVertexId,
+      immediateScore: opp.vsBalanced?.planScore ?? opp.totalPip,
+      lookaheadConfidence: confidence,
+      placementKind: 'first',
+      breakdown: [{ resource: opp.resource, value: opp.resourcePip }],
+    });
+  }
+
+  return [...byVertex.values()].sort((a, b) => b.total - a.total);
 }
 
 function harborMatchesResource(harbor: HarborType, resource: ProdResource): HarborStrategyKind | null {
@@ -371,7 +417,8 @@ function considerPlan(
   board: Board,
   firstVertexId: string,
   secondVertexId: string | undefined,
-  combinedRaw: Partial<Record<ProdResource, number>>
+  combinedRaw: Partial<Record<ProdResource, number>>,
+  pathConfidence?: number
 ): void {
   const settlementIds = secondVertexId ? [firstVertexId, secondVertexId] : [firstVertexId];
   const firstHexKeys = landHexKeys(firstVertexId, board);
@@ -414,6 +461,7 @@ function considerPlan(
       harborReachLabel: harborReachLabel(harbor.roadDistance),
       summary,
       strength,
+      pathConfidence,
     });
   }
 }
@@ -471,7 +519,7 @@ export function findHarborStrategyOpportunities(
       .slice(0, 14);
 
     for (const candidate of productionCandidates) {
-      const simulated = simulateToHumanSecondTurn(
+      const simulated = simulateToHumanSecondTurnDetailed(
         board,
         placed,
         humanPlayer,
@@ -481,7 +529,7 @@ export function findHarborStrategyOpportunities(
       );
       if (!simulated) continue;
 
-      for (const secondId of getValidVertices(simulated)) {
+      for (const secondId of getValidVertices(simulated.placements)) {
         const combined = combineRaw(candidate.raw, vertexRawByResource(secondId, board));
         if ((combined[candidate.bestResource!] ?? 0) + 1e-12 < HARBOR_STRATEGY_PIP_THRESHOLD) {
           continue;
@@ -489,7 +537,14 @@ export function findHarborStrategyOpportunities(
         if (!bestReachableHarbor([candidate.vertexId, secondId], board, candidate.bestResource!)) {
           continue;
         }
-        considerPlan(bag, board, candidate.vertexId, secondId, combined);
+        considerPlan(
+          bag,
+          board,
+          candidate.vertexId,
+          secondId,
+          combined,
+          simulated.pathConfidence
+        );
       }
     }
   } else if (own.length === 1) {
@@ -612,28 +667,64 @@ export function verdictFromEffectiveRelative(effectiveRelative: number): {
   return { verdict: 'weaker', verdictLabel: 'svakere' };
 }
 
-function planBalancedScore(
+interface HarborPlanScore {
+  /** Rå par-/spot-score hvis stien holder */
+  rawPlanScore: number;
+  /** Justert score etter sti-usikkerhet */
+  adjustedPlanScore: number;
+  pathConfidence: number;
+  immediateScore: number;
+}
+
+function scoreHarborPlan(
   opportunity: HarborStrategyOpportunity,
   board: Board,
   placed: PlacedSettlement[],
   humanPlayer: number,
   playerCount: PlayerCount,
   weights: ResourceWeights
-): number {
+): HarborPlanScore {
   const econ = computeBoardEconomics(board, weights);
   const ownCount = placed.filter((p) => p.player === humanPlayer).length;
+  const immediateScore = scoreVertex(opportunity.firstVertexId, board, econ).total;
+
+  // Landsby #2-tur: motstandere har allerede plassert — ingen lookahead-usikkerhet
+  if (ownCount >= 1) {
+    const raw =
+      opportunity.secondVertexId != null
+        ? scoreSecondSettlement(
+            opportunity.secondVertexId,
+            opportunity.firstVertexId,
+            board,
+            econ
+          ).total
+        : immediateScore;
+    return {
+      rawPlanScore: raw,
+      adjustedPlanScore: raw,
+      pathConfidence: 1,
+      immediateScore,
+    };
+  }
 
   if (opportunity.secondVertexId) {
-    return scoreSecondSettlement(
+    const rawPlanScore = scoreSecondSettlement(
       opportunity.secondVertexId,
       opportunity.firstVertexId,
       board,
       econ
     ).total;
-  }
-
-  if (ownCount >= 1) {
-    return scoreVertex(opportunity.firstVertexId, board, econ).total;
+    const pathConfidence = opportunity.pathConfidence ?? 1;
+    return {
+      rawPlanScore,
+      adjustedPlanScore: blendLookaheadScore(
+        immediateScore,
+        rawPlanScore,
+        pathConfidence
+      ),
+      pathConfidence,
+      immediateScore,
+    };
   }
 
   const path = evaluateFirstSettlementPath(
@@ -644,8 +735,21 @@ function planBalancedScore(
     opportunity.firstVertexId,
     weights
   );
-  if (path) return path.pairScore;
-  return scoreVertex(opportunity.firstVertexId, board, econ).total;
+  if (path) {
+    return {
+      rawPlanScore: path.pairScore,
+      adjustedPlanScore: path.adjustedPairScore,
+      pathConfidence: path.pathConfidence,
+      immediateScore: path.firstScore,
+    };
+  }
+
+  return {
+    rawPlanScore: immediateScore,
+    adjustedPlanScore: immediateScore,
+    pathConfidence: 1,
+    immediateScore,
+  };
 }
 
 function bestBalancedReferenceScore(
@@ -682,7 +786,7 @@ function bestBalancedReferenceScore(
       spot.vertexId,
       weights
     );
-    if (path) best = Math.max(best, path.pairScore);
+    if (path) best = Math.max(best, path.adjustedPairScore);
   }
   return best;
 }
@@ -691,9 +795,14 @@ export function buildHarborVsBalanced(
   opportunity: HarborStrategyOpportunity,
   bestBalancedScore: number,
   planScore: number,
-  weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS
+  weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS,
+  pathConfidence = 1,
+  rawPlanScore = planScore
 ): HarborVsBalanced {
-  const tradeBonus = estimateHarborTradeBonus(opportunity, weights);
+  const rawTradeBonus = estimateHarborTradeBonus(opportunity, weights);
+  // Handelsbonus forutsetter at #2-planen holder — samme konservative tillit som parblend
+  const confidence = Math.min(1, Math.max(0, pathConfidence));
+  const tradeBonus = rawTradeBonus * pairTrustFromConfidence(confidence);
   const effectiveScore = planScore + tradeBonus;
   const safeBest = Math.max(bestBalancedScore, 1e-6);
   const relative = planScore / safeBest;
@@ -701,11 +810,13 @@ export function buildHarborVsBalanced(
   const { verdict, verdictLabel } = verdictFromEffectiveRelative(effectiveRelative);
   return {
     planScore,
+    rawPlanScore,
     bestBalancedScore,
     relative,
     tradeBonus,
     effectiveScore,
     effectiveRelative,
+    pathConfidence: confidence,
     verdict,
     verdictLabel,
   };
@@ -731,7 +842,7 @@ function attachHarborComparisons(
 
   return opportunities
     .map((opp) => {
-      const planScore = planBalancedScore(
+      const scored = scoreHarborPlan(
         opp,
         board,
         placed,
@@ -741,7 +852,15 @@ function attachHarborComparisons(
       );
       return {
         ...opp,
-        vsBalanced: buildHarborVsBalanced(opp, bestBalancedScore, planScore, weights),
+        pathConfidence: scored.pathConfidence,
+        vsBalanced: buildHarborVsBalanced(
+          opp,
+          bestBalancedScore,
+          scored.adjustedPlanScore,
+          weights,
+          scored.pathConfidence,
+          scored.rawPlanScore
+        ),
       };
     })
     .sort((a, b) => {

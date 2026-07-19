@@ -11,7 +11,7 @@ import {
   type SimulationConfig,
 } from './playerConfig';
 import type { SimulationState } from './simulator';
-import type { StrategyProfileId } from './resourceWeights';
+import { isStrategyChoice, type StrategyChoice } from './resourceWeights';
 import { createBoardStory, type BoardStory } from './boardStory';
 
 const STORAGE_KEY = 'catan-generator-session-v1';
@@ -25,7 +25,8 @@ export interface PersistedSession {
   board: Board;
   playerCount: PlayerCount;
   simulationConfig: SimulationConfig;
-  strategyProfile: StrategyProfileId;
+  /** Ressursprofil eller havnmodus */
+  strategyChoice: StrategyChoice;
   simulation: SimulationState | null;
   selectedVertex: string | null;
   mode: AppMode;
@@ -38,7 +39,7 @@ export interface RestoredSession {
   boardStory: BoardStory;
   playerCount: PlayerCount;
   simulationConfig: SimulationConfig;
-  strategyProfile: StrategyProfileId;
+  strategyChoice: StrategyChoice;
   simulation: SimulationState | null;
   selectedVertex: string | null;
   mode: AppMode;
@@ -147,10 +148,15 @@ export function loadSession(): RestoredSession | null {
     const playerCount = isPlayerCount(parsed.playerCount) ? parsed.playerCount : 4;
     const settings = sanitizeSettings(parsed.settings);
     const simulationConfig = sanitizeSimulationConfig(parsed.simulationConfig, playerCount);
-    const strategyProfile =
-      typeof parsed.strategyProfile === 'string'
-        ? (parsed.strategyProfile as StrategyProfileId)
-        : 'general';
+    const rawChoice =
+      typeof parsed.strategyChoice === 'string'
+        ? parsed.strategyChoice
+        : typeof parsed.strategyProfile === 'string'
+          ? parsed.strategyProfile
+          : 'general';
+    const strategyChoice: StrategyChoice = isStrategyChoice(rawChoice)
+      ? rawChoice
+      : 'general';
     const selectedVertex =
       typeof parsed.selectedVertex === 'string' ? parsed.selectedVertex : null;
     const simulation = sanitizeSimulation(
@@ -172,7 +178,7 @@ export function loadSession(): RestoredSession | null {
       boardStory: createBoardStory(board),
       playerCount,
       simulationConfig,
-      strategyProfile,
+      strategyChoice,
       simulation,
       selectedVertex: restoredMode === 'simulate' ? selectedVertex : null,
       mode: restoredMode,
