@@ -157,6 +157,7 @@ export interface SettlementScore {
   pipBonus?: number;
   /** @deprecated Always 0 */
   redAnchorBonus?: number;
+  /** @deprecated Always 0 — desert already yields zero production */
   desertPenalty?: number;
   lowHexPenalty?: number;
   monoResourcePenalty?: number;

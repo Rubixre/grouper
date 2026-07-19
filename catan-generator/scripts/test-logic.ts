@@ -626,6 +626,10 @@ import {
     'Mono-resource 6 gets mono penalty'
   );
   assert(
+    monoScore.components.desertPenalty === 0,
+    'Desert adjacency has no extra penalty (zero production already)'
+  );
+  assert(
     (monoScore.components.lowHexPenalty ?? 0) > 0,
     '1-hex gets low-hex penalty'
   );
@@ -1516,7 +1520,6 @@ if (board) {
         (o.expansion ?? 0) -
         (o.overlap ?? 0) -
         (o.robberExposure ?? 0) -
-        (o.desertPenalty ?? 0) -
         (o.lowHexPenalty ?? 0) -
         (o.monoResourcePenalty ?? 0);
       return Math.abs(recomposed - o.total) < 1e-6;

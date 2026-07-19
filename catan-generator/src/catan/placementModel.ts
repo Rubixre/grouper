@@ -64,6 +64,7 @@ export interface PlacementComponents {
   pipBonus: number;
   /** @deprecated Always 0 — removed double-count of 6/8. */
   redAnchorBonus: number;
+  /** @deprecated Always 0 — desert already contributes zero production. */
   desertPenalty: number;
   lowHexPenalty: number;
   monoResourcePenalty: number;
@@ -87,7 +88,6 @@ export interface PlacementComponents {
  */
 const MONO_RESOURCE_PENALTY = 0.12;
 const MONO_SINGLE_HEX_EXTRA = 0.06;
-const DESERT_PENALTY_PER_HEX = 0.04;
 /**
  * 1–2 produktive hex er nesten alltid svake åpningsplasseringer.
  * Elite 2-hex (høy pip + ≥2 ressurser) får redusert straff — aldri fritak.
@@ -327,10 +327,6 @@ export function lowHexPenalty(profile: ProductionProfile): number {
   return LOW_HEX_PENALTY_2;
 }
 
-function desertPenalty(profile: ProductionProfile): number {
-  return profile.desertNeighbors * DESERT_PENALTY_PER_HEX;
-}
-
 function pairRaw(profile: ProductionProfile, resource: ProdResource): number {
   return profile.rawByResource[resource] ?? 0;
 }
@@ -449,7 +445,6 @@ export function scoreFirstPlacement(
   const diversity = coverageBonus(profile.resources, weights);
   const expansion = context.expansion ?? 0;
   const robber = robberExposure(profile);
-  const desertPen = desertPenalty(profile);
   const lowHexPen = lowHexPenalty(profile);
   const monoPen = monoResourcePenalty(profile);
 
@@ -461,7 +456,8 @@ export function scoreFirstPlacement(
     robberExposure: robber,
     pipBonus: 0,
     redAnchorBonus: 0,
-    desertPenalty: desertPen,
+    // Desert already yields 0 production — no extra penalty.
+    desertPenalty: 0,
     lowHexPenalty: lowHexPen,
     monoResourcePenalty: monoPen,
     buildingSynergy: 0,
@@ -472,14 +468,13 @@ export function scoreFirstPlacement(
     overlap: 0,
   };
 
-  // primary + small correctives — no pip/red layers
+  // primary + small correctives — no pip/red/desert layers
   const total =
     profile.total +
     diversity +
     harbor +
     expansion -
     robber -
-    desertPen -
     lowHexPen -
     monoPen;
 
@@ -502,7 +497,6 @@ export function scorePairPlacement(
   const portfolio = gapFill + complement;
   const expansion = context.expansion ?? 0;
   const robber = robberExposure(first) + robberExposure(second);
-  const desertPen = desertPenalty(first) + desertPenalty(second);
   const lowHexPen = lowHexPenalty(first) + lowHexPenalty(second);
   const monoPen = monoResourcePenalty(first) + monoResourcePenalty(second);
   const pairProduction = first.total + second.total;
@@ -515,7 +509,7 @@ export function scorePairPlacement(
     robberExposure: robber,
     pipBonus: 0,
     redAnchorBonus: 0,
-    desertPenalty: desertPen,
+    desertPenalty: 0,
     lowHexPenalty: lowHexPen,
     monoResourcePenalty: monoPen,
     buildingSynergy: building,
@@ -537,7 +531,6 @@ export function scorePairPlacement(
     expansion -
     overlap -
     robber -
-    desertPen -
     lowHexPen -
     monoPen;
 
