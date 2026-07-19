@@ -566,8 +566,12 @@ console.log('\nSupply-based scarcity');
   );
 }
 
-console.log('\nMono-resource penalty');
-import { scoreFirstPlacement } from '../src/catan/placementModel.ts';
+console.log('\nMono-resource penalty + simplified PSM');
+import {
+  scoreFirstPlacement,
+  robberExposure,
+  ROBBER_EXPOSURE_SCALE,
+} from '../src/catan/placementModel.ts';
 {
   const oreOnly6 = {
     byResource: { ore: (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.ore },
@@ -622,6 +626,10 @@ import { scoreFirstPlacement } from '../src/catan/placementModel.ts';
     'Mono-resource 6 gets mono penalty'
   );
   assert(
+    monoScore.components.desertPenalty === 0,
+    'Desert adjacency has no extra penalty (zero production already)'
+  );
+  assert(
     (monoScore.components.lowHexPenalty ?? 0) > 0,
     '1-hex gets low-hex penalty'
   );
@@ -630,7 +638,6 @@ import { scoreFirstPlacement } from '../src/catan/placementModel.ts';
     'Balanced 3-hex outranks mono 6'
   );
 
-  // Sterk 2-hex (6+8) skal tape mot solid 3-hex når begge er tilgjengelige
   const eliteCoast = {
     byResource: {
       ore: (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.ore,
@@ -661,15 +668,96 @@ import { scoreFirstPlacement } from '../src/catan/placementModel.ts';
     (coastScore.components.lowHexPenalty ?? 0) > 0,
     '2-hex always pays low-hex penalty (no full waiver)'
   );
+  // Production drives: elite ore/wheat 6+8 may beat weaker 3-hex wood/brick/sheep.
+  // Pip/red/pair-pip bonuses must stay disabled (no double-count of NUMBER_PROB).
   assert(
-    balancedScore.total > coastScore.total,
-    'Solid 3-hex outranks elite 6+8 coast 2-hex'
+    balancedScore.components.pipBonus === 0 &&
+      coastScore.components.pipBonus === 0 &&
+      balancedScore.components.pairPipBonus === 0 &&
+      balancedScore.components.redAnchorBonus === 0,
+    'Pip / red / pair-pip bonuses are disabled'
   );
   assert(
-    balancedScore.components.redAnchorBonus === 0 &&
-      coastScore.components.redAnchorBonus === 0 &&
-      monoScore.components.redAnchorBonus === 0,
-    'Red 6/8 anchor bonus is disabled (probability already in production)'
+    coastScore.components.production > balancedScore.components.production,
+    'Elite ore/wheat coast has higher raw production than wood/brick/sheep 3-hex'
+  );
+  assert(
+    Math.abs(coastScore.components.robberExposure - (10 / 36) * ROBBER_EXPOSURE_SCALE) < 1e-9,
+    'Robber exposure taxes raw 6/8 pip'
+  );
+  assert(
+    robberExposure(balanced) < coastScore.components.robberExposure,
+    'Double-red coast is more robber-exposed than single-red 3-hex'
+  );
+
+  // Weak 2-hex (low pip, low-value resources) still loses to solid 3-hex
+  const weakCoast = {
+    ...eliteCoast,
+    byResource: {
+      sheep: (3 / 36) * DEFAULT_RESOURCE_WEIGHTS.sheep,
+      brick: (2 / 36) * DEFAULT_RESOURCE_WEIGHTS.brick,
+    },
+    rawByResource: { sheep: 3 / 36, brick: 2 / 36 },
+    rawByNumber: { 4: 3 / 36, 3: 2 / 36 },
+    rawByResourceNumber: {
+      sheep: { 4: 3 / 36 },
+      brick: { 3: 2 / 36 },
+    },
+    total:
+      (3 / 36) * DEFAULT_RESOURCE_WEIGHTS.sheep +
+      (2 / 36) * DEFAULT_RESOURCE_WEIGHTS.brick,
+    pipTotal: 5 / 36,
+    hasRedNumber: false,
+    resources: new Set(['sheep', 'brick']),
+  };
+  const weakCoastScore = scoreFirstPlacement(weakCoast, DEFAULT_RESOURCE_WEIGHTS, 0);
+  assert(
+    balancedScore.total > weakCoastScore.total,
+    'Solid 3-hex outranks weak 2-hex coast'
+  );
+
+  // Expansion corrective lifts total without overriding production
+  const withExpansion = scoreFirstPlacement(balanced, DEFAULT_RESOURCE_WEIGHTS, 0, {
+    expansion: 0.05,
+  });
+  assert(
+    Math.abs(withExpansion.total - (balancedScore.total + 0.05)) < 1e-9,
+    'Expansion adds as a soft corrective on top of production'
+  );
+  assert(
+    withExpansion.components.expansion === 0.05,
+    'Expansion is exposed on score components'
+  );
+}
+
+console.log('\nExpansion / port reach');
+import { scoreVertex, rankVertices } from '../src/catan/settlements.ts';
+{
+  resetVertices();
+  const board = generateBoard({ ...DEFAULT_SETTINGS, randomHarbors: false }, 'base')!;
+  const options = rankVertices(board, []);
+  assert(options.length > 0, 'Board has ranked vertices');
+  const top = options[0]!;
+  assert(
+    (top.expansion ?? 0) >= 0 && (top.expansion ?? 0) <= 0.06 + 1e-9,
+    'Expansion is capped as a small corrective'
+  );
+  assert((top.robberExposure ?? 0) >= 0, 'Robber exposure is non-negative');
+  const scored = scoreVertex(top.vertexId, board);
+  assert(
+    Math.abs((scored.expansion ?? 0) - (top.expansion ?? 0)) < 1e-9,
+    'Ranked expansion matches scoreVertex'
+  );
+  assert(
+    options.some((o) => (o.expansion ?? 0) > 0),
+    'At least one vertex gets a positive expansion bonus'
+  );
+  const byRobber = [...options].sort(
+    (a, b) => (b.robberExposure ?? 0) - (a.robberExposure ?? 0)
+  );
+  assert(
+    (byRobber[0]!.robberExposure ?? 0) >= (byRobber[byRobber.length - 1]!.robberExposure ?? 0),
+    'Robber exposure varies across board spots'
   );
 }
 
@@ -1424,19 +1512,23 @@ if (board) {
     secondOpts.every((o) => {
       const recomposed =
         o.production +
-        o.diversity +
-        (o.portfolio ?? 0) -
-        (o.overlap ?? 0) +
-        o.harbor +
+        (o.portfolio ?? 0) +
         (o.buildingSynergy ?? 0) +
         (o.coordination ?? 0) +
-        (o.pairPipBonus ?? 0) -
-        (o.desertPenalty ?? 0) -
+        o.diversity +
+        o.harbor +
+        (o.expansion ?? 0) -
+        (o.overlap ?? 0) -
+        (o.robberExposure ?? 0) -
         (o.lowHexPenalty ?? 0) -
         (o.monoResourcePenalty ?? 0);
       return Math.abs(recomposed - o.total) < 1e-6;
     }),
     'Second settlement score components sum to total'
+  );
+  assert(
+    secondOpts.every((o) => (o.pairPipBonus ?? 0) === 0 && (o.pipBonus ?? 0) === 0),
+    'Pair scoring has no pip double-count bonuses'
   );
   assert(
     secondOpts.every((o) => (o.buildingSynergy ?? 0) >= 0),

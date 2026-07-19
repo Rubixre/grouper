@@ -56,7 +56,6 @@ function placementScoreTitle(score: SettlementScore, rank: number): string {
   const lines = [
     `#${rank} · Score ${score.total.toFixed(2)}`,
     `Produksjon ${score.production.toFixed(2)}`,
-    `Dekning ${score.diversity.toFixed(2)}`,
   ];
   if (score.placementKind === 'second') {
     lines[1] = `Parprod. ${score.production.toFixed(2)}`;
@@ -64,9 +63,14 @@ function placementScoreTitle(score: SettlementScore, rank: number): string {
       lines.push(`Synergi +${score.buildingSynergy.toFixed(2)}`);
     }
     lines.push(
-      `Utfylling ${((score.portfolio ?? 0) - (score.overlap ?? 0)).toFixed(2)}`,
-      `Overlapp −${(score.overlap ?? 0).toFixed(2)}`
+      `Utfylling ${((score.portfolio ?? 0) - (score.overlap ?? 0)).toFixed(2)}`
     );
+  }
+  if (score.expansion && score.expansion > 0) {
+    lines.push(`Ekspansjon +${score.expansion.toFixed(3)}`);
+  }
+  if (score.robberExposure && score.robberExposure > 0) {
+    lines.push(`Robber −${score.robberExposure.toFixed(3)}`);
   }
   if (score.harbor > 0) lines.push(`Havn +${score.harbor.toFixed(3)}`);
   return lines.join('\n');

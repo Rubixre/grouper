@@ -145,16 +145,24 @@ export interface SettlementScore {
   secondProduction?: number;
   diversity: number;
   harbor: number;
+  /** Soft expansion / port-reach (dist-2 room + harbors) */
+  expansion?: number;
+  /** Soft robber exposure on 6/8 pip */
+  robberExposure?: number;
   /** Utfylling mellom 1. og 2. landsby (kun andre plassering) */
   portfolio?: number;
   /** Overlapp-straff mellom landsbyene (kun andre plassering) */
   overlap?: number;
+  /** @deprecated Always 0 */
   pipBonus?: number;
+  /** @deprecated Always 0 */
   redAnchorBonus?: number;
+  /** @deprecated Always 0 — desert already yields zero production */
   desertPenalty?: number;
   lowHexPenalty?: number;
   monoResourcePenalty?: number;
   buildingSynergy?: number;
+  /** @deprecated Always 0 */
   pairPipBonus?: number;
   complementScore?: number;
   coordination?: number;

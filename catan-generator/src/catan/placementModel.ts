@@ -52,41 +52,52 @@ export interface BoardEconomics {
 
 export interface PlacementComponents {
   production: number;
+  /** Soft coverage tie-breaker (not a primary driver). */
   diversity: number;
+  /** Harbor on the spot itself. */
   harbor: number;
+  /** Future growth: open dist-2 spots + harbors two roads away. */
+  expansion: number;
+  /** Soft penalty for pip on 6/8 (robber magnets). */
+  robberExposure: number;
+  /** @deprecated Always 0 — probability already in production. */
   pipBonus: number;
+  /** @deprecated Always 0 — removed double-count of 6/8. */
   redAnchorBonus: number;
+  /** @deprecated Always 0 — desert already contributes zero production. */
   desertPenalty: number;
   lowHexPenalty: number;
   monoResourcePenalty: number;
   buildingSynergy: number;
+  /** @deprecated Always 0 — pair pip already in production. */
   pairPipBonus: number;
   complementScore: number;
   coordination: number;
+  /** Gap-fill + complement (pair portfolio layer). */
   portfolio: number;
   overlap: number;
 }
 
-// Kalibrert mot turnerings-/pip-litteratur (settlersboard.com, BGA)
-const PIP_STRONG_SINGLE = 11 / 36;
-const PIP_PAIR_TARGET = 14 / 36;
-const PIP_PAIR_STRONG = 16 / 36;
-const PIP_QUALITY_SCALE = 0.12;
-const PAIR_PIP_BONUS_SCALE = 0.2;
+/**
+ * PSM shape (keep thin):
+ *   primary   = production (P(number) × strategy/scarcity weights)
+ *   portfolio = pair gap-fill / complement / building / coordination
+ *   correctives = diversity, harbor, expansion, −desert/lowHex/mono/robber
+ *
+ * No separate pip / red / pair-pip bonuses — those double-count production.
+ */
 const MONO_RESOURCE_PENALTY = 0.12;
 const MONO_SINGLE_HEX_EXTRA = 0.06;
-const DESERT_PENALTY_PER_HEX = 0.04;
 /**
  * 1–2 produktive hex er nesten alltid svake åpningsplasseringer.
- * Straffen er stor nok til at en solid 3-hex slår typisk «sterk» 2-hex-kyst
- * (f.eks. 6+8). Unntak for elite-2-hex: redusert straff, aldri null.
+ * Elite 2-hex (høy pip + ≥2 ressurser) får redusert straff — aldri fritak.
+ * Produksjon får styre når 2-hex faktisk er objektivt sterkere.
  */
-/** 2-hex med topp-pip (6+8 = 10/36) får redusert straff — aldri fritak */
 const LOW_HEX_ELITE_PIP = 10 / 36;
 const LOW_HEX_PENALTY_1 = 0.22;
 const LOW_HEX_PENALTY_2 = 0.14;
 const LOW_HEX_PENALTY_2_ELITE = 0.07;
-/** Pair coverage — soft tie-breaker; mono/portfolio handle real diversity needs */
+/** Pair coverage — soft tie-breaker */
 const PAIR_DIVERSITY_SCALE = 0.1;
 const ROAD_SYNERGY_SCALE = 0.35;
 const CITY_SYNERGY_SCALE = 0.3;
@@ -102,6 +113,14 @@ const HARBOR_RATE_GENERIC = 0.024;
 const HARBOR_RATE_RESOURCE_MATCH = 0.04;
 const HARBOR_RATE_RESOURCE_OTHER = 0.028;
 const GENERIC_HARBOR_DIVERSITY_BONUS = 0.015;
+/** Soft robber tax on raw pip sitting on 6/8. */
+export const ROBBER_EXPOSURE_SCALE = 0.18;
+/** Expansion / port-reach correctives (computed in settlements.ts). */
+export const EXPANSION_ROOM_SCALE = 0.04;
+export const PORT_REACH_GENERIC = 0.015;
+export const PORT_REACH_MATCH = 0.025;
+export const PORT_REACH_OTHER = 0.01;
+export const EXPANSION_CAP = 0.06;
 
 /**
  * Hvor mye brettets knapphet justerer ressursvekter (0 = kun strategi, 1 = full ratio).
@@ -280,9 +299,10 @@ export function harborBonusForProfile(
   return best;
 }
 
-function pipQualityBonus(pipTotal: number): number {
-  if (pipTotal <= PIP_STRONG_SINGLE) return 0;
-  return Math.min((pipTotal - PIP_STRONG_SINGLE) * PIP_QUALITY_SCALE * 36, 0.08);
+/** Soft expected loss when the robber parks on your 6/8 hexes. */
+export function robberExposure(profile: ProductionProfile): number {
+  const redPip = (profile.rawByNumber[6] ?? 0) + (profile.rawByNumber[8] ?? 0);
+  return redPip * ROBBER_EXPOSURE_SCALE;
 }
 
 function monoResourcePenalty(profile: ProductionProfile): number {
@@ -305,10 +325,6 @@ export function lowHexPenalty(profile: ProductionProfile): number {
     return LOW_HEX_PENALTY_2_ELITE;
   }
   return LOW_HEX_PENALTY_2;
-}
-
-function desertPenalty(profile: ProductionProfile): number {
-  return profile.desertNeighbors * DESERT_PENALTY_PER_HEX;
 }
 
 function pairRaw(profile: ProductionProfile, resource: ProdResource): number {
@@ -415,21 +431,20 @@ function portfolioSynergy(
   return { portfolio: gapFill, overlap: resourceOverlap + numberOverlap };
 }
 
-function pairPipBonus(first: ProductionProfile, second: ProductionProfile): number {
-  const pairPip = first.pipTotal + second.pipTotal;
-  if (pairPip < PIP_PAIR_TARGET) return 0;
-  const headroom = Math.min(pairPip - PIP_PAIR_TARGET, PIP_PAIR_STRONG - PIP_PAIR_TARGET);
-  return headroom * PAIR_PIP_BONUS_SCALE * 36;
+export interface PlacementContext {
+  /** Precomputed expansion / port-reach bonus for the spot(s). */
+  expansion?: number;
 }
 
 export function scoreFirstPlacement(
   profile: ProductionProfile,
   weights: ResourceWeights,
-  harbor: number
+  harbor: number,
+  context: PlacementContext = {}
 ): { total: number; components: PlacementComponents } {
   const diversity = coverageBonus(profile.resources, weights);
-  const pipBonus = pipQualityBonus(profile.pipTotal);
-  const desertPen = desertPenalty(profile);
+  const expansion = context.expansion ?? 0;
+  const robber = robberExposure(profile);
   const lowHexPen = lowHexPenalty(profile);
   const monoPen = monoResourcePenalty(profile);
 
@@ -437,10 +452,12 @@ export function scoreFirstPlacement(
     production: profile.total,
     diversity,
     harbor,
-    pipBonus,
-    // Removed: flat 6/8 bonus double-counted NUMBER_PROB already in production.
+    expansion,
+    robberExposure: robber,
+    pipBonus: 0,
     redAnchorBonus: 0,
-    desertPenalty: desertPen,
+    // Desert already yields 0 production — no extra penalty.
+    desertPenalty: 0,
     lowHexPenalty: lowHexPen,
     monoResourcePenalty: monoPen,
     buildingSynergy: 0,
@@ -451,12 +468,13 @@ export function scoreFirstPlacement(
     overlap: 0,
   };
 
+  // primary + small correctives — no pip/red/desert layers
   const total =
     profile.total +
     diversity +
     harbor +
-    pipBonus -
-    desertPen -
+    expansion -
+    robber -
     lowHexPen -
     monoPen;
 
@@ -467,17 +485,18 @@ export function scorePairPlacement(
   first: ProductionProfile,
   second: ProductionProfile,
   weights: ResourceWeights,
-  harbor: number
+  harbor: number,
+  context: PlacementContext = {}
 ): { total: number; components: PlacementComponents } {
-  const { portfolio, overlap } = portfolioSynergy(first, second, weights);
+  const { portfolio: gapFill, overlap } = portfolioSynergy(first, second, weights);
   const combinedResources = new Set([...first.resources, ...second.resources]);
   const diversity = coverageBonus(combinedResources, weights, PAIR_DIVERSITY_SCALE);
   const building = buildingSynergy(first, second, weights);
   const coordination = woodBrickCoordination(first, second);
   const complement = complementScore(first, second, weights);
-  const pairPip = pairPipBonus(first, second);
-  const desertPen = desertPenalty(first) + desertPenalty(second);
-  // Low-hex må følge med i par — ellers overlever 2-hex-kyst i lookahead
+  const portfolio = gapFill + complement;
+  const expansion = context.expansion ?? 0;
+  const robber = robberExposure(first) + robberExposure(second);
   const lowHexPen = lowHexPenalty(first) + lowHexPenalty(second);
   const monoPen = monoResourcePenalty(first) + monoResourcePenalty(second);
   const pairProduction = first.total + second.total;
@@ -486,30 +505,32 @@ export function scorePairPlacement(
     production: pairProduction,
     diversity,
     harbor,
+    expansion,
+    robberExposure: robber,
     pipBonus: 0,
     redAnchorBonus: 0,
-    desertPenalty: desertPen,
+    desertPenalty: 0,
     lowHexPenalty: lowHexPen,
     monoResourcePenalty: monoPen,
     buildingSynergy: building,
-    pairPipBonus: pairPip,
+    pairPipBonus: 0,
     complementScore: complement,
     coordination,
-    portfolio: portfolio + complement,
+    portfolio,
     overlap,
   };
 
+  // primary production → portfolio/synergy → small correctives
   const total =
     pairProduction +
-    diversity +
-    harbor +
+    portfolio +
     building +
     coordination +
-    pairPip +
-    portfolio +
-    complement -
+    diversity +
+    harbor +
+    expansion -
     overlap -
-    desertPen -
+    robber -
     lowHexPen -
     monoPen;
 

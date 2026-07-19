@@ -14,6 +14,7 @@ import {
   scoreSecondSettlement,
   scoreVertex,
   vertexRawByResource,
+  vertexRoadDistance,
 } from './settlements';
 import {
   NUMBER_PROB,
@@ -179,30 +180,7 @@ function harborMatchesResource(harbor: HarborType, resource: ProdResource): Harb
   return null;
 }
 
-/** Korteste veiavstand mellom to hjørner (ubegrenset BFS; null hvis frakoblet). */
-export function vertexRoadDistance(fromId: string, toId: string): number | null {
-  if (fromId === toId) return 0;
-  const vertices = getVertices();
-  if (!vertices.has(fromId) || !vertices.has(toId)) return null;
-
-  const queue: string[] = [fromId];
-  const dist = new Map<string, number>([[fromId, 0]]);
-
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    const d = dist.get(current)!;
-    const vertex = vertices.get(current);
-    if (!vertex) continue;
-    for (const neighbor of vertex.neighbors) {
-      if (dist.has(neighbor)) continue;
-      const next = d + 1;
-      if (neighbor === toId) return next;
-      dist.set(neighbor, next);
-      queue.push(neighbor);
-    }
-  }
-  return null;
-}
+export { vertexRoadDistance } from './settlements';
 
 function harborDistanceFromSettlements(
   settlementIds: string[],
