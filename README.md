@@ -2,6 +2,8 @@
 
 En nettside for tilfeldig generering av Catan-brett (grunnspill) med startposisjon-analyse.
 
+**Live:** https://rubixre.github.io/grouper/
+
 ## Funksjoner
 
 ### Brettgenerering
