@@ -1,5 +1,11 @@
 # Catan Brettgenerator
 
+## Live
+
+Etter merge til `main` deployes appen automatisk til GitHub Pages:
+
+**https://rubixre.github.io/grouper/**
+
 ## Kom i gang
 
 ```bash
