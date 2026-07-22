@@ -395,13 +395,6 @@ function App() {
     setSelectedHarborPlanKey(null);
   };
 
-  const toggleMapping = () => {
-    setMappingMode((on) => {
-      if (!on) setMode('view');
-      return !on;
-    });
-  };
-
   return (
     <div className="app">
       <header className="header">
@@ -425,13 +418,6 @@ function App() {
           </p>
         </div>
         <div className="header-actions">
-          <button
-            type="button"
-            className={`btn header-btn ${mappingMode ? 'active' : ''}`}
-            onClick={toggleMapping}
-          >
-            Kartlegging
-          </button>
           <button
             type="button"
             className="btn header-btn"
