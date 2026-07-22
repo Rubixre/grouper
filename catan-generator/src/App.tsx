@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Board, BoardSize, GeneratorSettings, PlayerCount } from './catan/types';
 import { DEFAULT_SETTINGS } from './catan/types';
 import { BOARD_SIZE_CONFIG } from './catan/boardLayout';
@@ -91,6 +91,7 @@ function App() {
   const [highlightEdge, setHighlightEdge] = useState<string | null>(null);
   const [highlightCorner, setHighlightCorner] = useState<string | null>(null);
   const [hydrated] = useState(() => restoredSession !== null);
+  const boardWrapRef = useRef<HTMLDivElement>(null);
 
   const boardMapping = useMemo(() => getBoardMapping(boardSize), [boardSize]);
   const strategyProfileId = resolveStrategyProfileId(strategyChoice);
@@ -192,6 +193,10 @@ function App() {
     setSelectedVertex(null);
     setSelectedHarborPlanKey(null);
     setMode('simulate');
+    // Keep the map in view on phones (controls sit below the board).
+    requestAnimationFrame(() => {
+      boardWrapRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   };
 
   const resetSimulation = () => {
@@ -469,7 +474,7 @@ function App() {
       <div className={`layout layout-two-col ${simPlacing ? 'layout-simulating' : ''}`}>
         <main className="board-area">
           {board ? (
-            <div className="board-wrap">
+            <div className="board-wrap" ref={boardWrapRef}>
               <BoardView
                 board={board}
                 placements={simulation?.placements ?? []}

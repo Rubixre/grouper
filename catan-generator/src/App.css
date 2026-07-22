@@ -2289,6 +2289,90 @@ body {
     grid-template-columns: 1fr;
   }
 
+  /*
+   * Simulation on phones: keep the board sticky/visible and put controls
+   * in a bounded sheet below — avoid scrolling the map off-screen.
+   */
+  .layout-two-col.layout-simulating {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    min-height: 100dvh;
+  }
+
+  .layout-simulating .board-area {
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    gap: 0.3rem;
+    padding: 0.35rem 0 0.4rem;
+    background: #f0f2f5;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
+  }
+
+  .layout-simulating .board-wrap {
+    max-width: 100%;
+  }
+
+  .layout-simulating .board-svg {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    max-height: 44dvh;
+    margin: 0 auto;
+    object-fit: contain;
+  }
+
+  .layout-simulating .placement-heatmap-legend {
+    top: 0.3rem;
+    left: 0.3rem;
+    right: auto;
+    padding: 0.3rem 0.4rem;
+    max-width: min(10.5rem, 46vw);
+    gap: 0.2rem;
+  }
+
+  .layout-simulating .placement-heatmap-legend strong {
+    font-size: 0.72rem;
+  }
+
+  .layout-simulating .placement-legend-hint {
+    display: none;
+  }
+
+  .layout-simulating .board-legend {
+    display: none;
+  }
+
+  .layout-simulating .sidebar-right.sim-sidebar-active {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .layout-simulating .simulator-panel {
+    flex: 1 1 auto;
+    min-height: 12rem;
+    max-height: min(48dvh, 440px);
+    overflow: hidden;
+  }
+
+  .layout-simulating .sim-main-scroll {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .layout-simulating .sim-details-foot {
+    max-height: 26dvh;
+    overflow-y: auto;
+  }
+
+  .layout-simulating .sim-setup-details {
+    padding: 0.4rem 0.65rem;
+  }
+
   .sidebar-right {
     position: static;
     max-height: none;
@@ -2296,17 +2380,6 @@ body {
   }
 
   .sidebar-right.sim-sidebar-active {
-    overflow: visible;
-  }
-
-  .simulator-panel {
-    max-height: none;
-    overflow: visible;
-  }
-
-  .sim-main-scroll,
-  .sim-details-foot {
-    max-height: none;
     overflow: visible;
   }
 
