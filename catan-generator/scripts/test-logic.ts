@@ -27,12 +27,16 @@ import {
   createSimulation,
   createSimulationConfig,
   placeSettlement,
+  undoLastPlacement,
   getOptionsForCurrentTurn,
   scoreSecondSettlement,
   DEFAULT_SETTINGS,
   verifyExtensionSingleHarborNodes,
 } from '../src/catan/index.ts';
-import { computeSimulationSummary } from '../src/catan/playerStats.ts';
+import {
+  computePlacementAwards,
+  computeSimulationSummary,
+} from '../src/catan/playerStats.ts';
 import { hexCorner, hexToPixel } from '../src/catan/hex.ts';
 
 resetVertices();
@@ -256,6 +260,78 @@ const randomOrders = new Set(
 );
 assert(randomOrders.size > 1, 'Random harbors shuffle piece order across boards');
 
+console.log('\nBonanza board');
+import {
+  NUMBERS_BASE,
+  NUMBERS_BONANZA_POOL,
+  NUMBERS_EXTENSION,
+  NUMBERS_EXTENSION_56,
+  RESOURCES_BONANZA_POOL,
+} from '../src/catan/generator.ts';
+assert(RESOURCES_BONANZA_POOL.length === 30, 'Bonanza pool has 30 resource tiles');
+assert(NUMBERS_BASE.length === 18, 'Base has 18 number tokens');
+assert(NUMBERS_EXTENSION.length === 10, 'Extension adds 10 number tokens beyond base set');
+assert(NUMBERS_EXTENSION_56.length === 28, 'Extension full number set has 28 tokens');
+assert(NUMBERS_BONANZA_POOL.length === 46, 'Bonanza number pool is 18+28=46');
+assert(
+  NUMBERS_BONANZA_POOL.length === NUMBERS_BASE.length + NUMBERS_EXTENSION_56.length,
+  'Bonanza numbers are base set + full extension set'
+);
+const bonanzaSettings = { ...DEFAULT_SETTINGS, bonanzaBoard: true };
+const bonanzaBoard = generateBoard(bonanzaSettings, 'base');
+assert(bonanzaBoard !== null, 'Generates a bonanza base board');
+if (bonanzaBoard) {
+  const land = bonanzaBoard.hexes.filter((h) => h.kind === 'land');
+  assert(land.length === 19, 'Bonanza keeps 19 land hexes');
+  const deserts = land.filter((h) => h.resource === 'desert').length;
+  assert(deserts >= 0 && deserts <= 2, 'Bonanza deserts between 0 and 2');
+  const numbered = land.filter((h) => h.number !== null);
+  assert(numbered.length === 19 - deserts, 'Bonanza numbers match non-desert land');
+  assert(bonanzaBoard.harbors.length === 9, 'Bonanza keeps normal harbor count');
+}
+
+{
+  const countNumber = (pool: number[], n: number) => pool.filter((x) => x === n).length;
+  assert(countNumber(NUMBERS_BASE, 6) === 2, 'Base pool has two 6s');
+  assert(countNumber(NUMBERS_EXTENSION_56, 6) === 3, 'Extension set has three 6s');
+  assert(countNumber(NUMBERS_BONANZA_POOL, 6) === 5, 'Bonanza pool has five 6s (18+28)');
+  assert(countNumber(NUMBERS_BONANZA_POOL, 2) === 3, 'Bonanza pool has three 2s (1+2)');
+  assert(countNumber(NUMBERS_BASE, 2) === 1, 'Base pool has one 2');
+}
+
+const bonanzaSamples = Array.from({ length: 40 }, () =>
+  generateBoard(bonanzaSettings, 'base')
+).filter((b): b is NonNullable<typeof b> => b !== null);
+assert(bonanzaSamples.length >= 30, 'Bonanza samples generate reliably');
+{
+  let sawZeroResource = false;
+  let sawManyOfOne = false;
+  let sawTwoDeserts = false;
+  for (const sample of bonanzaSamples) {
+    const land = sample.hexes.filter((h) => h.kind === 'land');
+    const counts: Record<string, number> = {
+      wood: 0,
+      brick: 0,
+      sheep: 0,
+      wheat: 0,
+      ore: 0,
+      desert: 0,
+    };
+    for (const tile of land) {
+      if (tile.resource) counts[tile.resource] = (counts[tile.resource] ?? 0) + 1;
+    }
+    if (counts.desert >= 2) sawTwoDeserts = true;
+    for (const r of ['wood', 'brick', 'sheep', 'wheat', 'ore'] as const) {
+      if (counts[r] === 0) sawZeroResource = true;
+      if (counts[r] >= 6) sawManyOfOne = true;
+    }
+  }
+  assert(
+    sawZeroResource || sawManyOfOne || sawTwoDeserts,
+    'Bonanza samples show non-standard resource counts'
+  );
+}
+
 const extBoard = generateBoard(DEFAULT_SETTINGS, 'extension56');
 assert(extBoard !== null, 'Generates valid 5–6 player board');
 if (extBoard) {
@@ -286,12 +362,36 @@ import {
   WEIGHTS_GENERAL,
   WEIGHTS_LONGEST_ROAD_ONLY,
   WEIGHTS_LARGEST_ARMY_ONLY,
+  OPPONENT_RESOURCE_WEIGHTS,
+  blendTowardEqualWeights,
   coverageBonus,
   getStrategyWeights,
+  isStrategyChoice,
+  resolveStrategyProfileId,
+  strategyChoiceLabel,
 } from '../src/catan/resourceWeights.ts';
 import { DEFAULT_RESOURCE_WEIGHTS } from '../src/catan/types.ts';
 
 assert(Math.abs(DEFAULT_RESOURCE_WEIGHTS.wheat - WEIGHTS_GENERAL.wheat) < 0.01, 'Default matches general average');
+assert(isStrategyChoice('harbor') && isStrategyChoice('general'), 'Harbor and profiles are strategy choices');
+assert(!isStrategyChoice('nope'), 'Unknown strategy choice rejected');
+assert(resolveStrategyProfileId('harbor') === 'general', 'Harbor resolves to general weights');
+assert(strategyChoiceLabel('harbor') === 'Havn', 'Harbor short label');
+assert(
+  OPPONENT_RESOURCE_WEIGHTS.wheat < WEIGHTS_GENERAL.wheat &&
+    OPPONENT_RESOURCE_WEIGHTS.ore < WEIGHTS_GENERAL.ore &&
+    OPPONENT_RESOURCE_WEIGHTS.wood > WEIGHTS_GENERAL.wood &&
+    OPPONENT_RESOURCE_WEIGHTS.sheep > WEIGHTS_GENERAL.sheep,
+  'Opponent weights are flatter than strategic balanced'
+);
+assert(
+  Math.abs(blendTowardEqualWeights(WEIGHTS_GENERAL, 0).wheat - WEIGHTS_GENERAL.wheat) < 1e-12,
+  'blendTowardEqual 0 keeps original'
+);
+assert(
+  Math.abs(blendTowardEqualWeights(WEIGHTS_GENERAL, 1).wheat - 1) < 1e-12,
+  'blendTowardEqual 1 yields equal weights'
+);
 assert(
   WEIGHTS_LONGEST_ROAD_ONLY.wood > WEIGHTS_GENERAL.wood,
   'Longest road profile has higher wood weight'
@@ -326,6 +426,21 @@ assert(
     highValueCoverage,
   'Full resource coverage scores higher'
 );
+
+// City strategy: wheat+ore alone should nearly saturate — a third type must not
+// outweigh objectively better production on the two key resources.
+{
+  const city = WEIGHTS_LARGEST_ARMY_ONLY;
+  const keyTwo = coverageBonus(new Set(['wheat', 'ore']), city);
+  const keyTwoPlusSheep = coverageBonus(new Set(['wheat', 'ore', 'sheep']), city);
+  const threeWeak = coverageBonus(new Set(['wood', 'brick', 'sheep']), city);
+  assert(keyTwo > threeWeak, 'City coverage: wheat+ore beats three weak types');
+  assert(
+    keyTwoPlusSheep - keyTwo < 0.025,
+    'City coverage: third type adds only a tiny bump after key resources'
+  );
+  assert(keyTwo >= 0.08, 'City coverage: key two resources earn most of the bonus');
+}
 
 console.log('\nSupply-based scarcity');
 {
@@ -451,8 +566,12 @@ console.log('\nSupply-based scarcity');
   );
 }
 
-console.log('\nMono-resource penalty');
-import { scoreFirstPlacement } from '../src/catan/placementModel.ts';
+console.log('\nMono-resource penalty + simplified PSM');
+import {
+  scoreFirstPlacement,
+  robberExposure,
+  ROBBER_EXPOSURE_SCALE,
+} from '../src/catan/placementModel.ts';
 {
   const oreOnly6 = {
     byResource: { ore: (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.ore },
@@ -504,23 +623,168 @@ import { scoreFirstPlacement } from '../src/catan/placementModel.ts';
 
   assert(
     (monoScore.components.monoResourcePenalty ?? 0) > 0,
-    'Single-resource placement gets mono-resource penalty'
+    'Mono-resource 6 gets mono penalty'
   );
-  assert(monoScore.components.redAnchorBonus === 0, 'Red anchor bonus requires resource diversity');
+  assert(
+    monoScore.components.desertPenalty === 0,
+    'Desert adjacency has no extra penalty (zero production already)'
+  );
+  assert(
+    (monoScore.components.lowHexPenalty ?? 0) > 0,
+    '1-hex gets low-hex penalty'
+  );
   assert(
     balancedScore.total > monoScore.total,
-    'Balanced 3-resource spot outranks lone ore-6 edge gamble'
+    'Balanced 3-hex outranks mono 6'
+  );
+
+  const eliteCoast = {
+    byResource: {
+      ore: (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.ore,
+      wheat: (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.wheat,
+    },
+    byNumber: {
+      6: (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.ore,
+      8: (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.wheat,
+    },
+    rawByResource: { ore: 5 / 36, wheat: 5 / 36 },
+    rawByNumber: { 6: 5 / 36, 8: 5 / 36 },
+    rawByResourceNumber: {
+      ore: { 6: 5 / 36 },
+      wheat: { 8: 5 / 36 },
+    },
+    total:
+      (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.ore +
+      (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.wheat,
+    pipTotal: 10 / 36,
+    producingHexCount: 2,
+    desertNeighbors: 0,
+    hasRedNumber: true,
+    resources: new Set(['ore', 'wheat']),
+    breakdown: [],
+  };
+  const coastScore = scoreFirstPlacement(eliteCoast, DEFAULT_RESOURCE_WEIGHTS, 0);
+  assert(
+    (coastScore.components.lowHexPenalty ?? 0) > 0,
+    '2-hex always pays low-hex penalty (no full waiver)'
+  );
+  // Production drives: elite ore/wheat 6+8 may beat weaker 3-hex wood/brick/sheep.
+  // Pip/red/pair-pip bonuses must stay disabled (no double-count of NUMBER_PROB).
+  assert(
+    balancedScore.components.pipBonus === 0 &&
+      coastScore.components.pipBonus === 0 &&
+      balancedScore.components.pairPipBonus === 0 &&
+      balancedScore.components.redAnchorBonus === 0,
+    'Pip / red / pair-pip bonuses are disabled'
+  );
+  assert(
+    coastScore.components.production > balancedScore.components.production,
+    'Elite ore/wheat coast has higher raw production than wood/brick/sheep 3-hex'
+  );
+  assert(
+    Math.abs(coastScore.components.robberExposure - (10 / 36) * ROBBER_EXPOSURE_SCALE) < 1e-9,
+    'Robber exposure taxes raw 6/8 pip'
+  );
+  assert(
+    robberExposure(balanced) < coastScore.components.robberExposure,
+    'Double-red coast is more robber-exposed than single-red 3-hex'
+  );
+
+  // Weak 2-hex (low pip, low-value resources) still loses to solid 3-hex
+  const weakCoast = {
+    ...eliteCoast,
+    byResource: {
+      sheep: (3 / 36) * DEFAULT_RESOURCE_WEIGHTS.sheep,
+      brick: (2 / 36) * DEFAULT_RESOURCE_WEIGHTS.brick,
+    },
+    rawByResource: { sheep: 3 / 36, brick: 2 / 36 },
+    rawByNumber: { 4: 3 / 36, 3: 2 / 36 },
+    rawByResourceNumber: {
+      sheep: { 4: 3 / 36 },
+      brick: { 3: 2 / 36 },
+    },
+    total:
+      (3 / 36) * DEFAULT_RESOURCE_WEIGHTS.sheep +
+      (2 / 36) * DEFAULT_RESOURCE_WEIGHTS.brick,
+    pipTotal: 5 / 36,
+    hasRedNumber: false,
+    resources: new Set(['sheep', 'brick']),
+  };
+  const weakCoastScore = scoreFirstPlacement(weakCoast, DEFAULT_RESOURCE_WEIGHTS, 0);
+  assert(
+    balancedScore.total > weakCoastScore.total,
+    'Solid 3-hex outranks weak 2-hex coast'
+  );
+
+  // Expansion corrective lifts total without overriding production
+  const withExpansion = scoreFirstPlacement(balanced, DEFAULT_RESOURCE_WEIGHTS, 0, {
+    expansion: 0.05,
+  });
+  assert(
+    Math.abs(withExpansion.total - (balancedScore.total + 0.05)) < 1e-9,
+    'Expansion adds as a soft corrective on top of production'
+  );
+  assert(
+    withExpansion.components.expansion === 0.05,
+    'Expansion is exposed on score components'
+  );
+}
+
+console.log('\nExpansion / port reach');
+import { scoreVertex, rankVertices } from '../src/catan/settlements.ts';
+{
+  resetVertices();
+  const board = generateBoard({ ...DEFAULT_SETTINGS, randomHarbors: false }, 'base')!;
+  const options = rankVertices(board, []);
+  assert(options.length > 0, 'Board has ranked vertices');
+  const top = options[0]!;
+  assert(
+    (top.expansion ?? 0) >= 0 && (top.expansion ?? 0) <= 0.06 + 1e-9,
+    'Expansion is capped as a small corrective'
+  );
+  assert((top.robberExposure ?? 0) >= 0, 'Robber exposure is non-negative');
+  const scored = scoreVertex(top.vertexId, board);
+  assert(
+    Math.abs((scored.expansion ?? 0) - (top.expansion ?? 0)) < 1e-9,
+    'Ranked expansion matches scoreVertex'
+  );
+  assert(
+    options.some((o) => (o.expansion ?? 0) > 0),
+    'At least one vertex gets a positive expansion bonus'
+  );
+  const byRobber = [...options].sort(
+    (a, b) => (b.robberExposure ?? 0) - (a.robberExposure ?? 0)
+  );
+  assert(
+    (byRobber[0]!.robberExposure ?? 0) >= (byRobber[byRobber.length - 1]!.robberExposure ?? 0),
+    'Robber exposure varies across board spots'
   );
 }
 
 console.log('\nStrategy advisor');
 import {
   recommendStrategy,
+  recommendStrategyForSecondSettlement,
   simulateToHumanSecondTurn,
   rankFirstSettlementsWithLookahead,
   evaluateFirstSettlementPath,
+  isHumanSecondSettlementTurn,
+  blendLookaheadScore,
+  pairTrustFromConfidence,
+  aggregatePathConfidence,
+  buildStrategyRelativeLevels,
 } from '../src/catan/strategyAdvisor.ts';
-import { getValidVertices, pickGreedyOpponentVertex, vertexPipTotal } from '../src/catan/settlements.ts';
+import { STRATEGY_PROFILES } from '../src/catan/resourceWeights.ts';
+import {
+  getValidVertices,
+  pickGreedyOpponentVertex,
+  pickOpponentVertex,
+  confidenceFromRankedOptions,
+  vertexPipTotal,
+  vertexProducingHexCount,
+} from '../src/catan/settlements.ts';
+import { DEFAULT_RESOURCE_WEIGHTS } from '../src/catan/types.ts';
+import { OPPONENT_RESOURCE_WEIGHTS } from '../src/catan/resourceWeights.ts';
 if (board) {
   const config = createSimulationConfig(4, 0);
   const sim = createSimulation(board, config);
@@ -531,7 +795,10 @@ if (board) {
   const valid = getValidVertices(sim.placements);
   let bestPipVertex = valid[0]!;
   let bestPip = -1;
+  const maxHex = Math.max(...valid.map((id) => vertexProducingHexCount(id, board)));
+  const preferredHex = maxHex >= 3 ? 3 : maxHex >= 2 ? 2 : maxHex;
   for (const vertexId of valid) {
+    if (vertexProducingHexCount(vertexId, board) < preferredHex) continue;
     const pip = vertexPipTotal(vertexId, board);
     if (pip > bestPip || (pip === bestPip && vertexId < bestPipVertex)) {
       bestPip = pip;
@@ -539,7 +806,10 @@ if (board) {
     }
   }
   const greedyPick = pickGreedyOpponentVertex(board, sim.placements, 1);
-  assert(greedyPick === bestPipVertex, 'Greedy opponent picks highest pip for first settlement');
+  assert(
+    greedyPick === bestPipVertex,
+    'Greedy opponent prefers 3-hex when available, then highest pip'
+  );
 
   const humanFirst = valid[1] ?? valid[0];
   const simulated = simulateToHumanSecondTurn(
@@ -572,6 +842,82 @@ if (board) {
     lookaheadOpts[0]!.expectedSecondVertexId !== undefined,
     'Top first settlements include expected second vertex'
   );
+  assert(
+    lookaheadOpts[0]!.lookaheadConfidence !== undefined &&
+      lookaheadOpts[0]!.lookaheadConfidence! > 0 &&
+      lookaheadOpts[0]!.lookaheadConfidence! <= 1,
+    'Lookahead options include path confidence'
+  );
+  assert(
+    Math.abs(confidenceFromRankedOptions([{ total: 2 } as never]) - 1) < 1e-9,
+    'Single option is fully confident'
+  );
+  assert(
+    confidenceFromRankedOptions([
+      { total: 2 } as never,
+      { total: 1.99 } as never,
+    ]) <
+      confidenceFromRankedOptions([
+        { total: 2 } as never,
+        { total: 1.5 } as never,
+      ]),
+    'Tight top-2 gap lowers pick confidence'
+  );
+  assert(
+    Math.abs(aggregatePathConfidence([0.81, 0.81]) - 0.81) < 1e-9,
+    'Aggregate confidence geometric-means equal steps'
+  );
+  assert(
+    Math.abs(pairTrustFromConfidence(0.5) - 0.25) < 1e-9,
+    'Pair trust squares confidence (50% sikker → 25% parvekt)'
+  );
+  assert(
+    Math.abs(blendLookaheadScore(1, 3, 0.5) - 1.5) < 1e-9,
+    'At 50% path confidence, blend is 75% spot / 25% pair'
+  );
+  assert(
+    blendLookaheadScore(1, 3, 0.5) < blendLookaheadScore(1, 3, 0.8),
+    'Higher path confidence increases pair influence'
+  );
+  assert(
+    confidenceFromRankedOptions([
+      { total: 2 } as never,
+      { total: 1.99 } as never,
+    ]) < 0.35,
+    'Near-tied opponent options yield low path confidence'
+  );
+  {
+    const levels = buildStrategyRelativeLevels(
+      [
+        {
+          profile: STRATEGY_PROFILES[0]!,
+          bestPath: {
+            firstVertexId: 'a',
+            firstScore: 1,
+            bestSecondVertexId: 'b',
+            pairScore: 2,
+            pathConfidence: 1,
+            adjustedPairScore: 2,
+          },
+        },
+        {
+          profile: STRATEGY_PROFILES[1]!,
+          bestPath: {
+            firstVertexId: 'a',
+            firstScore: 1,
+            bestSecondVertexId: 'c',
+            pairScore: 1,
+            pathConfidence: 1,
+            adjustedPairScore: 1,
+          },
+        },
+      ],
+      2.5
+    );
+    assert(levels.harbor === 100, 'Best strategy level is 100');
+    assert(levels.general === 80, 'Weaker strategy is relative percent of best');
+    assert(levels.longestRoad === 40, 'Lowest strategy scales correctly');
+  }
   const topPath = evaluateFirstSettlementPath(
     board,
     sim.placements,
@@ -583,14 +929,403 @@ if (board) {
   assert(topPath !== null, 'Lookahead top option has a valid path');
   assert(
     Math.abs((lookaheadOpts[0]!.expectedPairScore ?? 0) - (topPath?.pairScore ?? -1)) < 1e-9,
-    'Lookahead total matches evaluateFirstSettlementPath pair score'
+    'Lookahead expected pair matches evaluateFirstSettlementPath pair score'
+  );
+  assert(
+    Math.abs((lookaheadOpts[0]!.total ?? 0) - (topPath?.adjustedPairScore ?? -1)) < 1e-9,
+    'Lookahead ranking total uses confidence-adjusted pair score'
   );
 
   const turnOpts = getOptionsForCurrentTurn(sim);
   assert(
     turnOpts[0]?.expectedPairScore !== undefined,
-    'getOptionsForCurrentTurn uses lookahead on first settlement'
+    'Human first settlement uses lookahead (expected pair score)'
   );
+
+  // Motstander på landsby #1: kun lokale score, ikke par-lookahead
+  if (turnOpts[0]) {
+    const afterHuman = placeSettlement(sim, turnOpts[0].vertexId);
+    const oppOpts = getOptionsForCurrentTurn(afterHuman);
+    assert(oppOpts.length > 0, 'Opponent has first-settlement options');
+    assert(
+      oppOpts.every((o) => o.expectedPairScore === undefined),
+      'Opponent #1 is myopic (no #2 lookahead)'
+    );
+    assert(
+      oppOpts.every((o) => o.placementKind === 'first'),
+      'Opponent #1 still uses first-placement scoring'
+    );
+
+    // Lookahead bruker samme PSM-motstandere som live (ikke pip-greedy)
+    const simPlaced = simulateToHumanSecondTurn(
+      board,
+      sim.placements,
+      config.humanPlayerIndex,
+      4,
+      turnOpts[0].vertexId,
+      DEFAULT_RESOURCE_WEIGHTS
+    );
+    assert(simPlaced !== null, 'PSM opponent sim reaches human second turn');
+    const afterHumanOnly = [
+      {
+        vertexId: turnOpts[0].vertexId,
+        player: config.humanPlayerIndex,
+        isCity: false,
+      },
+    ];
+    const nextPlayer = 1; // snake: etter spiller 0 kommer spiller 1
+    const expectedPick = pickOpponentVertex(
+      board,
+      afterHumanOnly,
+      nextPlayer,
+      OPPONENT_RESOURCE_WEIGHTS
+    );
+    const actualPick = simPlaced!.find((p) => p.player === nextPlayer)?.vertexId;
+    assert(expectedPick !== null, 'PSM opponent has a #1 pick');
+    assert(
+    actualPick === expectedPick,
+    'Lookahead opponent #1 matches live PSM pickOpponentVertex'
+  );
+  }
+
+  // Motstandere ignorerer menneskets strategiprofil — jevnere vekter
+  {
+    assert(
+      OPPONENT_RESOURCE_WEIGHTS.wheat < WEIGHTS_GENERAL.wheat &&
+        OPPONENT_RESOURCE_WEIGHTS.wood > WEIGHTS_GENERAL.wood,
+      'Opponent weights are flatter than strategic balanced'
+    );
+    const armyWeights = {
+      wheat: 1.45,
+      ore: 1.42,
+      wood: 0.65,
+      brick: 0.65,
+      sheep: 0.88,
+    };
+    const configOpp = createSimulationConfig(4, 0);
+    let stateOpp = createSimulation(board, configOpp);
+    const humanOpts = getOptionsForCurrentTurn(stateOpp, armyWeights);
+    assert(humanOpts.length > 0, 'Human options under army weights');
+    stateOpp = placeSettlement(stateOpp, humanOpts[0]!.vertexId);
+    const oppWithArmyArg = getOptionsForCurrentTurn(stateOpp, armyWeights);
+    const oppFlat = getOptionsForCurrentTurn(stateOpp, DEFAULT_RESOURCE_WEIGHTS);
+    assert(oppWithArmyArg.length > 0 && oppFlat.length > 0, 'Opponent has options');
+    assert(
+      oppWithArmyArg[0]!.vertexId === oppFlat[0]!.vertexId,
+      'Opponent #1 ignores human strategy weights (uses flat opponent weights)'
+    );
+    const directPick = pickOpponentVertex(board, stateOpp.placements, 1);
+    assert(
+      directPick === oppFlat[0]!.vertexId,
+      'pickOpponentVertex defaults to opponent flat weights'
+    );
+  }
+
+  // Revurder strategi ved landsby #2 ut fra gjenværende posisjoner
+  {
+    const config2 = createSimulationConfig(4, 0);
+    let state2 = createSimulation(board, config2);
+    // Plasser alle første-runde landsbyer + motstanderes andre til menneskets #2
+    while (!state2.finished) {
+      const player = state2.placementOrder[state2.currentStep];
+      const humanCount = state2.placements.filter(
+        (p) => p.player === config2.humanPlayerIndex
+      ).length;
+      if (player === config2.humanPlayerIndex && humanCount === 1) break;
+      const opts = getOptionsForCurrentTurn(state2, DEFAULT_RESOURCE_WEIGHTS);
+      if (opts.length === 0) break;
+      state2 = placeSettlement(state2, opts[0]!.vertexId);
+    }
+    assert(
+      isHumanSecondSettlementTurn(state2.placements, config2.humanPlayerIndex),
+      'Reached human second settlement turn'
+    );
+    const rec2 = recommendStrategyForSecondSettlement(
+      board,
+      state2.placements,
+      config2.humanPlayerIndex
+    );
+    assert(rec2.recommendedProfileId.length > 0, 'Second settlement recommends a profile');
+    assert(rec2.evaluations.length === 5, 'Second settlement evaluates all profiles');
+    assert(
+      rec2.suggestedPaths.length > 0,
+      'Second settlement recommendation includes a best path'
+    );
+    const topEval = rec2.evaluations[0];
+    assert(
+      topEval?.bestPath !== null &&
+        topEval?.profile.id === rec2.recommendedProfileId,
+      'Recommended profile has the highest remaining pair score'
+    );
+  }
+}
+
+console.log('\nHarbor strategy alternative');
+import {
+  findHarborStrategyOpportunities,
+  harborOpportunitiesAsPlacementScores,
+  HARBOR_STRATEGY_OTHER_WEIGHT,
+  HARBOR_STRATEGY_PIP_THRESHOLD,
+  HARBOR_STRATEGY_VALID_ROAD_DISTANCES,
+  buildHarborVsBalanced,
+  estimateHarborTradeBonus,
+  harborOpportunityScore,
+  isHarborOpportunityDominatedBy,
+  isValidHarborRoadDistance,
+  pruneDominatedHarborOpportunities,
+  verdictFromEffectiveRelative,
+  vertexRoadDistance,
+  type HarborStrategyOpportunity,
+} from '../src/catan/harborStrategy.ts';
+import { NUMBER_PROB } from '../src/catan/placementModel.ts';
+import { getVertices } from '../src/catan/settlements.ts';
+import { DEFAULT_RESOURCE_WEIGHTS } from '../src/catan/types.ts';
+assert(
+  Math.abs(HARBOR_STRATEGY_PIP_THRESHOLD - (NUMBER_PROB[6]! + NUMBER_PROB[4]!)) < 1e-12,
+  'Harbor strategy threshold is 6+4 pip (~8/36)'
+);
+assert(
+  HARBOR_STRATEGY_VALID_ROAD_DISTANCES.join(',') === '0,2',
+  'Harbor strategy only accepts distance 0 or 2'
+);
+assert(!isValidHarborRoadDistance(1), 'Distance 1 is invalid for harbor strategy');
+assert(isValidHarborRoadDistance(0) && isValidHarborRoadDistance(2), 'Distance 0 and 2 are valid');
+assert(HARBOR_STRATEGY_OTHER_WEIGHT > 0 && HARBOR_STRATEGY_OTHER_WEIGHT < 1, 'Other resources get partial weight');
+assert(
+  harborOpportunityScore({ resourcePip: 8 / 36, otherPip: 5 / 36, producingHexCount: 3 }) >
+    harborOpportunityScore({ resourcePip: 8 / 36, otherPip: 0, producingHexCount: 2 }),
+  'Same focus pip: more other production scores higher'
+);
+assert(
+  estimateHarborTradeBonus({
+    resource: 'ore',
+    harborKind: 'resource',
+    resourcePip: 10 / 36,
+    otherPip: 2 / 36,
+  }) >
+    estimateHarborTradeBonus({
+      resource: 'ore',
+      harborKind: 'generic',
+      resourcePip: 10 / 36,
+      otherPip: 2 / 36,
+    }),
+  '2:1 harbor gets higher trade bonus than 3:1'
+);
+assert(
+  estimateHarborTradeBonus({
+    resource: 'brick',
+    harborKind: 'resource',
+    resourcePip: 10 / 36,
+    otherPip: 2 / 36,
+  }) >
+    estimateHarborTradeBonus({
+      resource: 'ore',
+      harborKind: 'resource',
+      resourcePip: 10 / 36,
+      otherPip: 2 / 36,
+    }),
+  'Surplus of lower-value dump resource beats same surplus of high-value ore'
+);
+assert(
+  estimateHarborTradeBonus({
+    resource: 'sheep',
+    harborKind: 'resource',
+    resourcePip: 12 / 36,
+    otherPip: 2 / 36,
+  }) >
+    estimateHarborTradeBonus({
+      resource: 'sheep',
+      harborKind: 'resource',
+      resourcePip: 12 / 36,
+      otherPip: 10 / 36,
+    }),
+  'Higher focus concentration yields higher trade bonus'
+);
+assert(
+  estimateHarborTradeBonus({
+    resource: 'wood',
+    harborKind: 'resource',
+    resourcePip: 10 / 36,
+    otherPip: 3 / 36,
+  }) > 0,
+  '2:1 trade adjustment stays positive for dump resources'
+);
+assert(verdictFromEffectiveRelative(1.05).verdict === 'stronger', 'Effective >103% is stronger');
+assert(verdictFromEffectiveRelative(0.8).verdict === 'weaker', 'Effective 80% is weaker');
+{
+  const sample: HarborStrategyOpportunity = {
+    resource: 'ore',
+    harborKind: 'resource',
+    resourcePip: 10 / 36,
+    otherPip: 4 / 36,
+    totalPip: 14 / 36,
+    producingHexCount: 3,
+    firstHexKeys: ['0,0'],
+    secondHexKeys: [],
+    firstVertexId: 'x',
+    sameSpot: true,
+    harborRoadDistance: 0,
+    harborName: 'Malmhavn',
+    harborNodeLabels: 'H1–H2',
+    harborNodeVertexIds: ['a', 'b'],
+    harborReachLabel: 'på havnen',
+    summary: 'test',
+    strength: 'strong',
+  };
+  const vs = buildHarborVsBalanced(sample, 1.0, 0.9, DEFAULT_RESOURCE_WEIGHTS);
+  assert(vs.planScore === 0.9, 'Comparison keeps plan score');
+  assert(vs.rawPlanScore === 0.9, 'Comparison stores raw plan score');
+  assert(vs.pathConfidence === 1, 'Default path confidence is 1');
+  assert(vs.tradeBonus > 0, 'Comparison adds positive trade bonus for 2:1');
+  assert(vs.effectiveScore > vs.planScore, 'Effective score includes trade bonus');
+  assert(vs.effectiveRelative > vs.relative, 'Effective relative is above raw relative');
+  const vsUncertain = buildHarborVsBalanced(
+    sample,
+    1.0,
+    0.9,
+    DEFAULT_RESOURCE_WEIGHTS,
+    0.5,
+    1.2
+  );
+  assert(vsUncertain.rawPlanScore === 1.2, 'Raw plan score can differ from adjusted');
+  assert(
+    Math.abs(vsUncertain.tradeBonus - vs.tradeBonus * 0.25) < 1e-9,
+    'Trade bonus scales with conservative pair trust (c²)'
+  );
+}
+
+{
+  const twoHex: HarborStrategyOpportunity = {
+    resource: 'ore',
+    harborKind: 'resource',
+    resourcePip: 8 / 36,
+    otherPip: 0,
+    totalPip: 8 / 36,
+    producingHexCount: 2,
+    firstHexKeys: ['0,0', '1,0'],
+    secondHexKeys: [],
+    firstVertexId: 'two',
+    sameSpot: true,
+    harborRoadDistance: 0,
+    harborName: 'Malmhavn',
+    harborNodeLabels: 'H1–H2',
+    harborNodeVertexIds: ['a', 'b'],
+    harborReachLabel: 'på havnen',
+    summary: 'test',
+    strength: 'strong',
+  };
+  const threeHex: HarborStrategyOpportunity = {
+    ...twoHex,
+    otherPip: 3 / 36,
+    totalPip: 11 / 36,
+    producingHexCount: 3,
+    firstHexKeys: ['0,0', '1,0', '0,1'],
+    firstVertexId: 'three',
+  };
+  assert(
+    isHarborOpportunityDominatedBy(twoHex, threeHex),
+    '2-hex subset is dominated by same hexes + one more'
+  );
+  assert(
+    !isHarborOpportunityDominatedBy(threeHex, twoHex),
+    '3-hex is not dominated by its 2-hex subset'
+  );
+  const pruned = pruneDominatedHarborOpportunities([twoHex, threeHex]);
+  assert(pruned.length === 1 && pruned[0]!.firstVertexId === 'three', 'Prune keeps supersetted plan');
+}
+
+if (board) {
+  const vertices = getVertices();
+  const anyId = [...vertices.keys()][0];
+  if (anyId) {
+    assert(vertexRoadDistance(anyId, anyId) === 0, 'Road distance to self is 0');
+    const neighbor = vertices.get(anyId)?.neighbors[0];
+    if (neighbor) {
+      assert(vertexRoadDistance(anyId, neighbor) === 1, 'Neighbor is 1 road away');
+      const second = vertices
+        .get(neighbor)
+        ?.neighbors.find((n) => n !== anyId && !vertices.get(anyId)!.neighbors.includes(n));
+      if (second) {
+        assert(vertexRoadDistance(anyId, second) === 2, 'Two-hop vertex is 2 roads away');
+      }
+    }
+  }
+
+  const config = createSimulationConfig(4, 0);
+  const sim = createSimulation(board, config);
+  const opportunities = findHarborStrategyOpportunities(
+    board,
+    sim.placements,
+    config.humanPlayerIndex,
+    4,
+    DEFAULT_RESOURCE_WEIGHTS,
+    4
+  );
+  assert(Array.isArray(opportunities), 'Harbor opportunities returns a list');
+  assert(opportunities.length <= 4, 'Harbor opportunities are capped');
+  for (const opp of opportunities) {
+    assert(
+      opp.resourcePip + 1e-12 >= HARBOR_STRATEGY_PIP_THRESHOLD,
+      'Harbor opportunity meets production threshold'
+    );
+    assert(
+      opp.harborKind === 'resource' || opp.harborKind === 'generic',
+      'Harbor opportunity has 2:1 or 3:1 harbor'
+    );
+    assert(
+      isValidHarborRoadDistance(opp.harborRoadDistance),
+      'Harbor opportunity is at distance 0 or 2 only'
+    );
+    assert(opp.summary.length > 10, 'Harbor opportunity has readable summary');
+    assert(opp.harborName.length > 0, 'Harbor opportunity names the harbor');
+    assert(opp.harborNodeLabels.length > 0, 'Harbor opportunity shows harbor nodes');
+    assert(opp.totalPip + 1e-12 >= opp.resourcePip, 'Total pip includes focus resource');
+    assert(opp.producingHexCount >= 1, 'Harbor opportunity touches producing hexes');
+    assert(opp.vsBalanced !== undefined, 'Harbor opportunity includes balanced comparison');
+    assert(opp.vsBalanced!.bestBalancedScore > 0, 'Balanced reference score is positive');
+    assert(opp.vsBalanced!.effectiveRelative > 0, 'Effective relative is positive');
+  }
+  const harborPlacementScores = harborOpportunitiesAsPlacementScores(opportunities);
+  assert(
+    harborPlacementScores.length <= opportunities.length,
+    'Harbor placement scores dedupe by first vertex'
+  );
+  if (harborPlacementScores.length > 0) {
+    assert(
+      harborPlacementScores.every((s, i, arr) => i === 0 || arr[i - 1]!.total >= s.total),
+      'Harbor placement scores are sorted by total'
+    );
+    assert(
+      harborPlacementScores[0]!.expectedSecondVertexId !== undefined ||
+        opportunities.some((o) => o.firstVertexId === harborPlacementScores[0]!.vertexId),
+      'Harbor placement scores map to opportunity first vertices'
+    );
+  }
+  const pairPlans = opportunities.filter((o) => o.secondVertexId != null);
+  for (const plan of pairPlans) {
+    assert(
+      plan.pathConfidence !== undefined &&
+        plan.pathConfidence > 0 &&
+        plan.pathConfidence <= 1,
+      'Harbor #2 plans include path confidence'
+    );
+    assert(
+      plan.vsBalanced?.pathConfidence !== undefined,
+      'Harbor vsBalanced includes path confidence'
+    );
+  }
+  if (pairPlans.length > 0) {
+    assert(
+      harborPlacementScores.some((s) => s.lookaheadConfidence !== undefined),
+      'Harbor placement scores expose lookahead confidence'
+    );
+  }
+
+  for (const a of opportunities) {
+    for (const b of opportunities) {
+      assert(!isHarborOpportunityDominatedBy(a, b), 'Returned harbor plans are not dominated');
+    }
+  }
 }
 
 console.log('\nBoard story');
@@ -777,17 +1512,23 @@ if (board) {
     secondOpts.every((o) => {
       const recomposed =
         o.production +
-        o.diversity +
-        (o.portfolio ?? 0) -
-        (o.overlap ?? 0) +
-        o.harbor +
+        (o.portfolio ?? 0) +
         (o.buildingSynergy ?? 0) +
         (o.coordination ?? 0) +
-        (o.pairPipBonus ?? 0) -
-        (o.desertPenalty ?? 0);
+        o.diversity +
+        o.harbor +
+        (o.expansion ?? 0) -
+        (o.overlap ?? 0) -
+        (o.robberExposure ?? 0) -
+        (o.lowHexPenalty ?? 0) -
+        (o.monoResourcePenalty ?? 0);
       return Math.abs(recomposed - o.total) < 1e-6;
     }),
     'Second settlement score components sum to total'
+  );
+  assert(
+    secondOpts.every((o) => (o.pairPipBonus ?? 0) === 0 && (o.pipBonus ?? 0) === 0),
+    'Pair scoring has no pip double-count bonuses'
   );
   assert(
     secondOpts.every((o) => (o.buildingSynergy ?? 0) >= 0),
@@ -845,6 +1586,14 @@ if (board) {
     const afterP1 = placeSettlement(sim, options[0].vertexId);
     assert(afterP1.placements.length === 1, 'Placement recorded');
     assert(afterP1.currentStep === 1, 'Advances to next player');
+    const undone = undoLastPlacement(afterP1);
+    assert(undone.placements.length === 0, 'Undo removes last placement');
+    assert(undone.currentStep === 0, 'Undo restores previous step');
+    assert(!undone.finished, 'Undo clears finished flag');
+    assert(
+      undoLastPlacement(sim).placements.length === 0,
+      'Undo on empty simulation is a no-op'
+    );
     const p2options = getOptionsForCurrentTurn(afterP1);
     assert(p2options.length > 0, 'Second player has options');
     assert(
@@ -909,6 +1658,35 @@ if (board) {
     Math.abs(startingSum - (p0.secondSettlement?.totalPerRoll ?? 0)) < 1e-9,
     'Starting hand matches second settlement production'
   );
+
+  const awards = computePlacementAwards(summary);
+  assert(awards.awards.length >= 5, 'Placement awards include core categories');
+  assert(awards.boardFacts.length >= 3, 'Board facts include table-level stats');
+  assert(awards.resourceCrowns.length >= 1, 'Resource crowns exist when production exists');
+  for (const award of awards.awards) {
+    assert(award.winners.length >= 1, `${award.title} has at least one winner`);
+  }
+
+  // Tied winners: force equal production on two players
+  const tiedSummary = {
+    ...summary,
+    players: summary.players.map((p, i) =>
+      i < 2
+        ? {
+            ...p,
+            combined: { ...p.combined, totalPerRoll: 1.25, resourceCount: 5 },
+            shareOfTable: 0.25,
+          }
+        : p
+    ),
+  };
+  const tiedAwards = computePlacementAwards(tiedSummary);
+  const prodAward = tiedAwards.awards.find((a) => a.id === 'production');
+  assert(prodAward !== undefined, 'Tied summary still has production award');
+  assert(
+    prodAward!.winners.length >= 2,
+    'Equal top scores produce multiple winners'
+  );
 }
 
 console.log('\nSession persistence');
@@ -963,6 +1741,230 @@ import {
     );
     assert(restored!.boardStory.islandName.length > 0, 'Restored session rebuilds board story');
   }
+}
+
+console.log('\nPhoto board import');
+import {
+  buildBoardFromLandDraft,
+  createEmptyLandDraft,
+  isLandHexComplete,
+  validateLandDraft,
+} from '../src/catan/boardFromPhoto.ts';
+import { NUMBERS_EXTENSION_56 } from '../src/catan/generator.ts';
+{
+  const empty = createEmptyLandDraft('base');
+  assert(empty.length === 19, 'Empty photo draft has 19 land hexes');
+  assert(empty.every((d) => d.resource === null && d.number === null), 'Empty draft is blank');
+  const emptyValidation = validateLandDraft(empty, 'base');
+  assert(!emptyValidation.complete, 'Empty draft is incomplete');
+  assert(emptyValidation.filledCount === 0, 'Empty draft filled count is 0');
+
+  const incomplete = empty.map((d, i) =>
+    i === 0 ? { ...d, resource: 'wood' as const, number: 6 } : d
+  );
+  assert(isLandHexComplete(incomplete[0]!), 'Wood+6 hex is complete');
+  assert(!validateLandDraft(incomplete, 'base').complete, 'Partial draft is incomplete');
+
+  const desertBad = empty.map((d, i) =>
+    i === 0 ? { ...d, resource: 'desert' as const, number: 8 } : d
+  );
+  assert(
+    validateLandDraft(desertBad, 'base').errors.some((e) => e.includes('Ørken')),
+    'Desert with number is an error'
+  );
+
+  // Bygg standard-lignende base-brett fra generator-ressurser/tall
+  const gen = generateBoard(DEFAULT_SETTINGS, 'base');
+  assert(gen !== null, 'Generator board available for photo rebuild');
+  if (gen) {
+    const draft = createEmptyLandDraft('base').map((d) => {
+      const tile = gen.hexes.find(
+        (h) => h.kind === 'land' && h.coord.q === d.coord.q && h.coord.r === d.coord.r
+      );
+      assert(tile?.resource != null, 'Generated land tile has resource');
+      return {
+        ...d,
+        resource: tile!.resource,
+        number: tile!.number,
+      };
+    });
+    const validation = validateLandDraft(draft, 'base');
+    assert(validation.complete, 'Draft cloned from generated board is complete');
+    assert(validation.warnings.length === 0, 'Standard counts produce no resource warnings');
+
+    const built = buildBoardFromLandDraft(draft, DEFAULT_SETTINGS, 'base');
+    assert(built.ok, 'Builds board from photo draft');
+    if (built.ok) {
+      assert(built.board.boardSize === 'base', 'Photo board is base size');
+      assert(
+        built.board.hexes.filter((h) => h.kind === 'land').length === 19,
+        'Photo board has 19 land hexes'
+      );
+      assert(built.board.harbors.length === 9, 'Photo board places harbors');
+      for (const d of draft) {
+        const tile = built.board.hexes.find(
+          (h) => h.kind === 'land' && h.coord.q === d.coord.q && h.coord.r === d.coord.r
+        );
+        assert(tile?.resource === d.resource, 'Photo board keeps resource');
+        assert(tile?.number === d.number, 'Photo board keeps number');
+      }
+    }
+  }
+
+  assert(NUMBERS_EXTENSION_56.length === 28, 'Extension number set still 28 for reference');
+}
+
+console.log('\nPhoto recognition');
+import {
+  applyRecognitionToDraft,
+  axialToImagePixel,
+  classifyResourceFromRgb,
+  defaultOverlayTransform,
+  mapPipsToNumber,
+  preferFiveOverNine,
+  recognizeBoardFromImageData,
+} from '../src/catan/photoRecognize.ts';
+import { getLandHexCoords } from '../src/catan/boardLayout.ts';
+{
+  assert(
+    classifyResourceFromRgb({ r: 40, g: 95, b: 48 }).resource === 'wood',
+    'Dark green classifies as wood'
+  );
+  assert(
+    classifyResourceFromRgb({ r: 175, g: 75, b: 42 }).resource === 'brick',
+    'Orange-red classifies as brick'
+  );
+  assert(
+    classifyResourceFromRgb({ r: 215, g: 185, b: 65 }).resource === 'wheat',
+    'Yellow classifies as wheat'
+  );
+  assert(
+    classifyResourceFromRgb({ r: 200, g: 180, b: 125 }).resource === 'desert',
+    'Tan classifies as desert'
+  );
+  assert(
+    classifyResourceFromRgb({ r: 85, g: 90, b: 100 }).resource === 'ore',
+    'Gray classifies as ore'
+  );
+  // Washed-out photo tones must NOT all collapse to desert/ore
+  assert(
+    classifyResourceFromRgb({ r: 55, g: 110, b: 60 }).resource === 'wood',
+    'Muted forest green is wood, not ore'
+  );
+  assert(
+    classifyResourceFromRgb({ r: 150, g: 175, b: 90 }).resource === 'sheep',
+    'Muted pasture green is sheep, not desert'
+  );
+  assert(
+    classifyResourceFromRgb({ r: 190, g: 100, b: 55 }).resource === 'brick',
+    'Muted brick stays brick'
+  );
+  assert(mapPipsToNumber(5, true, false) === 6, '5 red pips → 6');
+  assert(mapPipsToNumber(5, false, false) === 8, '5 black pips → 8');
+  assert(mapPipsToNumber(1, false, false) === 2, '1 pip narrow → 2');
+  assert(mapPipsToNumber(1, false, true) === 12, '1 pip wide → 12');
+  assert(mapPipsToNumber(3, false, true) === 10, '3 pips wide → 10');
+  assert(preferFiveOverNine(0.9) === true, 'Bottom-heavy digit prefers 5');
+  assert(preferFiveOverNine(1.4) === false, 'Top-heavy digit prefers 9');
+
+  const coords = getLandHexCoords('base');
+  const transform = defaultOverlayTransform(800, 800, coords);
+  assert(transform.hexSize > 0, 'Default overlay has positive hex size');
+  assert(transform.centerX > 0 && transform.centerY > 0, 'Default overlay centered');
+
+  // Synthetic board image: paint each land hex ring with a known resource color
+  const W = 600;
+  const H = 600;
+  const data = new Uint8ClampedArray(W * H * 4);
+  // sea blue background
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = 40;
+    data[i + 1] = 110;
+    data[i + 2] = 170;
+    data[i + 3] = 255;
+  }
+  const resourcesCycle = ['wood', 'brick', 'sheep', 'wheat', 'ore', 'desert'] as const;
+  const t = defaultOverlayTransform(W, H, coords, 0.1);
+  const paintCircle = (cx: number, cy: number, radius: number, rgb: { r: number; g: number; b: number }) => {
+    const r2 = radius * radius;
+    const x0 = Math.max(0, Math.floor(cx - radius));
+    const x1 = Math.min(W - 1, Math.ceil(cx + radius));
+    const y0 = Math.max(0, Math.floor(cy - radius));
+    const y1 = Math.min(H - 1, Math.ceil(cy + radius));
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const dx = x - cx;
+        const dy = y - cy;
+        if (dx * dx + dy * dy > r2) continue;
+        const idx = (y * W + x) * 4;
+        data[idx] = rgb.r;
+        data[idx + 1] = rgb.g;
+        data[idx + 2] = rgb.b;
+      }
+    }
+  };
+  const proto: Record<(typeof resourcesCycle)[number], { r: number; g: number; b: number }> = {
+    wood: { r: 40, g: 95, b: 48 },
+    brick: { r: 175, g: 75, b: 42 },
+    sheep: { r: 130, g: 175, b: 75 },
+    wheat: { r: 215, g: 185, b: 65 },
+    ore: { r: 85, g: 90, b: 100 },
+    desert: { r: 200, g: 180, b: 125 },
+  };
+  const numbersCycle = [6, 8, 5, 10, 3, null] as const; // null paired with desert slots
+  coords.forEach((coord, i) => {
+    const resource = resourcesCycle[i % resourcesCycle.length]!;
+    const { x, y } = axialToImagePixel(coord, t);
+    paintCircle(x, y, t.hexSize * 0.55, proto[resource]);
+    // Cream number token + dark pips for non-desert
+    if (resource !== 'desert') {
+      paintCircle(x, y, t.hexSize * 0.2, { r: 245, g: 240, b: 225 });
+      const n = numbersCycle[i % numbersCycle.length];
+      const pipTarget =
+        n === 6 || n === 8 ? 5 : n === 5 || n === 9 ? 4 : n === 10 || n === 4 ? 3 : n === 3 || n === 11 ? 2 : 1;
+      const isRed = n === 6;
+      for (let p = 0; p < pipTarget; p++) {
+        const ang = (p / pipTarget) * Math.PI * 2 - Math.PI / 2;
+        const pr = t.hexSize * 0.15;
+        const px = x + Math.cos(ang) * pr;
+        const py = y + Math.sin(ang) * pr;
+        paintCircle(px, py, Math.max(2, t.hexSize * 0.03), isRed ? { r: 180, g: 30, b: 30 } : { r: 20, g: 20, b: 20 });
+      }
+      // Digit ink in center (wide for 10)
+      const wide = n === 10;
+      paintCircle(x - (wide ? t.hexSize * 0.04 : 0), y, t.hexSize * 0.04, isRed ? { r: 180, g: 30, b: 30 } : { r: 25, g: 25, b: 25 });
+      if (wide) {
+        paintCircle(x + t.hexSize * 0.05, y, t.hexSize * 0.04, { r: 25, g: 25, b: 25 });
+      }
+    }
+  });
+
+  const imageData = { data, width: W, height: H };
+  const recognized = recognizeBoardFromImageData(imageData, t, 'base');
+  assert(recognized.hexes.length === 19, 'Recognition returns 19 hexes');
+  assert(recognized.recognizedResources >= 15, 'Most synthetic hexes recognized');
+
+  let matches = 0;
+  coords.forEach((coord, i) => {
+    const expected = resourcesCycle[i % resourcesCycle.length]!;
+    const hit = recognized.hexes.find((h) => h.coord.q === coord.q && h.coord.r === coord.r);
+    if (hit?.resource?.resource === expected) matches += 1;
+  });
+  assert(matches >= 15, `Synthetic color board mostly correct (got ${matches}/19)`);
+  assert(recognized.recognizedNumbers >= 10, 'Recognizes numbers on most non-desert hexes');
+
+  const draft = applyRecognitionToDraft(createEmptyLandDraft('base'), recognized, {
+    overwriteResources: true,
+    overwriteNumbers: true,
+  });
+  assert(
+    draft.filter((d) => d.resource !== null).length >= 15,
+    'Recognition applied into draft'
+  );
+  assert(
+    draft.filter((d) => d.resource !== 'desert' && d.resource !== null && d.number !== null).length >= 8,
+    'Numbers applied into draft for many hexes'
+  );
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

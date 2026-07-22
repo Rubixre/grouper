@@ -4,6 +4,10 @@ import { explainPlacementScore } from '../catan/settlements';
 import type { StrategyProfile } from '../catan/resourceWeights';
 import { RESOURCE_LABELS } from '../catan/playerStats';
 import type { ProdResource } from '../catan/playerStats';
+import {
+  blendLookaheadScore,
+  pairTrustFromConfidence,
+} from '../catan/strategyAdvisor';
 
 interface PlacementScoreBreakdownProps {
   score: SettlementScore;
@@ -60,15 +64,40 @@ export function PlacementScoreBreakdown({
       </p>
       {score.expectedPairScore !== undefined && (
         <p className="score-breakdown-formula muted small">
-          Rangering bruker forventet parscore {fmt(score.expectedPairScore, 2)} (etter
-          lookahead). Under: lokal score for dette hjørnet.
+          Forventet par {fmt(score.expectedPairScore, 2)}
+          {score.lookaheadConfidence !== undefined && (
+            <>
+              {' '}
+              · {Math.round(score.lookaheadConfidence * 100)}% sikker sti
+              {' '}
+              → {Math.round(pairTrustFromConfidence(score.lookaheadConfidence) * 100)}%
+              parvekt
+            </>
+          )}
+          {score.immediateScore !== undefined &&
+            score.lookaheadConfidence !== undefined && (
+              <>
+                {' '}
+                → rangering{' '}
+                {fmt(
+                  blendLookaheadScore(
+                    score.immediateScore,
+                    score.expectedPairScore,
+                    score.lookaheadConfidence
+                  ),
+                  2
+                )}{' '}
+                (spot dominerer ved usikker sti)
+              </>
+            )}
+          . Under: lokal score for dette hjørnet.
         </p>
       )}
       <p className="score-breakdown-formula muted small">
         {explanation.kind === 'first' ? (
-          <>Lokal = prod. + dekning + pip + havn − straff</>
+          <>Lokal = prod. + små korrektiver (dekning/havn/ekspansjon) − straff/robber</>
         ) : (
-          <>Total = par prod. + synergi + utfylling − overlapp + dekning + havn</>
+          <>Total = par prod. + portefølje/synergi + korrektiver − overlapp/straff/robber</>
         )}
       </p>
 
@@ -117,24 +146,22 @@ export function PlacementScoreBreakdown({
 
       <ul className="score-breakdown-lines">
         <li>
-          <span>Dekning ({explanation.coveredResources.length}/5 typer)</span>
+          <span>Dekning (strategivektet, myk)</span>
           <strong>+{fmt(explanation.diversity)}</strong>
         </li>
-        <BonusLine label="Pip-kvalitet" value={explanation.pipBonus} />
-        <BonusLine label="Rødt tall (6/8)" value={explanation.redAnchorBonus} />
-        <BonusLine label="Ørken-straff" value={explanation.desertPenalty} negative />
+        <BonusLine label="Ekspansjon / havn-rekkevidde" value={explanation.expansion} />
         <BonusLine label="Få prod. hex" value={explanation.lowHexPenalty} negative />
         <BonusLine label="Ensidig ressurs" value={explanation.monoResourcePenalty} negative />
+        <BonusLine label="Robber-eksponering (6/8)" value={explanation.robberExposure} negative />
         {explanation.kind === 'second' && (
           <>
             <BonusLine label="Byggepakker (vei/by/landsby)" value={explanation.buildingSynergy} />
             <BonusLine label="Tømmer+tegl koordinering" value={explanation.coordination} />
-            <BonusLine label="Par-pip bonus (14+)" value={explanation.pairPipBonus} />
             <BonusLine label="Utfylling mot 1. landsby" value={explanation.portfolio} />
             <BonusLine label="Overlapp-straff" value={explanation.overlap} negative />
           </>
         )}
-        <BonusLine label="Havn" value={explanation.harbor} />
+        <BonusLine label="Havn (på plasseringen)" value={explanation.harbor} />
         <li className="score-breakdown-total">
           <span>Total</span>
           <strong>{fmt(explanation.total, 2)}</strong>

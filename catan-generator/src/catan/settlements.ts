@@ -8,6 +8,7 @@ import type {
   Vertex,
 } from './types';
 import { DEFAULT_RESOURCE_WEIGHTS } from './types';
+import { OPPONENT_RESOURCE_WEIGHTS } from './resourceWeights';
 import { getHarborsForVertex } from './harbors';
 import { coordKey, hexNeighbor } from './hex';
 import { getBoardSet, getLandSet } from './boardLayout';
@@ -17,6 +18,11 @@ import {
   type ProductionProfile,
   type ProdResource,
   NUMBER_PROB,
+  EXPANSION_CAP,
+  EXPANSION_ROOM_SCALE,
+  PORT_REACH_GENERIC,
+  PORT_REACH_MATCH,
+  PORT_REACH_OTHER,
   computeBoardEconomics,
   harborBonusForProfile,
   scoreFirstPlacement,
@@ -120,6 +126,31 @@ export function buildVertices(): Map<string, Vertex> {
 
 let vertexCache: Map<string, Vertex> | null = null;
 
+/** Korteste veiavstand mellom to hjørner (ubegrenset BFS; null hvis frakoblet). */
+export function vertexRoadDistance(fromId: string, toId: string): number | null {
+  if (fromId === toId) return 0;
+  const vertices = getVertices();
+  if (!vertices.has(fromId) || !vertices.has(toId)) return null;
+
+  const queue: string[] = [fromId];
+  const dist = new Map<string, number>([[fromId, 0]]);
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const d = dist.get(current)!;
+    const vertex = vertices.get(current);
+    if (!vertex) continue;
+    for (const neighbor of vertex.neighbors) {
+      if (dist.has(neighbor)) continue;
+      const next = d + 1;
+      if (neighbor === toId) return next;
+      dist.set(neighbor, next);
+      queue.push(neighbor);
+    }
+  }
+  return null;
+}
+
 export function getVertices(): Map<string, Vertex> {
   if (!vertexCache) vertexCache = buildVertices();
   return vertexCache;
@@ -216,6 +247,69 @@ function buildProductionProfile(
   };
 }
 
+/**
+ * Soft expansion / port-reach bonus:
+ * - open land vertices two roads away (room to grow / place #2)
+ * - harbors exactly two roads away (0 is already in harbor bonus; 1 is illegal)
+ */
+export function expansionPotential(
+  vertexId: string,
+  board: Board,
+  profile: ProductionProfile
+): number {
+  const vertices = getVertices();
+  const origin = vertices.get(vertexId);
+  if (!origin) return 0;
+
+  const dist = new Map<string, number>([[vertexId, 0]]);
+  const queue = [vertexId];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const d = dist.get(current)!;
+    if (d >= 2) continue;
+    const vertex = vertices.get(current);
+    if (!vertex) continue;
+    for (const neighbor of vertex.neighbors) {
+      if (dist.has(neighbor)) continue;
+      dist.set(neighbor, d + 1);
+      queue.push(neighbor);
+    }
+  }
+
+  const landSet = getLandSet();
+  let roomCount = 0;
+  for (const [id, d] of dist) {
+    if (d !== 2) continue;
+    const v = vertices.get(id);
+    if (v && v.hexes.some((h) => landSet.has(coordKey(h)))) roomCount++;
+  }
+  const room = (Math.min(roomCount, 8) / 8) * EXPANSION_ROOM_SCALE;
+
+  let port = 0;
+  for (const placed of board.harbors) {
+    let best: number | null = null;
+    for (const node of placed.nodeVertexIds) {
+      const d = vertexRoadDistance(vertexId, node);
+      if (d === null) continue;
+      if (best === null || d < best) best = d;
+    }
+    if (best !== 2) continue;
+    const harbor = placed.definition.harbor;
+    let value = PORT_REACH_OTHER;
+    if (harbor.kind === 'generic') {
+      value = PORT_REACH_GENERIC;
+    } else if (
+      profile.resources.has(harbor.resource) &&
+      (profile.rawByResource[harbor.resource] ?? 0) > 0
+    ) {
+      value = PORT_REACH_MATCH;
+    }
+    port = Math.max(port, value);
+  }
+
+  return Math.min(room + port, EXPANSION_CAP);
+}
+
 function scoreToResult(
   vertexId: string,
   placementKind: 'first' | 'second',
@@ -232,6 +326,8 @@ function scoreToResult(
     secondProduction: extras?.secondProduction,
     diversity: c.diversity,
     harbor: c.harbor,
+    expansion: c.expansion,
+    robberExposure: c.robberExposure,
     portfolio: c.portfolio,
     overlap: c.overlap,
     pipBonus: c.pipBonus,
@@ -257,7 +353,8 @@ export function scoreVertex(
   const profile = buildProductionProfile(vertexId, board, econ.dynamicWeights);
   const harbors = getHarborsForVertex(vertexId, board.harbors);
   const harbor = harborBonusForProfile(profile, harbors);
-  const scored = scoreFirstPlacement(profile, econ.strategyWeights, harbor);
+  const expansion = expansionPotential(vertexId, board, profile);
+  const scored = scoreFirstPlacement(profile, econ.strategyWeights, harbor, { expansion });
   return scoreToResult(vertexId, 'first', profile, scored);
 }
 
@@ -281,7 +378,13 @@ export function scoreSecondSettlement(
       combinedResources.size
     );
 
-  const scored = scorePairPlacement(first, second, econ.strategyWeights, harbor);
+  const expansion =
+    expansionPotential(firstVertexId, board, first) +
+    expansionPotential(secondVertexId, board, second);
+
+  const scored = scorePairPlacement(first, second, econ.strategyWeights, harbor, {
+    expansion,
+  });
   return scoreToResult(secondVertexId, 'second', second, scored, {
     firstProduction: first.total,
     secondProduction: second.total,
@@ -314,9 +417,107 @@ export function vertexPipTotal(vertexId: string, board: Board): number {
   return pip;
 }
 
+/** Rå forventet produksjon (pip) per ressurs på et hjørne */
+export function vertexRawByResource(
+  vertexId: string,
+  board: Board
+): Partial<Record<ProdResource, number>> {
+  const vertices = getVertices();
+  const vertex = vertices.get(vertexId);
+  const raw: Partial<Record<ProdResource, number>> = {};
+  if (!vertex) return raw;
+
+  for (const hex of vertex.hexes) {
+    const tile = board.hexes.find((h) => h.coord.q === hex.q && h.coord.r === hex.r);
+    if (
+      !tile ||
+      tile.kind !== 'land' ||
+      !tile.resource ||
+      tile.resource === 'desert' ||
+      !tile.number
+    ) {
+      continue;
+    }
+    const resource = tile.resource as ProdResource;
+    raw[resource] = (raw[resource] ?? 0) + (NUMBER_PROB[tile.number] ?? 0);
+  }
+  return raw;
+}
+
+/** Antall produktive landhex (ikke ørken) på et hjørne */
+export function vertexProducingHexCount(vertexId: string, board: Board): number {
+  const vertices = getVertices();
+  const vertex = vertices.get(vertexId);
+  if (!vertex) return 0;
+  let count = 0;
+  for (const hex of vertex.hexes) {
+    const tile = board.hexes.find((h) => h.coord.q === hex.q && h.coord.r === hex.r);
+    if (
+      !tile ||
+      tile.kind !== 'land' ||
+      !tile.resource ||
+      tile.resource === 'desert' ||
+      !tile.number
+    ) {
+      continue;
+    }
+    count += 1;
+  }
+  return count;
+}
+
 /**
- * Enkel motspillermodell: velg hjørne med høyest pip-produksjon.
- * Første landsby = høyest pip; andre landsby = høyest pip-sum for paret.
+ * Hvor klar er toppvalget blant rangerte alternativer?
+ * Stor relativ avstand til #2 → høy tillit; jevne toppvalg → lav.
+ *
+ * Gulvet er bevisst lavt: jevne motstandervalg skal gi lav sti-sikkerhet,
+ * slik at spot dominerer i blendLookaheadScore (via c²).
+ */
+export function confidenceFromRankedOptions(ranked: SettlementScore[]): number {
+  if (ranked.length <= 1) return 1;
+  const best = ranked[0]!.total;
+  const second = ranked[1]!.total;
+  if (best <= 1e-9) return 0.35;
+  const relativeGap = Math.max(0, (best - second) / best);
+  const MIN = 0.25;
+  const MAX = 0.98;
+  /** ~15 % gap mot #2 regnes som «klart favorittvalg» */
+  const CLEAR_GAP = 0.15;
+  return Math.min(MAX, Math.max(MIN, MIN + (relativeGap / CLEAR_GAP) * (MAX - MIN)));
+}
+
+/**
+ * Motspillervalg med samme modell som live auto-advance:
+ * #1 → myopisk PSM (beste plass her og nå)
+ * #2 → par-PSM med egen #1
+ */
+export function pickOpponentChoice(
+  board: Board,
+  placed: PlacedSettlement[],
+  player: number,
+  weights: ResourceWeights = OPPONENT_RESOURCE_WEIGHTS
+): { vertexId: string; confidence: number } | null {
+  const ranked = rankVertices(board, placed, weights, player);
+  const top = ranked[0];
+  if (!top) return null;
+  return {
+    vertexId: top.vertexId,
+    confidence: confidenceFromRankedOptions(ranked),
+  };
+}
+
+export function pickOpponentVertex(
+  board: Board,
+  placed: PlacedSettlement[],
+  player: number,
+  weights: ResourceWeights = OPPONENT_RESOURCE_WEIGHTS
+): string | null {
+  return pickOpponentChoice(board, placed, player, weights)?.vertexId ?? null;
+}
+
+/**
+ * Enkel pip-greedy modell (tester / fallback).
+ * Foretrekker 3-hex når det finnes, deretter høyest pip.
  */
 export function pickGreedyOpponentVertex(
   board: Board,
@@ -327,26 +528,27 @@ export function pickGreedyOpponentVertex(
   if (valid.length === 0) return null;
 
   const existing = placed.find((p) => p.player === player);
+  const firstPip = existing ? vertexPipTotal(existing.vertexId, board) : 0;
+
+  type Cand = { id: string; pip: number; hexes: number };
+  const candidates: Cand[] = valid.map((id) => {
+    const pip = existing
+      ? firstPip + vertexPipTotal(id, board)
+      : vertexPipTotal(id, board);
+    const hexes = vertexProducingHexCount(id, board);
+    return { id, pip, hexes };
+  });
+
+  const maxHex = Math.max(...candidates.map((c) => c.hexes));
+  const preferredHex = maxHex >= 3 ? 3 : maxHex >= 2 ? 2 : maxHex;
+  const pool = candidates.filter((c) => c.hexes >= preferredHex);
+
   let bestId: string | null = null;
-  let bestScore = -1;
-
-  if (existing) {
-    const firstPip = vertexPipTotal(existing.vertexId, board);
-    for (const vertexId of valid) {
-      const score = firstPip + vertexPipTotal(vertexId, board);
-      if (score > bestScore || (score === bestScore && vertexId < (bestId ?? ''))) {
-        bestScore = score;
-        bestId = vertexId;
-      }
-    }
-    return bestId;
-  }
-
-  for (const vertexId of valid) {
-    const pip = vertexPipTotal(vertexId, board);
-    if (pip > bestScore || (pip === bestScore && vertexId < (bestId ?? ''))) {
-      bestScore = pip;
-      bestId = vertexId;
+  let bestPip = -1;
+  for (const c of pool) {
+    if (c.pip > bestPip || (c.pip === bestPip && c.id < (bestId ?? ''))) {
+      bestPip = c.pip;
+      bestId = c.id;
     }
   }
   return bestId;
@@ -391,6 +593,8 @@ export interface ScoreExplanation {
   secondProduction?: number;
   diversity: number;
   harbor: number;
+  expansion?: number;
+  robberExposure?: number;
   pipBonus?: number;
   redAnchorBonus?: number;
   desertPenalty?: number;
@@ -451,6 +655,8 @@ export function explainPlacementScore(
     production: score.production,
     diversity: score.diversity,
     harbor: score.harbor,
+    expansion: score.expansion,
+    robberExposure: score.robberExposure,
     pipBonus: score.pipBonus,
     redAnchorBonus: score.redAnchorBonus,
     desertPenalty: score.desertPenalty,

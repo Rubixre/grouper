@@ -237,6 +237,190 @@ export function computeSimulationSummary(state: SimulationState): SimulationSumm
   return { players, tableTotalPerRoll, resourceTotals };
 }
 
+export interface PlacementAward {
+  id: string;
+  title: string;
+  /** Kort verdi-linje, f.eks. "0.412 / kast" */
+  valueLabel: string;
+  winners: PlayerStats[];
+}
+
+export interface BoardTableFact {
+  id: string;
+  label: string;
+  value: string;
+}
+
+export interface PlacementAwardsSummary {
+  awards: PlacementAward[];
+  resourceCrowns: PlacementAward[];
+  boardFacts: BoardTableFact[];
+}
+
+const SCORE_EPS = 1e-9;
+
+function topBy(
+  players: PlayerStats[],
+  scoreOf: (p: PlayerStats) => number
+): { score: number; winners: PlayerStats[] } {
+  if (players.length === 0) return { score: 0, winners: [] };
+  let best = -Infinity;
+  for (const player of players) {
+    const score = scoreOf(player);
+    if (score > best) best = score;
+  }
+  const winners = players.filter(
+    (player) => Math.abs(scoreOf(player) - best) <= SCORE_EPS
+  );
+  return { score: best, winners };
+}
+
+function numberSpread(stats: PlayerStats): number {
+  return Object.values(stats.combined.byNumber).filter((v) => v > SCORE_EPS).length;
+}
+
+function startingHandTotal(stats: PlayerStats): number {
+  return PROD_RESOURCES.reduce((sum, r) => sum + stats.startingResources[r], 0);
+}
+
+/** Produksjon utenom 6/8 — mer robust mot røveren */
+function nonHotProduction(stats: PlayerStats): number {
+  let sum = 0;
+  for (const [num, value] of Object.entries(stats.combined.byNumber)) {
+    const n = Number(num);
+    if (n === 6 || n === 8) continue;
+    sum += value;
+  }
+  return sum;
+}
+
+/**
+ * Vinnere på ulike statistikker etter plassering.
+ * Flere spillere med samme toppverdi er alle vinnere.
+ */
+export function computePlacementAwards(
+  summary: SimulationSummary
+): PlacementAwardsSummary {
+  const { players, tableTotalPerRoll, resourceTotals } = summary;
+  const awards: PlacementAward[] = [];
+
+  const production = topBy(players, (p) => p.combined.totalPerRoll);
+  awards.push({
+    id: 'production',
+    title: 'Sterkest produksjon',
+    valueLabel: `${formatPerRoll(production.score)} / kast`,
+    winners: production.winners,
+  });
+
+  const coverage = topBy(players, (p) => p.combined.resourceCount);
+  awards.push({
+    id: 'coverage',
+    title: 'Best ressursdekning',
+    valueLabel: `${coverage.score}/5 typer`,
+    winners: coverage.winners,
+  });
+
+  const hot = topBy(players, (p) => p.combined.hotNumberCount);
+  awards.push({
+    id: 'hot',
+    title: 'Flest 6/8-noder',
+    valueLabel: `${hot.score} hete tall`,
+    winners: hot.winners,
+  });
+
+  const robust = topBy(players, nonHotProduction);
+  awards.push({
+    id: 'robust',
+    title: 'Mest robust (uten 6/8)',
+    valueLabel: `${formatPerRoll(robust.score)} / kast`,
+    winners: robust.winners,
+  });
+
+  const spread = topBy(players, numberSpread);
+  awards.push({
+    id: 'spread',
+    title: 'Bredest tallspredning',
+    valueLabel: `${spread.score} ulike tall`,
+    winners: spread.winners,
+  });
+
+  const startHand = topBy(players, startingHandTotal);
+  awards.push({
+    id: 'starting',
+    title: 'Sterkest starthånd',
+    valueLabel: `${formatPerRoll(startHand.score)} ved #2`,
+    winners: startHand.winners,
+  });
+
+  const harbors = topBy(players, (p) => p.harbors.length);
+  if (harbors.score > 0) {
+    awards.push({
+      id: 'harbors',
+      title: 'Flest havner',
+      valueLabel: `${harbors.score} havn${harbors.score === 1 ? '' : 'er'}`,
+      winners: harbors.winners,
+    });
+  }
+
+  const resourceCrowns: PlacementAward[] = [];
+  for (const resource of PROD_RESOURCES) {
+    const crown = topBy(players, (p) => p.combined.byResource[resource]);
+    if (crown.score <= SCORE_EPS) continue;
+    resourceCrowns.push({
+      id: `resource-${resource}`,
+      title: RESOURCE_LABELS[resource],
+      valueLabel: `${formatPerRoll(crown.score)} / kast`,
+      winners: crown.winners,
+    });
+  }
+
+  const boardFacts: BoardTableFact[] = [
+    {
+      id: 'table-total',
+      label: 'Bord totalt',
+      value: `${formatPerRoll(tableTotalPerRoll)} / kast`,
+    },
+  ];
+
+  const resourcesWithOutput = PROD_RESOURCES.filter((r) => resourceTotals[r] > SCORE_EPS);
+  if (resourcesWithOutput.length > 0) {
+    let scarcest = resourcesWithOutput[0]!;
+    let richest = resourcesWithOutput[0]!;
+    for (const resource of resourcesWithOutput) {
+      if (resourceTotals[resource] < resourceTotals[scarcest]) scarcest = resource;
+      if (resourceTotals[resource] > resourceTotals[richest]) richest = resource;
+    }
+    boardFacts.push({
+      id: 'scarce',
+      label: 'Knappest rundt bordet',
+      value: `${RESOURCE_LABELS[scarcest]} (${formatPerRoll(resourceTotals[scarcest])})`,
+    });
+    boardFacts.push({
+      id: 'rich',
+      label: 'Rikest rundt bordet',
+      value: `${RESOURCE_LABELS[richest]} (${formatPerRoll(resourceTotals[richest])})`,
+    });
+  }
+
+  const avgShare = players.length > 0 ? 1 / players.length : 0;
+  const imbalance = players.reduce(
+    (sum, p) => sum + Math.abs(p.shareOfTable - avgShare),
+    0
+  );
+  boardFacts.push({
+    id: 'balance',
+    label: 'Produksjonsbalanse',
+    value:
+      imbalance < 0.12
+        ? 'Jevnt bord'
+        : imbalance < 0.28
+          ? 'Noe skjevt'
+          : 'Skjevt bord',
+  });
+
+  return { awards, resourceCrowns, boardFacts };
+}
+
 export function formatPercent(value: number, digits = 1): string {
   return `${(value * 100).toFixed(digits)} %`;
 }

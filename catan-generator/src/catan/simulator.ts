@@ -10,6 +10,7 @@ import { getValidVertices, rankVertices } from './settlements';
 import { rankFirstSettlementsWithLookahead } from './strategyAdvisor';
 import { getPlacementOrder } from './draftOrder';
 import { DEFAULT_RESOURCE_WEIGHTS } from './types';
+import { OPPONENT_RESOURCE_WEIGHTS } from './resourceWeights';
 
 export { getPlacementOrder } from './draftOrder';
 
@@ -70,7 +71,10 @@ export function isHumanTurn(state: SimulationState): boolean {
   return player !== null && player === state.config.humanPlayerIndex;
 }
 
-/** Rangér gyldige plasseringer for spilleren som har tur */
+/**
+ * Rangér gyldige plasseringer for spilleren som har tur.
+ * `weights` gjelder kun «deg» — motstandere bruker jevnere ressursvekter.
+ */
 export function getOptionsForCurrentTurn(
   state: SimulationState,
   weights?: ResourceWeights
@@ -78,18 +82,26 @@ export function getOptionsForCurrentTurn(
   const player = currentPlayer(state);
   if (player === null) return [];
 
-  const resolvedWeights = weights ?? DEFAULT_RESOURCE_WEIGHTS;
+  const isHuman = player === state.config.humanPlayerIndex;
+  const resolvedWeights = isHuman
+    ? (weights ?? DEFAULT_RESOURCE_WEIGHTS)
+    : OPPONENT_RESOURCE_WEIGHTS;
   const ownCount = state.placements.filter((p) => p.player === player).length;
 
-  // Første landsby: ranger etter forventet parscore (lookahead)
+  // Første landsby:
+  // - Mennesket (deg): lookahead mot forventet par (#1+#2)
+  // - Motstandere: kun «beste plass her og nå» — de planlegger ikke #2 ennå
   if (ownCount === 0) {
-    return rankFirstSettlementsWithLookahead(
-      state.board,
-      state.placements,
-      player,
-      state.playerCount,
-      resolvedWeights
-    );
+    if (isHuman) {
+      return rankFirstSettlementsWithLookahead(
+        state.board,
+        state.placements,
+        player,
+        state.playerCount,
+        resolvedWeights
+      );
+    }
+    return rankVertices(state.board, state.placements, resolvedWeights, player);
   }
 
   return rankVertices(state.board, state.placements, resolvedWeights, player);
@@ -121,7 +133,26 @@ export function placeSettlement(
   };
 }
 
-/** Motspillere plasserer automatisk på toppvalg til det er din tur */
+/** Angre siste plassering (ett steg tilbake). */
+export function undoLastPlacement(state: SimulationState): SimulationState {
+  if (state.placements.length === 0 || state.currentStep === 0) return state;
+
+  const placements = state.placements.slice(0, -1);
+  const currentStep = state.currentStep - 1;
+
+  return {
+    ...state,
+    placements,
+    currentStep,
+    finished: false,
+  };
+}
+
+/**
+ * Motspillere plasserer automatisk på toppvalg (jevnere ressursvekter)
+ * til det er din tur. `weights` brukes kun hvis et menneske-trekk skulle
+ * dukke opp midt i løkken (skjer normalt ikke).
+ */
 export function advanceToHumanTurn(
   state: SimulationState,
   weights?: ResourceWeights
@@ -130,6 +161,7 @@ export function advanceToHumanTurn(
   let next = state;
 
   while (!next.finished && currentPlayer(next) !== human) {
+    // Motstandere ignorerer weights internt (OPPONENT_RESOURCE_WEIGHTS)
     const options = getOptionsForCurrentTurn(next, weights);
     if (options.length === 0) break;
     next = placeSettlement(next, options[0].vertexId);
