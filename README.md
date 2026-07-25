@@ -1,3 +1,17 @@
+# Grouper
+
+Samling av små prosjekter og prosessdokumenter.
+
+## Prosjekter
+
+| Mappe | Beskrivelse |
+|-------|-------------|
+| [catan-generator/](catan-generator/) | Catan-brettgenerator med startposisjon-analyse |
+| [baerland/](baerland/) | Vedlikeholdsplan for jordbær- og bringebærlend |
+| [fpl/](fpl/) | Fantasy Premier League 2026/27 — prosess + dataverktøy |
+
+---
+
 # Catan Brettgenerator
 
 En nettside for tilfeldig generering av Catan-brett (grunnspill) med startposisjon-analyse.
