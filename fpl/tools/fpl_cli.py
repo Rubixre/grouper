@@ -271,12 +271,44 @@ def week_score(ctx: Context, p: dict[str, Any], *, competition: float = 0.0) -> 
     )
 
 
+def is_playing_candidate(p: dict[str, Any]) -> bool:
+    """Players we are willing to put in the XI (not pure £4.0 bench fodder)."""
+    if not available(p):
+        return False
+    ep = fnum(p.get("ep_next"))
+    starts = int(p.get("starts") or 0)
+    minutes = int(p.get("minutes") or 0)
+    own = fnum(p.get("selected_by_percent"))
+    # Hard reject: no meaningful EP and no playing history
+    if ep <= 1.0 and starts < 5 and minutes < 450:
+        return False
+    # Soft accept: EP, history, or meaningful ownership + some EP
+    if ep >= 1.5:
+        return True
+    if starts >= 10 or minutes >= 900:
+        return True
+    if own >= 8.0 and ep > 1.0:
+        return True
+    return ep > 1.0 and (starts >= 5 or minutes >= 450)
+
+
+def xi_selection_score(ctx: Context, p: dict[str, Any], *, competition: float = 0.0) -> float:
+    """Score for XI selection — heavily penalize non-playing candidates."""
+    score = week_score(ctx, p, competition=competition)
+    if not is_playing_candidate(p):
+        score -= 25.0
+    elif fnum(p.get("ep_next")) <= 1.0:
+        score -= 8.0
+    return score
+
+
 # ---------------------------------------------------------------------------
 # Draft
 # ---------------------------------------------------------------------------
 
 
 def pick_squad(ctx: Context, style: str = "balanced", *, competition: float = 0.4) -> list[dict[str, Any]]:
+    """XI-first draft: spend on 11 playing candidates, then cheap bench, then upgrades."""
     weights = {
         "balanced": {
             "ep": 3.5,
@@ -310,11 +342,16 @@ def pick_squad(ctx: Context, style: str = "balanced", *, competition: float = 0.
         ) * 0.9
 
     by_pos: dict[int, list[dict[str, Any]]] = {1: [], 2: [], 3: [], 4: []}
+    playing_by_pos: dict[int, list[dict[str, Any]]] = {1: [], 2: [], 3: [], 4: []}
     for p in ctx.players:
-        if available(p):
-            by_pos[p["element_type"]].append(p)
+        if not available(p):
+            continue
+        by_pos[p["element_type"]].append(p)
+        if is_playing_candidate(p):
+            playing_by_pos[p["element_type"]].append(p)
     for pos in by_pos:
         by_pos[pos].sort(key=key, reverse=True)
+        playing_by_pos[pos].sort(key=key, reverse=True)
 
     squad: list[dict[str, Any]] = []
     spend = 0
@@ -322,21 +359,18 @@ def pick_squad(ctx: Context, style: str = "balanced", *, competition: float = 0.
     counts = {1: 0, 2: 0, 3: 0, 4: 0}
     gk_teams: set[int] = set()
     floor = 40
+    bench_slots = 4
+    # Reserve cheap bench (£4.0m × 4) while building XI
+    xi_reserve = bench_slots * floor
 
-    def slots_left_after_one() -> int:
-        return 15 - len(squad) - 1
-
-    def max_affordable() -> int:
-        return BUDGET - spend - slots_left_after_one() * floor
-
-    def can_add(p: dict[str, Any]) -> bool:
+    def can_add(p: dict[str, Any], *, reserve: int = 0) -> bool:
         if counts[p["element_type"]] >= SQUAD_LIMITS[p["element_type"]]:
             return False
         if club_count.get(p["team"], 0) >= MAX_PER_CLUB:
             return False
         if p["element_type"] == 1 and p["team"] in gk_teams:
             return False
-        if p["now_cost"] > max_affordable():
+        if spend + p["now_cost"] + reserve > BUDGET:
             return False
         if any(s["id"] == p["id"] for s in squad):
             return False
@@ -351,48 +385,93 @@ def pick_squad(ctx: Context, style: str = "balanced", *, competition: float = 0.
         if p["element_type"] == 1:
             gk_teams.add(p["team"])
 
-    seat_order = (
-        [4] * SQUAD_LIMITS[4]
-        + [3] * SQUAD_LIMITS[3]
-        + [2] * SQUAD_LIMITS[2]
-        + [1] * SQUAD_LIMITS[1]
-    )
-    for pos in seat_order:
-        picked = next((p for p in by_pos[pos] if can_add(p)), None)
-        if picked is None:
-            for p in sorted(by_pos[pos], key=lambda x: (x["now_cost"], -key(x))):
-                if can_add(p):
-                    picked = p
-                    break
-        if picked:
-            add(picked)
+    # --- Phase 1: XI of playing candidates ---
+    # Build XI with mins 1 GK / 3 DEF / 2 MID / 1 FWD, then fill to 11.
+    # Keep £16.0m reserved for 4 bench slots while funding starters.
+    # First ensure minimums with playing candidates
+    for pos, need in ((1, 1), (2, 3), (3, 2), (4, 1)):
+        for _ in range(need):
+            reserve = xi_reserve + max(0, 10 - len(squad)) * 45  # keep room for remaining XI
+            # Simpler: reserve = bench + remaining XI seats at £4.5 floor for flexibility
+            remaining_xi = 11 - len(squad) - 1
+            reserve = xi_reserve + max(0, remaining_xi) * 45
+            picked = next((p for p in playing_by_pos[pos] if can_add(p, reserve=reserve)), None)
+            if picked is None:
+                # relax reserve slightly
+                picked = next((p for p in playing_by_pos[pos] if can_add(p, reserve=xi_reserve)), None)
+            if picked is None:
+                picked = next((p for p in by_pos[pos] if can_add(p, reserve=xi_reserve)), None)
+            if picked:
+                add(picked)
 
-    guard = 0
-    while len(squad) < 15 and guard < 30:
-        guard += 1
-        missing = next((pos for pos, need in SQUAD_LIMITS.items() if counts[pos] < need), None)
-        if missing is None:
+    # Fill to 11 XI with best remaining playing candidates (any outfield / already have GK)
+    while len(squad) < 11:
+        remaining_xi = 11 - len(squad) - 1
+        reserve = xi_reserve + max(0, remaining_xi) * 45
+        candidates: list[dict[str, Any]] = []
+        for pos in (2, 3, 4):
+            if counts[pos] >= SQUAD_LIMITS[pos]:
+                continue
+            # Prefer filling toward xi_targets but allow overflow within squad limits
+            for p in playing_by_pos[pos]:
+                if can_add(p, reserve=reserve):
+                    candidates.append(p)
+                    break
+        if not candidates:
+            for pos in (2, 3, 4, 1):
+                if counts[pos] >= SQUAD_LIMITS[pos]:
+                    continue
+                for p in playing_by_pos[pos]:
+                    if can_add(p, reserve=xi_reserve):
+                        candidates.append(p)
+                        break
+        if not candidates:
+            # last resort: any available
+            for pos in (4, 3, 2, 1):
+                if counts[pos] >= SQUAD_LIMITS[pos]:
+                    continue
+                for p in by_pos[pos]:
+                    if can_add(p, reserve=xi_reserve):
+                        candidates.append(p)
+                        break
+        if not candidates:
             break
+        add(max(candidates, key=key))
+
+    # --- Phase 2: Fill remaining squad slots (bench) with cheapest legal ---
+    while len(squad) < 15:
+        missing = [pos for pos, need in SQUAD_LIMITS.items() if counts[pos] < need]
+        if not missing:
+            # all position quotas met but <15? shouldn't happen with limits summing to 15
+            break
+        # Prefer completing missing positions with cheapest OK players
+        pos = missing[0]
+        # If we still need more of a position for quota, pick cheapest; prefer not wrecking XI
         picked = None
-        for p in sorted(by_pos[missing], key=lambda x: (x["now_cost"], -key(x))):
-            if counts[p["element_type"]] >= SQUAD_LIMITS[p["element_type"]]:
-                continue
-            if club_count.get(p["team"], 0) >= MAX_PER_CLUB:
-                continue
-            if p["element_type"] == 1 and p["team"] in gk_teams:
-                continue
-            if spend + p["now_cost"] > BUDGET:
-                continue
-            if any(s["id"] == p["id"] for s in squad):
-                continue
-            picked = p
-            break
+        for p in sorted(by_pos[pos], key=lambda x: (x["now_cost"], -key(x))):
+            if can_add(p, reserve=0):
+                picked = p
+                break
         if picked is None:
+            # try other missing
+            for alt in missing[1:]:
+                for p in sorted(by_pos[alt], key=lambda x: (x["now_cost"], -key(x))):
+                    if can_add(p, reserve=0):
+                        picked = p
+                        pos = alt
+                        break
+                if picked:
+                    break
+        if picked is None:
+            # Downgrade most expensive to free budget
             candidates = [
                 (i, p)
                 for i, p in enumerate(squad)
-                if p["element_type"] != missing and p["now_cost"] > floor
+                if p["now_cost"] > floor and counts[p["element_type"]] > (
+                    1 if p["element_type"] == 1 else 0
+                )
             ]
+            # Never downgrade below playing-candidate count for GK starter if possible
             if not candidates:
                 break
             i, cur = max(candidates, key=lambda ip: ip[1]["now_cost"])
@@ -423,13 +502,29 @@ def pick_squad(ctx: Context, style: str = "balanced", *, competition: float = 0.
             continue
         add(picked)
 
+    # --- Phase 3: Spend ITB — upgrade weakest XI players first ---
     itb = BUDGET - spend
-    if itb >= 5:
+    if itb >= 5 and len(squad) == 15:
+        # Identify current XI to prioritise upgrades there
+        xi_now, _bench = suggest_xi(ctx, squad, competition=competition)
+        xi_ids = {p["id"] for p in xi_now}
         squad_ids = {p["id"] for p in squad}
         improved = True
         while improved and itb >= 5:
             improved = False
-            for i, cur in enumerate(list(squad)):
+            # Sort seats: XI non-playing / low EP first, then other XI, then bench
+            order = sorted(
+                range(len(squad)),
+                key=lambda i: (
+                    0 if squad[i]["id"] in xi_ids and not is_playing_candidate(squad[i]) else
+                    1 if squad[i]["id"] in xi_ids and fnum(squad[i].get("ep_next")) <= 1.5 else
+                    2 if squad[i]["id"] in xi_ids else
+                    3,
+                    key(squad[i]),
+                ),
+            )
+            for i in order:
+                cur = squad[i]
                 best = None
                 best_gain = 0.0
                 for p in by_pos[cur["element_type"]]:
@@ -445,11 +540,15 @@ def pick_squad(ctx: Context, style: str = "balanced", *, competition: float = 0.
                     tmp_clubs[p["team"]] = tmp_clubs.get(p["team"], 0) + 1
                     if tmp_clubs[p["team"]] > MAX_PER_CLUB:
                         continue
+                    # Prefer upgrading into playing candidates when replacing XI seat
                     gain = key(p) - key(cur)
+                    if cur["id"] in xi_ids and is_playing_candidate(p) and not is_playing_candidate(cur):
+                        gain += 5.0
                     if gain > best_gain:
                         best_gain = gain
                         best = p
-                if best and best_gain > 0.35:
+                threshold = 0.25 if (cur["id"] in xi_ids and not is_playing_candidate(cur)) else 0.35
+                if best and best_gain > threshold:
                     delta = best["now_cost"] - cur["now_cost"]
                     club_count[cur["team"]] -= 1
                     club_count[best["team"]] = club_count.get(best["team"], 0) + 1
@@ -461,6 +560,9 @@ def pick_squad(ctx: Context, style: str = "balanced", *, competition: float = 0.
                     squad_ids.add(best["id"])
                     spend += delta
                     itb -= delta
+                    # refresh XI ids after meaningful change
+                    xi_now, _ = suggest_xi(ctx, squad, competition=competition)
+                    xi_ids = {p["id"] for p in xi_now}
                     improved = True
                     break
 
@@ -474,7 +576,7 @@ def suggest_xi(
     competition: float = 0.0,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     def key(p: dict[str, Any]) -> float:
-        return week_score(ctx, p, competition=competition)
+        return xi_selection_score(ctx, p, competition=competition)
 
     by_pos: dict[int, list[dict[str, Any]]] = {1: [], 2: [], 3: [], 4: []}
     for p in squad:
@@ -482,13 +584,22 @@ def suggest_xi(
     for pos in by_pos:
         by_pos[pos].sort(key=key, reverse=True)
 
-    xi: list[dict[str, Any]] = [by_pos[1][0]]
-    xi.extend(by_pos[2][:3])
-    xi.extend(by_pos[3][:2])
-    xi.extend(by_pos[4][:1])
+    def best_playing(pos: int, n: int) -> list[dict[str, Any]]:
+        playing = [p for p in by_pos[pos] if is_playing_candidate(p)]
+        pool = playing if len(playing) >= n else by_pos[pos]
+        return pool[:n]
+
+    # Prefer playing candidates for the seeded XI
+    xi: list[dict[str, Any]] = []
+    xi.extend(best_playing(1, 1))
+    xi.extend(best_playing(2, 3))
+    xi.extend(best_playing(3, 2))
+    xi.extend(best_playing(4, 1))
     chosen = {p["id"] for p in xi}
     rest = sorted((p for p in squad if p["id"] not in chosen), key=key, reverse=True)
-    def_count, mid_count, fwd_count = 3, 2, 1
+    def_count = sum(1 for p in xi if p["element_type"] == 2)
+    mid_count = sum(1 for p in xi if p["element_type"] == 3)
+    fwd_count = sum(1 for p in xi if p["element_type"] == 4)
     for p in rest:
         if len(xi) >= 11:
             break
@@ -501,13 +612,52 @@ def suggest_xi(
             continue
         if pos == 4 and fwd_count >= 3:
             continue
+        # Skip non-playing candidates while better playing options remain
+        if not is_playing_candidate(p):
+            better = [
+                q
+                for q in rest
+                if q["id"] not in chosen
+                and q["id"] != p["id"]
+                and is_playing_candidate(q)
+                and q["element_type"] != 1
+                and not (q["element_type"] == 2 and def_count >= 5)
+                and not (q["element_type"] == 3 and mid_count >= 5)
+                and not (q["element_type"] == 4 and fwd_count >= 3)
+            ]
+            if better:
+                continue
         xi.append(p)
+        chosen.add(p["id"])
         if pos == 2:
             def_count += 1
         elif pos == 3:
             mid_count += 1
         elif pos == 4:
             fwd_count += 1
+    # If still short of 11 (edge case), fill anything legal
+    if len(xi) < 11:
+        for p in rest:
+            if len(xi) >= 11:
+                break
+            if p["id"] in chosen or p["element_type"] == 1:
+                continue
+            pos = p["element_type"]
+            if pos == 2 and def_count >= 5:
+                continue
+            if pos == 3 and mid_count >= 5:
+                continue
+            if pos == 4 and fwd_count >= 3:
+                continue
+            xi.append(p)
+            chosen.add(p["id"])
+            if pos == 2:
+                def_count += 1
+            elif pos == 3:
+                mid_count += 1
+            elif pos == 4:
+                fwd_count += 1
+
     xi_ids = {p["id"] for p in xi}
     bench = sorted((p for p in squad if p["id"] not in xi_ids), key=key, reverse=True)
     outfield_bench = [p for p in bench if p["element_type"] != 1]
@@ -521,7 +671,9 @@ def pick_captain(ctx: Context, xi: list[dict[str, Any]]) -> dict[str, Any]:
         key=lambda p: fnum(p.get("ep_next")) * 2.5
         + week_score(ctx, p) * 0.2
         + (3.5 - avg_fdr(ctx, p["team"], 1))
-        - (5.0 if is_risk(p) else 0.0),
+        - (5.0 if is_risk(p) else 0.0)
+        - (10.0 if not is_playing_candidate(p) else 0.0)
+        - (3.0 if p["element_type"] == 1 else 0.0),  # avoid GK captain unless clear best
     )
 
 
@@ -919,6 +1071,10 @@ def recommend_chip(
                     s += 4.0
             if is_risk(p):
                 s -= 5.0
+            if p["element_type"] == 1:
+                s -= 4.0
+            if not is_playing_candidate(p):
+                s -= 10.0
             return s
 
         tc_capt = max(xi, key=tc_captain_score)
