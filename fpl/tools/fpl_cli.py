@@ -164,64 +164,6 @@ def reliable_xgi90(p: dict[str, Any]) -> float:
     return fnum(p.get("expected_goal_involvements_per_90"))
 
 
-def likely_starter_bonus(p: dict[str, Any]) -> float:
-    minutes = int(p.get("minutes") or 0)
-    starts = int(p.get("starts") or 0)
-    own = fnum(p.get("selected_by_percent"))
-    ep = fnum(p.get("ep_next"))
-    bonus = 0.0
-    if starts >= 20 or minutes >= 1800:
-        bonus += 3.0
-    elif starts >= 10 or minutes >= 900:
-        bonus += 1.8
-    elif starts >= 5 or minutes >= 450:
-        bonus += 0.6
-    else:
-        bonus -= 2.5
-    if own >= 10:
-        bonus += 1.2
-    elif own >= 3:
-        bonus += 0.5
-    if ep >= 3.0:
-        bonus += 1.5
-    elif ep <= 1.0 and own < 5:
-        bonus -= 1.5
-    return bonus
-
-
-def score_player(
-    p: dict[str, Any],
-    weights: dict[str, float] | None = None,
-    *,
-    competition: float = 0.0,
-) -> float:
-    w = weights or {
-        "ep": 3.5,
-        "form": 1.5,
-        "xgi90": 2.0,
-        "value": 1.0,
-        "own_penalty": 0.0,
-        "starter": 1.0,
-    }
-    ep = fnum(p.get("ep_next"))
-    form = fnum(p.get("form"))
-    xgi90 = reliable_xgi90(p)
-    cost = max(p["now_cost"] / 10.0, 3.5)
-    value = (ep + form * 0.5 + xgi90) / cost
-    own = fnum(p.get("selected_by_percent"))
-    # competition > 0: reward differentials (useful when chasing in mini-league)
-    diff_bonus = competition * max(0.0, 30.0 - own) / 15.0
-    return (
-        w["ep"] * ep
-        + w["form"] * form
-        + w["xgi90"] * xgi90
-        + w["value"] * value * 10
-        + w.get("starter", 1.0) * likely_starter_bonus(p)
-        - w["own_penalty"] * max(own - 20, 0) / 10
-        + diff_bonus
-    )
-
-
 def upcoming_fdr(ctx: Context, team_id: int, next_n: int = 6) -> list[tuple[int, int, str, bool]]:
     events = sorted(
         (e for e in ctx.bootstrap["events"] if not e.get("finished")),
@@ -252,23 +194,236 @@ def avg_fdr(ctx: Context, team_id: int, next_n: int = 6) -> float:
 
 
 def fdr_for_event(ctx: Context, team_id: int, gw: int) -> float:
+    info = team_fixtures_in_gw(ctx, team_id, gw)
+    if not info:
+        return 3.0
+    return float(sum(f[0] for f in info) / len(info))
+
+
+def team_fixtures_in_gw(ctx: Context, team_id: int, gw: int) -> list[tuple[int, bool, str]]:
+    """Return list of (fdr, is_home, opponent_short) for a team in a GW (DGW => 2+)."""
+    rows: list[tuple[int, bool, str]] = []
     for fx in ctx.fixtures:
         if fx.get("event") != gw:
             continue
         if fx["team_h"] == team_id:
-            return float(fx["team_h_difficulty"])
-        if fx["team_a"] == team_id:
-            return float(fx["team_a_difficulty"])
-    return 3.0
+            rows.append((int(fx["team_h_difficulty"]), True, team_short(ctx, fx["team_a"])))
+        elif fx["team_a"] == team_id:
+            rows.append((int(fx["team_a_difficulty"]), False, team_short(ctx, fx["team_h"])))
+    return rows
+
+
+def fixture_multiplier(fdr: int, is_home: bool) -> float:
+    """Scale average-fixture points for this opponent (FDR 1=easy … 5=hard)."""
+    table = {1: 1.20, 2: 1.10, 3: 1.00, 4: 0.90, 5: 0.78}
+    mult = table.get(int(fdr), 1.0)
+    mult *= 1.05 if is_home else 0.97
+    return mult
+
+
+def minutes_probability(p: dict[str, Any]) -> float:
+    """P(meaningful minutes) for next match — from news + history."""
+    status = p.get("status", "a")
+    if status in {"i", "s", "u"}:
+        return 0.05
+    chance = p.get("chance_of_playing_next_round")
+    if chance is not None:
+        return max(0.05, min(1.0, float(chance) / 100.0))
+    if status == "d":
+        return 0.55
+    starts = int(p.get("starts") or 0)
+    minutes = int(p.get("minutes") or 0)
+    if starts >= 25 or minutes >= 2200:
+        return 0.92
+    if starts >= 15 or minutes >= 1200:
+        return 0.85
+    if starts >= 8 or minutes >= 600:
+        return 0.75
+    if starts >= 3 or minutes >= 270:
+        return 0.60
+    # Preseason / unknown: lean on ownership + ep as weak minutes proxy
+    ep = fnum(p.get("ep_next"))
+    own = fnum(p.get("selected_by_percent"))
+    if ep >= 3.0 or own >= 20:
+        return 0.88
+    if ep >= 2.0 or own >= 8:
+        return 0.75
+    if ep <= 1.0 and own < 3:
+        return 0.25
+    return 0.55
+
+
+def baseline_points_rate(p: dict[str, Any]) -> float:
+    """Fixture-neutral points expectation for a full appearance (before FDR/home)."""
+    ep = fnum(p.get("ep_next"))
+    form = fnum(p.get("form"))
+    ppg = fnum(p.get("points_per_game"))
+    xgi90 = reliable_xgi90(p)
+    pos = p["element_type"]
+    # Convert xGI/90 toward FPL points (goal pts by position + assist≈3)
+    goal_pts = {1: 10, 2: 6, 3: 5, 4: 4}.get(pos, 4)
+    xgi_as_pts = xgi90 * (0.65 * goal_pts + 0.35 * 3.0)
+    # Defensive floor for GK/DEF from clean-sheet potential (very rough)
+    if pos in {1, 2}:
+        xgi_as_pts += 0.35  # small CS/saves baseline noise
+
+    if form > 0 and ppg > 0:
+        # In-season: form + recent PPG dominate
+        rate = 0.50 * form + 0.30 * ppg + 0.20 * max(xgi_as_pts, ep)
+    elif ppg > 0:
+        # Preseason: last-season PPG + official EP + xGI
+        rate = 0.35 * ep + 0.40 * ppg + 0.25 * max(xgi_as_pts, ep * 0.8)
+    else:
+        rate = 0.65 * ep + 0.35 * xgi_as_pts
+    return max(0.0, rate)
+
+
+def resolve_target_gw(ctx: Context, gw: int | None = None) -> int:
+    if gw is not None:
+        return gw
+    nxt = next_event(ctx)
+    if nxt:
+        return int(nxt["id"])
+    cur = current_or_last_event(ctx)
+    return int(cur["id"]) if cur else 1
+
+
+def gw_expected_points(ctx: Context, p: dict[str, Any], gw: int | None = None) -> float:
+    """Expected FPL points for a player in a specific gameweek.
+
+    Combines:
+    - official FPL ep_next (when evaluating the next GW — already fixture-aware)
+    - our baseline rate × THIS week's FDR + home/away (and blanks/doubles)
+    - minutes probability from injury news / history
+    - form (via baseline_points_rate)
+    """
+    target = resolve_target_gw(ctx, gw)
+    fixtures = team_fixtures_in_gw(ctx, p["team"], target)
+    if not fixtures:
+        return 0.0  # blank GW for this club
+
+    p_min = minutes_probability(p)
+    rate = baseline_points_rate(p)
+    nxt = next_event(ctx)
+    is_next = bool(nxt and target == nxt["id"])
+    official = fnum(p.get("ep_next"))
+
+    total = 0.0
+    for fdr, is_home, _opp in fixtures:
+        mult = fixture_multiplier(fdr, is_home)
+        model = rate * mult * p_min
+        if is_next and len(fixtures) == 1:
+            # ep_next already includes next fixture + much of minutes risk.
+            # Blend rather than stack FDR on top of ep_next (avoids double-counting).
+            # When form is live, trust recent form more inside rate/model.
+            form = fnum(p.get("form"))
+            if form > 0:
+                total += 0.45 * official + 0.55 * model
+            else:
+                total += 0.60 * official + 0.40 * model
+        elif is_next and len(fixtures) > 1:
+            # DGW: ep_next is often single-fixture-ish early; sum our model per fixture
+            # but keep a floor from official EP
+            total += max(model, official * 0.45)
+        else:
+            total += model
+    return round(total, 3)
+
+
+def horizon_expected_points(ctx: Context, p: dict[str, Any], n: int = 4) -> float:
+    """Sum of gw_expected_points over the next n unfinished gameweeks."""
+    events = sorted(
+        (e for e in ctx.bootstrap["events"] if not e.get("finished")),
+        key=lambda e: e["id"],
+    )[:n]
+    if not events:
+        return gw_expected_points(ctx, p)
+    return sum(gw_expected_points(ctx, p, int(e["id"])) for e in events)
+
+
+def value_ev(ctx: Context, p: dict[str, Any], gw: int | None = None) -> float:
+    """Expected points per £1m for next GW — price efficiency."""
+    cost = max(p["now_cost"] / 10.0, 3.5)
+    return gw_expected_points(ctx, p, gw) / cost
+
+
+def decision_score(
+    ctx: Context,
+    p: dict[str, Any],
+    *,
+    competition: float = 0.0,
+    gw: int | None = None,
+    horizon: int = 3,
+) -> float:
+    """Single score for XI/transfers: next-GW EV + short horizon + mild value/diff.
+
+    Units are approximately FPL points (not arbitrary), so −4 hits compare fairly.
+    """
+    target = resolve_target_gw(ctx, gw)
+    ev = gw_expected_points(ctx, p, target)
+    # Horizon: average of next GWs excluding current already counted → use remaining
+    events = sorted(
+        (e for e in ctx.bootstrap["events"] if not e.get("finished")),
+        key=lambda e: e["id"],
+    )
+    future = [e for e in events if int(e["id"]) != target][: max(0, horizon - 1)]
+    horiz = sum(gw_expected_points(ctx, p, int(e["id"])) for e in future)
+    # Weight: this week matters most for transfers; keep some run quality
+    score = ev * 1.0 + horiz * 0.35
+    # Mild value tilt (don't overfit cheap junk)
+    score += min(value_ev(ctx, p, target), 0.85) * 1.2
+    # Competition differentials: small bonus for low ownership when chasing
+    own = fnum(p.get("selected_by_percent"))
+    score += competition * max(0.0, 25.0 - own) / 40.0
+    if is_risk(p):
+        score -= 2.5
+    if not is_playing_candidate(p):
+        score -= 6.0
+    return score
+
+
+# Backwards-compatible names used across the file
+def score_player(
+    p: dict[str, Any],
+    weights: dict[str, float] | None = None,
+    *,
+    competition: float = 0.0,
+) -> float:
+    """Legacy draft helper — prefers EP/form/xGI/value without fixture context.
+
+    Draft uses decision_score / horizon via pick_squad key instead where possible.
+    """
+    w = weights or {
+        "ep": 3.5,
+        "form": 1.5,
+        "xgi90": 2.0,
+        "value": 1.0,
+        "own_penalty": 0.0,
+        "starter": 1.0,
+    }
+    ep = fnum(p.get("ep_next"))
+    form = fnum(p.get("form"))
+    xgi90 = reliable_xgi90(p)
+    cost = max(p["now_cost"] / 10.0, 3.5)
+    value = (ep + form * 0.5 + xgi90) / cost
+    own = fnum(p.get("selected_by_percent"))
+    p_min = minutes_probability(p)
+    starter = (p_min - 0.5) * 6.0
+    diff_bonus = competition * max(0.0, 30.0 - own) / 15.0
+    return (
+        w["ep"] * ep
+        + w["form"] * form
+        + w["xgi90"] * xgi90
+        + w["value"] * value * 10
+        + w.get("starter", 1.0) * starter
+        - w["own_penalty"] * max(own - 20, 0) / 10
+        + diff_bonus
+    )
 
 
 def week_score(ctx: Context, p: dict[str, Any], *, competition: float = 0.0) -> float:
-    return (
-        score_player(p, competition=competition)
-        + (3.5 - avg_fdr(ctx, p["team"], 4)) * 1.1
-        + fnum(p.get("ep_next")) * 0.8
-        - (4.0 if is_risk(p) else 0.0)
-    )
+    """Weekly decision score — now true-ish expected points for next GW + horizon."""
+    return decision_score(ctx, p, competition=competition)
 
 
 def is_playing_candidate(p: dict[str, Any]) -> bool:
@@ -279,10 +434,8 @@ def is_playing_candidate(p: dict[str, Any]) -> bool:
     starts = int(p.get("starts") or 0)
     minutes = int(p.get("minutes") or 0)
     own = fnum(p.get("selected_by_percent"))
-    # Hard reject: no meaningful EP and no playing history
     if ep <= 1.0 and starts < 5 and minutes < 450:
         return False
-    # Soft accept: EP, history, or meaningful ownership + some EP
     if ep >= 1.5:
         return True
     if starts >= 10 or minutes >= 900:
@@ -293,13 +446,24 @@ def is_playing_candidate(p: dict[str, Any]) -> bool:
 
 
 def xi_selection_score(ctx: Context, p: dict[str, Any], *, competition: float = 0.0) -> float:
-    """Score for XI selection — heavily penalize non-playing candidates."""
-    score = week_score(ctx, p, competition=competition)
+    """XI pick = next-GW expected points (hard penalty for non-players)."""
+    score = gw_expected_points(ctx, p) + 0.25 * decision_score(ctx, p, competition=competition)
     if not is_playing_candidate(p):
-        score -= 25.0
+        score -= 20.0
     elif fnum(p.get("ep_next")) <= 1.0:
-        score -= 8.0
+        score -= 6.0
     return score
+
+
+def player_fixture_label(ctx: Context, p: dict[str, Any], gw: int | None = None) -> str:
+    target = resolve_target_gw(ctx, gw)
+    fixtures = team_fixtures_in_gw(ctx, p["team"], target)
+    if not fixtures:
+        return "BLANK"
+    parts = []
+    for fdr, is_home, opp in fixtures:
+        parts.append(f"{'H' if is_home else 'A'}{opp}({fdr})")
+    return "/".join(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -337,9 +501,12 @@ def pick_squad(ctx: Context, style: str = "balanced", *, competition: float = 0.
     }[style]
 
     def key(p: dict[str, Any]) -> float:
-        return score_player(p, weights, competition=competition) + (
-            3.5 - avg_fdr(ctx, p["team"], 6)
-        ) * 0.9
+        # Draft: next-GW EV + 5-GW horizon + mild legacy score for stability
+        return (
+            gw_expected_points(ctx, p) * 1.2
+            + horizon_expected_points(ctx, p, 5) * 0.25
+            + score_player(p, weights, competition=competition) * 0.08
+        )
 
     by_pos: dict[int, list[dict[str, Any]]] = {1: [], 2: [], 3: [], 4: []}
     playing_by_pos: dict[int, list[dict[str, Any]]] = {1: [], 2: [], 3: [], 4: []}
@@ -666,15 +833,21 @@ def suggest_xi(
 
 
 def pick_captain(ctx: Context, xi: list[dict[str, Any]]) -> dict[str, Any]:
-    return max(
-        xi,
-        key=lambda p: fnum(p.get("ep_next")) * 2.5
-        + week_score(ctx, p) * 0.2
-        + (3.5 - avg_fdr(ctx, p["team"], 1))
-        - (5.0 if is_risk(p) else 0.0)
-        - (10.0 if not is_playing_candidate(p) else 0.0)
-        - (3.0 if p["element_type"] == 1 else 0.0),  # avoid GK captain unless clear best
-    )
+    gw = resolve_target_gw(ctx)
+
+    def capt_key(p: dict[str, Any]) -> float:
+        ev = gw_expected_points(ctx, p, gw)
+        fixtures = team_fixtures_in_gw(ctx, p["team"], gw)
+        home_bonus = 0.35 if fixtures and fixtures[0][1] else 0.0
+        return (
+            ev * 3.0
+            + home_bonus
+            - (5.0 if is_risk(p) else 0.0)
+            - (10.0 if not is_playing_candidate(p) else 0.0)
+            - (2.5 if p["element_type"] == 1 else 0.0)
+        )
+
+    return max(xi, key=capt_key)
 
 
 # ---------------------------------------------------------------------------
@@ -727,28 +900,41 @@ def best_single_transfers(
     competition: float,
     limit: int = 8,
 ) -> list[dict[str, Any]]:
+    """Rank transfers by expected-points gain (next GW + short horizon)."""
     pool = [p for p in ctx.players if available(p)]
+    target = resolve_target_gw(ctx)
     moves: list[dict[str, Any]] = []
     for out_p in squad:
-        out_s = week_score(ctx, out_p, competition=competition)
-        urgency = 3.0 if is_risk(out_p) else 0.0
+        out_ev = gw_expected_points(ctx, out_p, target)
+        out_h = horizon_expected_points(ctx, out_p, 4)
+        out_s = decision_score(ctx, out_p, competition=competition, gw=target)
+        urgency = 2.5 if is_risk(out_p) else (1.5 if out_ev <= 0.5 else 0.0)
         for in_p in pool:
             if not legal_replacement(squad, out_p, in_p, bank):
                 continue
-            gain = week_score(ctx, in_p, competition=competition) - out_s + urgency
-            if gain <= 0.35 and urgency == 0:
+            in_ev = gw_expected_points(ctx, in_p, target)
+            in_h = horizon_expected_points(ctx, in_p, 4)
+            # Primary: this week EP delta + partial horizon (points units)
+            gain = (in_ev - out_ev) + 0.35 * (in_h - out_h) + urgency
+            # Mild value / competition via decision_score residual
+            gain += 0.15 * (
+                decision_score(ctx, in_p, competition=competition, gw=target) - out_s
+            )
+            if gain <= 0.4 and urgency == 0:
                 continue
             moves.append(
                 {
                     "out": out_p,
                     "in": in_p,
                     "gain": gain,
+                    "ev_delta": in_ev - out_ev,
                     "cost_delta": in_p["now_cost"] - out_p["now_cost"],
-                    "must": is_risk(out_p),
+                    "must": is_risk(out_p) or out_ev <= 0.2,
+                    "out_fx": player_fixture_label(ctx, out_p, target),
+                    "in_fx": player_fixture_label(ctx, in_p, target),
                 }
             )
     moves.sort(key=lambda m: (m["must"], m["gain"]), reverse=True)
-    # unique outs / ins preference
     seen_out: set[int] = set()
     seen_in: set[int] = set()
     unique: list[dict[str, Any]] = []
@@ -782,14 +968,13 @@ def choose_transfer_plan(
     *,
     competition: float,
 ) -> dict[str, Any]:
-    baseline = sum(week_score(ctx, p, competition=competition) for p in squad)
+    """Choose 0–2 transfers maximizing expected points net of hit cost (−4 each)."""
     singles = best_single_transfers(ctx, squad, bank, competition=competition, limit=12)
 
     plans: list[dict[str, Any]] = [
         {"moves": [], "gain": 0.0, "hit": 0, "net": 0.0, "squad": squad, "bank": bank}
     ]
 
-    # 1 transfer
     if singles:
         m = singles[0]
         s1, b1 = apply_move(squad, bank, m)
@@ -805,7 +990,6 @@ def choose_transfer_plan(
             }
         )
 
-    # 2 transfers (sequential)
     if singles:
         m1 = singles[0]
         s1, b1 = apply_move(squad, bank, m1)
@@ -827,13 +1011,12 @@ def choose_transfer_plan(
                 }
             )
 
-    # Prefer must-fix if any risky player and a move addresses it
     must_plans = [p for p in plans if any(m.get("must") for m in p["moves"])]
     if must_plans:
         return max(must_plans, key=lambda p: p["net"])
 
-    # Otherwise best net gain; require clear upside for hits
-    viable = [p for p in plans if p["hit"] == 0 or p["net"] >= 2.0]
+    # Hits only if expected points gain clearly exceeds hit cost
+    viable = [p for p in plans if p["hit"] == 0 or p["net"] >= 1.5]
     return max(viable, key=lambda p: p["net"])
 
 
@@ -871,18 +1054,23 @@ def resolve_free_transfers(squad_data: dict[str, Any], cfg: dict[str, Any]) -> i
 
 
 def print_squad_block(ctx: Context, squad: list[dict[str, Any]], title: str) -> None:
+    gw = resolve_target_gw(ctx)
     print(f"=== {title} ===")
+    print(f"(GW{gw}: vår EV | FPL ep_next | motstander FDR | form | £/EV)")
     for pos_id in (1, 2, 3, 4):
         print(f"\n{ctx.positions[pos_id]}:")
-        for p in sorted(
-            (x for x in squad if x["element_type"] == pos_id),
-            key=lambda x: x["now_cost"],
-            reverse=True,
-        ):
+        rows = [x for x in squad if x["element_type"] == pos_id]
+        rows.sort(key=lambda x: gw_expected_points(ctx, x, gw), reverse=True)
+        for p in rows:
             risk = " ⚠" if is_risk(p) else ""
+            ev = gw_expected_points(ctx, p, gw)
+            form = fnum(p.get("form"))
             print(
-                f"  {player_label(ctx, p)}  EP {fnum(p.get('ep_next')):4.1f}  "
-                f"own {fnum(p.get('selected_by_percent')):5.1f}%{risk}"
+                f"  {player_label(ctx, p)}  EV {ev:4.1f}  "
+                f"ep {fnum(p.get('ep_next')):4.1f}  "
+                f"{player_fixture_label(ctx, p, gw):<12}  "
+                f"form {form:3.1f}  "
+                f"val {value_ev(ctx, p, gw):4.2f}{risk}"
             )
 
 
@@ -894,22 +1082,38 @@ def print_xi_block(
     *,
     triple: bool = False,
 ) -> None:
+    gw = resolve_target_gw(ctx)
     print("\n=== Startellever ===")
+    xi_ev = 0.0
     for p in xi:
         mark = " (C)" if p["id"] == capt["id"] else ""
-        print(f"  {player_label(ctx, p)}{mark}")
+        ev = gw_expected_points(ctx, p, gw)
+        xi_ev += ev
+        print(
+            f"  {player_label(ctx, p)}  EV {ev:4.1f}  "
+            f"{player_fixture_label(ctx, p, gw)}{mark}"
+        )
     print("\n=== Benk ===")
+    bench_ev = 0.0
     for i, p in enumerate(bench, 1):
-        print(f"  {i}. {player_label(ctx, p)}")
+        ev = gw_expected_points(ctx, p, gw)
+        bench_ev += ev
+        print(
+            f"  {i}. {player_label(ctx, p)}  EV {ev:4.1f}  "
+            f"{player_fixture_label(ctx, p, gw)}"
+        )
     vc = max(
         (p for p in xi if p["id"] != capt["id"]),
-        key=lambda p: fnum(p.get("ep_next")),
+        key=lambda p: gw_expected_points(ctx, p, gw),
         default=None,
     )
     cap_mult = "3× (Triple Captain)" if triple else "2×"
-    print(f"\nKaptein ({cap_mult}): {capt['web_name']}")
+    capt_ev = gw_expected_points(ctx, capt, gw)
+    lineup = xi_ev + capt_ev * (2.0 if triple else 1.0)
+    print(f"\nKaptein ({cap_mult}): {capt['web_name']} (EV {capt_ev:.1f})")
     if vc:
-        print(f"VC:      {vc['web_name']}")
+        print(f"VC:      {vc['web_name']} (EV {gw_expected_points(ctx, vc, gw):.1f})")
+    print(f"Forventet XI+C: {lineup:.1f}  |  benk: {bench_ev:.1f}")
 
 
 # ---------------------------------------------------------------------------
@@ -1015,14 +1219,22 @@ def gw_structure(ctx: Context, gw: int) -> dict[str, Any]:
     }
 
 
-def player_ep(p: dict[str, Any]) -> float:
-    return fnum(p.get("ep_next"))
+def player_ep(ctx: Context, p: dict[str, Any], gw: int | None = None) -> float:
+    return gw_expected_points(ctx, p, gw)
 
 
-def estimate_lineup_ep(xi: list[dict[str, Any]], capt: dict[str, Any], *, triple: bool = False) -> float:
-    """Expected points: sum EP + extra captain multiplier (C is already 1× in sum)."""
-    base = sum(player_ep(p) for p in xi)
-    extra = player_ep(capt) * (2.0 if triple else 1.0)  # normal C=2× => +1×; TC=3× => +2×
+def estimate_lineup_ep(
+    ctx: Context,
+    xi: list[dict[str, Any]],
+    capt: dict[str, Any],
+    *,
+    triple: bool = False,
+    gw: int | None = None,
+) -> float:
+    """Expected points: sum of our GW EV + extra captain multiplier."""
+    target = resolve_target_gw(ctx, gw)
+    base = sum(gw_expected_points(ctx, p, target) for p in xi)
+    extra = gw_expected_points(ctx, capt, target) * (2.0 if triple else 1.0)
     return base + extra
 
 
@@ -1046,9 +1258,9 @@ def recommend_chip(
     """Pick at most one chip for this GW by expected incremental points."""
     ensure_chip_state(cfg)
     structure = gw_structure(ctx, gw)
-    baseline = estimate_lineup_ep(xi, capt, triple=False)
-    bench_ep = sum(player_ep(p) for p in bench)
-    capt_ep = player_ep(capt)
+    baseline = estimate_lineup_ep(ctx, xi, capt, triple=False, gw=gw)
+    bench_ep = sum(gw_expected_points(ctx, p, gw) for p in bench)
+    capt_ep = gw_expected_points(ctx, capt, gw)
     tc_extra = capt_ep  # TC adds one more copy vs normal captain
     bb_extra = bench_ep
     half = chip_half_key(gw)
@@ -1060,7 +1272,7 @@ def recommend_chip(
     # --- Triple Captain ---
     if chip_available(cfg, ctx, "3xc", gw):
         def tc_captain_score(p: dict[str, Any]) -> float:
-            s = player_ep(p) * 2  # prefer higher EP
+            s = gw_expected_points(ctx, p, gw) * 2
             fdr = fdr_for_event(ctx, p["team"], gw)
             if fdr <= 2:
                 s += 1.5
@@ -1078,7 +1290,7 @@ def recommend_chip(
             return s
 
         tc_capt = max(xi, key=tc_captain_score)
-        tc_extra = player_ep(tc_capt)
+        tc_extra = gw_expected_points(ctx, tc_capt, gw)
         score = tc_extra
         reason = f"TC gir +{tc_extra:.1f} EP (ekstra 1× på {tc_capt['web_name']})"
         if tc_capt["id"] != capt["id"]:
@@ -1469,7 +1681,11 @@ def cmd_suggest(ctx: Context, args: argparse.Namespace) -> None:
         print("Ingen entry koblet ennå (valgfritt): python3 fpl_cli.py link <ENTRY_ID>")
     if nxt:
         print(f"Neste: {nxt['name']}  deadline {nxt.get('deadline_time')}")
-    print(f"Differensial-trykk: {competition:.2f} (høyere = mer jakt i ligaen)\n")
+    print(f"Differensial-trykk: {competition:.2f} (høyere = mer jakt i ligaen)")
+    print(
+        "EV-modell: FPL ep_next + form/PPG/xGI × FDR/hjemme-borte denne GW "
+        "+ minutt-sannsynlighet + prisverdi\n"
+    )
 
     data = load_squad()
 
@@ -1558,13 +1774,13 @@ def cmd_suggest(ctx: Context, args: argparse.Namespace) -> None:
         for i, m in enumerate(plan["moves"], 1):
             must = " [PRIORITERT — risiko/skade]" if m.get("must") else ""
             print(
-                f"{i}. UT  {player_label(ctx, m['out'])}\n"
-                f"   INN {player_label(ctx, m['in'])}  "
-                f"(Δscore {m['gain']:+.1f}, Δ£ {m['cost_delta']/10:+.1f}m){must}"
+                f"{i}. UT  {player_label(ctx, m['out'])}  [{m.get('out_fx','')}]\n"
+                f"   INN {player_label(ctx, m['in'])}  [{m.get('in_fx','')}]  "
+                f"(ΔEV {m['gain']:+.1f} poeng, Δ£ {m['cost_delta']/10:+.1f}m){must}"
             )
         if plan["hit"]:
             print(f"\nHits: −{plan['hit']} poeng")
-        print(f"Forventet nettogevinst (modell): {plan['net']:+.1f}")
+        print(f"Forventet nettogevinst (poeng): {plan['net']:+.1f}")
 
     new_squad = plan["squad"]
     new_bank = plan["bank"]
