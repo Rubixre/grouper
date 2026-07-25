@@ -1861,7 +1861,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="FPL-coach: foreslå lag og ukentlige bytter for ditt lag",
         epilog="Hovedflyt: link <id> → suggest → (hver uke) suggest [--apply] → pull etter deadline",
     )
-    sub = parser.add_subparsers(dest="cmd", required=True)
+    sub = parser.add_subparsers(dest="cmd", required=False)
 
     p_link = sub.add_parser("link", help="Koble FPL-lag (entry id fra URL)")
     p_link.add_argument("entry_id", type=int, help="Tall i fantasy.premierleague.com/entry/XXXXX/")
@@ -1912,9 +1912,70 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def interactive_menu() -> None:
+    """Phone-friendly menu (Python Code Pad / Pyto / Pydroid osv.)."""
+    print("=== FPL Coach (telefonmeny) ===")
+    print("Trenger nett. Første gang: velg 1 for å koble laget ditt.\n")
+    while True:
+        print(
+            "1) Koble FPL-lag (entry-id)\n"
+            "2) Suggest — lag / bytter / kaptein / chips\n"
+            "3) Suggest + lagre bytter (--apply)\n"
+            "4) Chip-plan\n"
+            "5) Vis lagret tropp\n"
+            "6) Synk fra FPL (pull)\n"
+            "7) Fixtures (neste 6 GW)\n"
+            "0) Avslutt"
+        )
+        choice = input("\nVelg: ").strip()
+        if choice in {"0", "q", "quit", "exit"}:
+            print("Ferdig.")
+            return
+        try:
+            if choice == "1":
+                raw = input("Entry-id (tall fra /entry/1234567/): ").strip()
+                league = input("Mini-liga id (valgfritt, Enter for hopp over): ").strip()
+                ns = argparse.Namespace(
+                    entry_id=int(raw),
+                    league=int(league) if league else None,
+                )
+                cmd_link(None, ns)
+            elif choice == "2":
+                cmd_suggest(
+                    load_context(),
+                    argparse.Namespace(apply=False, refresh=False, auto_save=False),
+                )
+            elif choice == "3":
+                cmd_suggest(
+                    load_context(),
+                    argparse.Namespace(apply=True, refresh=False, auto_save=False),
+                )
+            elif choice == "4":
+                cmd_chips(load_context(), argparse.Namespace(action="plan", chip=None, gw=None))
+            elif choice == "5":
+                cmd_show(load_context(), argparse.Namespace())
+            elif choice == "6":
+                cmd_pull(load_context(), argparse.Namespace())
+            elif choice == "7":
+                cmd_fixtures(load_context(), argparse.Namespace(next=6))
+            else:
+                print("Ugyldig valg.\n")
+                continue
+        except Exception as exc:  # noqa: BLE001 — show errors clearly on phone
+            print(f"\nFeil: {exc}\n")
+        print()
+
+
 def main() -> None:
+    # No args (typical on phone apps) → interactive menu
+    if len(sys.argv) <= 1:
+        interactive_menu()
+        return
     parser = build_parser()
     args = parser.parse_args()
+    if not getattr(args, "cmd", None):
+        interactive_menu()
+        return
     needs_ctx = getattr(args, "needs_ctx", True)
     ctx = load_context() if needs_ctx else None
     if args.cmd == "link":
