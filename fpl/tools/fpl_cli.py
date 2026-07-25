@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-"""FPL 2026/27 CLI — ranking, fixtures, draft and weekly decisions.
+"""FPL 2026/27 — én kommando for lagforslag og ukentlige bytter.
 
-Uses the public Fantasy Premier League API. No API key required.
-Requires Python 3.10+ and network access.
+Offentlig FPL API. Ingen pip-pakker. Python 3.10+.
+
+Hovedbruk:
+  python3 fpl_cli.py link <ENTRY_ID>
+  python3 fpl_cli.py suggest
+  python3 fpl_cli.py suggest --apply
+  python3 fpl_cli.py pull
 """
 
 from __future__ import annotations
@@ -13,20 +18,34 @@ import sys
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 API = "https://fantasy.premierleague.com/api"
 BUDGET = 1000  # £100.0m in tenths
-SQUAD_LIMITS = {1: 2, 2: 5, 3: 5, 4: 3}  # GKP DEF MID FWD
+SQUAD_LIMITS = {1: 2, 2: 5, 3: 5, 4: 3}
 MAX_PER_CLUB = 3
+TOOLS_DIR = Path(__file__).resolve().parent
+CONFIG_PATH = TOOLS_DIR / "config.json"
+SQUAD_PATH = TOOLS_DIR / "my_squad.json"
 
 
-def fetch_json(path: str) -> Any:
+# ---------------------------------------------------------------------------
+# HTTP / context
+# ---------------------------------------------------------------------------
+
+
+def fetch_json(path: str, *, optional: bool = False) -> Any | None:
     url = f"{API}{path}"
-    req = urllib.request.Request(url, headers={"User-Agent": "fpl-prosess/1.0"})
+    req = urllib.request.Request(url, headers={"User-Agent": "fpl-coach/2.0"})
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             return json.load(resp)
+    except urllib.error.HTTPError as exc:
+        if optional and exc.code in {404, 403}:
+            return None
+        print(f"Kunne ikke hente {url}: HTTP {exc.code}", file=sys.stderr)
+        sys.exit(1)
     except urllib.error.URLError as exc:
         print(f"Kunne ikke hente {url}: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -48,6 +67,10 @@ class Context:
     @property
     def players(self) -> list[dict[str, Any]]:
         return [p for p in self.bootstrap["elements"] if p.get("status") != "u"]
+
+    @property
+    def by_id(self) -> dict[int, dict[str, Any]]:
+        return {p["id"]: p for p in self.bootstrap["elements"]}
 
 
 def load_context() -> Context:
@@ -84,17 +107,64 @@ def available(p: dict[str, Any]) -> bool:
     return p.get("can_select", True)
 
 
+def is_risk(p: dict[str, Any]) -> bool:
+    status = p.get("status", "a")
+    if status in {"i", "s", "d", "u"}:
+        return True
+    chance = p.get("chance_of_playing_next_round")
+    return chance is not None and chance < 75
+
+
+# ---------------------------------------------------------------------------
+# Config / local squad (linked to your FPL entry)
+# ---------------------------------------------------------------------------
+
+
+def load_config() -> dict[str, Any]:
+    if not CONFIG_PATH.exists():
+        return {}
+    return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+
+
+def save_config(cfg: dict[str, Any]) -> None:
+    CONFIG_PATH.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
+
+
+def load_squad() -> dict[str, Any] | None:
+    if not SQUAD_PATH.exists():
+        return None
+    return json.loads(SQUAD_PATH.read_text(encoding="utf-8"))
+
+
+def save_squad(data: dict[str, Any]) -> None:
+    SQUAD_PATH.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+def next_event(ctx: Context) -> dict[str, Any] | None:
+    return next((e for e in ctx.bootstrap["events"] if e.get("is_next")), None)
+
+
+def current_or_last_event(ctx: Context) -> dict[str, Any] | None:
+    cur = next((e for e in ctx.bootstrap["events"] if e.get("is_current")), None)
+    if cur:
+        return cur
+    finished = [e for e in ctx.bootstrap["events"] if e.get("finished")]
+    return finished[-1] if finished else None
+
+
+# ---------------------------------------------------------------------------
+# Scoring
+# ---------------------------------------------------------------------------
+
+
 def reliable_xgi90(p: dict[str, Any]) -> float:
-    """Per-90 xGI is noisy with tiny samples — require meaningful minutes."""
     minutes = int(p.get("minutes") or 0)
     if minutes < 600:
-        # Scale season xGI gently so proven scorers still surface preseason
         return fnum(p.get("expected_goal_involvements")) / 15.0
     return fnum(p.get("expected_goal_involvements_per_90"))
 
 
 def likely_starter_bonus(p: dict[str, Any]) -> float:
-    """Proxy for minutes risk before the season has form data."""
     minutes = int(p.get("minutes") or 0)
     starts = int(p.get("starts") or 0)
     own = fnum(p.get("selected_by_percent"))
@@ -107,8 +177,7 @@ def likely_starter_bonus(p: dict[str, Any]) -> float:
     elif starts >= 5 or minutes >= 450:
         bonus += 0.6
     else:
-        bonus -= 2.5  # avoid pure fringe/bench noise in drafts
-    # Ownership is a weak but useful "will play" signal preseason
+        bonus -= 2.5
     if own >= 10:
         bonus += 1.2
     elif own >= 3:
@@ -120,8 +189,12 @@ def likely_starter_bonus(p: dict[str, Any]) -> float:
     return bonus
 
 
-def score_player(p: dict[str, Any], weights: dict[str, float] | None = None) -> float:
-    """Composite score for preseason + in-season ranking."""
+def score_player(
+    p: dict[str, Any],
+    weights: dict[str, float] | None = None,
+    *,
+    competition: float = 0.0,
+) -> float:
     w = weights or {
         "ep": 3.5,
         "form": 1.5,
@@ -136,6 +209,8 @@ def score_player(p: dict[str, Any], weights: dict[str, float] | None = None) -> 
     cost = max(p["now_cost"] / 10.0, 3.5)
     value = (ep + form * 0.5 + xgi90) / cost
     own = fnum(p.get("selected_by_percent"))
+    # competition > 0: reward differentials (useful when chasing in mini-league)
+    diff_bonus = competition * max(0.0, 30.0 - own) / 15.0
     return (
         w["ep"] * ep
         + w["form"] * form
@@ -143,11 +218,11 @@ def score_player(p: dict[str, Any], weights: dict[str, float] | None = None) -> 
         + w["value"] * value * 10
         + w.get("starter", 1.0) * likely_starter_bonus(p)
         - w["own_penalty"] * max(own - 20, 0) / 10
+        + diff_bonus
     )
 
 
 def upcoming_fdr(ctx: Context, team_id: int, next_n: int = 6) -> list[tuple[int, int, str, bool]]:
-    """Return list of (event, fdr, opponent_short, is_home) for next N fixtures."""
     events = sorted(
         (e for e in ctx.bootstrap["events"] if not e.get("finished")),
         key=lambda e: e["id"],
@@ -176,75 +251,21 @@ def avg_fdr(ctx: Context, team_id: int, next_n: int = 6) -> float:
     return sum(r[1] for r in rows) / len(rows)
 
 
-def cmd_rank(ctx: Context, args: argparse.Namespace) -> None:
-    players = [p for p in ctx.players if available(p)]
-    if args.pos:
-        want = args.pos.upper()
-        pos_id = next((i for i, n in ctx.positions.items() if n == want), None)
-        if pos_id is None:
-            print(f"Ukjent posisjon: {args.pos}. Bruk GKP/DEF/MID/FWD", file=sys.stderr)
-            sys.exit(2)
-        players = [p for p in players if p["element_type"] == pos_id]
-    if args.max_own is not None:
-        players = [p for p in players if fnum(p.get("selected_by_percent")) <= args.max_own]
-    if args.max_price is not None:
-        players = [p for p in players if p["now_cost"] <= int(args.max_price * 10)]
-
-    weights = None
-    if args.differential:
-        weights = {
-            "ep": 3.0,
-            "form": 1.5,
-            "xgi90": 2.2,
-            "value": 1.2,
-            "own_penalty": 1.5,
-            "starter": 1.0,
-        }
-
-    ranked = sorted(players, key=lambda p: score_player(p, weights), reverse=True)[: args.top]
-    print(f"{'Spiller':<14} Pos Lag Pris   EP  Form  xGI90  Own%  FDR{args.next}  Score")
-    print("-" * 78)
-    for p in ranked:
-        fdr = avg_fdr(ctx, p["team"], args.next)
-        print(
-            f"{player_label(ctx, p)}  "
-            f"{fnum(p.get('ep_next')):4.1f} {fnum(p.get('form')):5.1f} "
-            f"{reliable_xgi90(p):5.2f} "
-            f"{fnum(p.get('selected_by_percent')):5.1f}  "
-            f"{fdr:4.2f}  {score_player(p, weights):5.1f}"
-        )
+def week_score(ctx: Context, p: dict[str, Any], *, competition: float = 0.0) -> float:
+    return (
+        score_player(p, competition=competition)
+        + (3.5 - avg_fdr(ctx, p["team"], 4)) * 1.1
+        + fnum(p.get("ep_next")) * 0.8
+        - (4.0 if is_risk(p) else 0.0)
+    )
 
 
-def cmd_fixtures(ctx: Context, args: argparse.Namespace) -> None:
-    teams = sorted(ctx.teams.values(), key=lambda t: avg_fdr(ctx, t["id"], args.next))
-    print(f"Fixture difficulty (snitt FDR) neste {args.next} GW — lavest = lettest\n")
-    print(f"{'Lag':<4} {'Snitt':>5}  Run")
-    print("-" * 60)
-    for t in teams:
-        rows = upcoming_fdr(ctx, t["id"], args.next)
-        run = " ".join(f"{'H' if h else 'A'}{opp}({fdr})" for _, fdr, opp, h in rows)
-        print(f"{t['short_name']:<4} {avg_fdr(ctx, t['id'], args.next):5.2f}  {run}")
+# ---------------------------------------------------------------------------
+# Draft
+# ---------------------------------------------------------------------------
 
 
-def cmd_value(ctx: Context, args: argparse.Namespace) -> None:
-    print("Verdi: EP_next / pris (kun spillere som kan velges)\n")
-    for pos_id, pos_name in sorted(ctx.positions.items()):
-        pool = [p for p in ctx.players if p["element_type"] == pos_id and available(p)]
-        pool.sort(
-            key=lambda p: fnum(p.get("ep_next")) / max(p["now_cost"] / 10, 3.5),
-            reverse=True,
-        )
-        print(f"=== {pos_name} ===")
-        for p in pool[: args.top]:
-            value = fnum(p.get("ep_next")) / (p["now_cost"] / 10)
-            print(
-                f"  {player_label(ctx, p)}  EP {fnum(p.get('ep_next')):4.1f}  "
-                f"verdi {value:4.2f}  own {fnum(p.get('selected_by_percent')):5.1f}%"
-            )
-        print()
-
-
-def pick_squad(ctx: Context, style: str = "balanced") -> list[dict[str, Any]]:
+def pick_squad(ctx: Context, style: str = "balanced", *, competition: float = 0.4) -> list[dict[str, Any]]:
     weights = {
         "balanced": {
             "ep": 3.5,
@@ -273,7 +294,9 @@ def pick_squad(ctx: Context, style: str = "balanced") -> list[dict[str, Any]]:
     }[style]
 
     def key(p: dict[str, Any]) -> float:
-        return score_player(p, weights) + (3.5 - avg_fdr(ctx, p["team"], 6)) * 0.9
+        return score_player(p, weights, competition=competition) + (
+            3.5 - avg_fdr(ctx, p["team"], 6)
+        ) * 0.9
 
     by_pos: dict[int, list[dict[str, Any]]] = {1: [], 2: [], 3: [], 4: []}
     for p in ctx.players:
@@ -287,7 +310,7 @@ def pick_squad(ctx: Context, style: str = "balanced") -> list[dict[str, Any]]:
     club_count: dict[int, int] = {}
     counts = {1: 0, 2: 0, 3: 0, 4: 0}
     gk_teams: set[int] = set()
-    floor = 40  # £4.0m
+    floor = 40
 
     def slots_left_after_one() -> int:
         return 15 - len(squad) - 1
@@ -317,7 +340,6 @@ def pick_squad(ctx: Context, style: str = "balanced") -> list[dict[str, Any]]:
         if p["element_type"] == 1:
             gk_teams.add(p["team"])
 
-    # Premium seats first, then fill remaining by best affordable score
     seat_order = (
         [4] * SQUAD_LIMITS[4]
         + [3] * SQUAD_LIMITS[3]
@@ -325,22 +347,15 @@ def pick_squad(ctx: Context, style: str = "balanced") -> list[dict[str, Any]]:
         + [1] * SQUAD_LIMITS[1]
     )
     for pos in seat_order:
-        picked = None
-        for p in by_pos[pos]:
-            if can_add(p):
-                picked = p
-                break
+        picked = next((p for p in by_pos[pos] if can_add(p)), None)
         if picked is None:
-            # fallback: cheapest available for position
             for p in sorted(by_pos[pos], key=lambda x: (x["now_cost"], -key(x))):
                 if can_add(p):
                     picked = p
                     break
-        if picked is None:
-            continue
-        add(picked)
+        if picked:
+            add(picked)
 
-    # Last-resort fill if any seat empty (should be rare)
     guard = 0
     while len(squad) < 15 and guard < 30:
         guard += 1
@@ -349,7 +364,6 @@ def pick_squad(ctx: Context, style: str = "balanced") -> list[dict[str, Any]]:
             break
         picked = None
         for p in sorted(by_pos[missing], key=lambda x: (x["now_cost"], -key(x))):
-            # temporarily ignore score; force cheapest legal
             if counts[p["element_type"]] >= SQUAD_LIMITS[p["element_type"]]:
                 continue
             if club_count.get(p["team"], 0) >= MAX_PER_CLUB:
@@ -363,7 +377,6 @@ def pick_squad(ctx: Context, style: str = "balanced") -> list[dict[str, Any]]:
             picked = p
             break
         if picked is None:
-            # free money: downgrade most expensive non-missing player
             candidates = [
                 (i, p)
                 for i, p in enumerate(squad)
@@ -399,7 +412,6 @@ def pick_squad(ctx: Context, style: str = "balanced") -> list[dict[str, Any]]:
             continue
         add(picked)
 
-    # Spend leftover ITB on upgrades
     itb = BUDGET - spend
     if itb >= 5:
         squad_ids = {p["id"] for p in squad}
@@ -444,9 +456,14 @@ def pick_squad(ctx: Context, style: str = "balanced") -> list[dict[str, Any]]:
     return squad
 
 
-def suggest_xi(ctx: Context, squad: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def suggest_xi(
+    ctx: Context,
+    squad: list[dict[str, Any]],
+    *,
+    competition: float = 0.0,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     def key(p: dict[str, Any]) -> float:
-        return score_player(p) + (3.5 - avg_fdr(ctx, p["team"], 4)) * 1.0
+        return week_score(ctx, p, competition=competition)
 
     by_pos: dict[int, list[dict[str, Any]]] = {1: [], 2: [], 3: [], 4: []}
     for p in squad:
@@ -454,19 +471,13 @@ def suggest_xi(ctx: Context, squad: list[dict[str, Any]]) -> tuple[list[dict[str
     for pos in by_pos:
         by_pos[pos].sort(key=key, reverse=True)
 
-    xi: list[dict[str, Any]] = []
-    # GK
-    xi.append(by_pos[1][0])
-    # Minimums: 3 DEF, 2 MID, 1 FWD
+    xi: list[dict[str, Any]] = [by_pos[1][0]]
     xi.extend(by_pos[2][:3])
     xi.extend(by_pos[3][:2])
     xi.extend(by_pos[4][:1])
     chosen = {p["id"] for p in xi}
     rest = sorted((p for p in squad if p["id"] not in chosen), key=key, reverse=True)
-    # Fill to 11 with best remaining outfield (respect formation limits: max 5 def/mid, max 3 fwd)
-    def_count = 3
-    mid_count = 2
-    fwd_count = 1
+    def_count, mid_count, fwd_count = 3, 2, 1
     for p in rest:
         if len(xi) >= 11:
             break
@@ -488,19 +499,216 @@ def suggest_xi(ctx: Context, squad: list[dict[str, Any]]) -> tuple[list[dict[str
             fwd_count += 1
     xi_ids = {p["id"] for p in xi}
     bench = sorted((p for p in squad if p["id"] not in xi_ids), key=key, reverse=True)
-    # Bench order: outfield first by quality, GK last typically as slot 4 — keep GK at end
     outfield_bench = [p for p in bench if p["element_type"] != 1]
     gk_bench = [p for p in bench if p["element_type"] == 1]
-    bench = outfield_bench + gk_bench
-    return xi, bench
+    return xi, outfield_bench + gk_bench
 
 
-def cmd_draft(ctx: Context, args: argparse.Namespace) -> None:
-    squad = pick_squad(ctx, style=args.style)
-    spend = sum(p["now_cost"] for p in squad) / 10
-    xi, bench = suggest_xi(ctx, squad)
-    print(f"Draft-stil: {args.style}  |  Brukt: £{spend:.1f}m  |  ITB: £{100 - spend:.1f}m\n")
-    print("=== Foreslått tropp ===")
+def pick_captain(ctx: Context, xi: list[dict[str, Any]]) -> dict[str, Any]:
+    return max(
+        xi,
+        key=lambda p: fnum(p.get("ep_next")) * 2.5
+        + week_score(ctx, p) * 0.2
+        + (3.5 - avg_fdr(ctx, p["team"], 1))
+        - (5.0 if is_risk(p) else 0.0),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Transfers linked to your squad
+# ---------------------------------------------------------------------------
+
+
+def club_counts(squad: list[dict[str, Any]]) -> dict[int, int]:
+    counts: dict[int, int] = {}
+    for p in squad:
+        counts[p["team"]] = counts.get(p["team"], 0) + 1
+    return counts
+
+
+def legal_replacement(
+    squad: list[dict[str, Any]],
+    out_p: dict[str, Any],
+    in_p: dict[str, Any],
+    bank: int,
+) -> bool:
+    if out_p["element_type"] != in_p["element_type"]:
+        return False
+    if not available(in_p) and not is_risk(out_p):
+        # allow only if replacing risk, still prefer available
+        pass
+    if not available(in_p):
+        return False
+    if any(p["id"] == in_p["id"] for p in squad):
+        return False
+    sell = out_p["now_cost"]  # approx; true sell price needs auth API
+    if in_p["now_cost"] > bank + sell:
+        return False
+    clubs = club_counts(squad)
+    clubs[out_p["team"]] -= 1
+    clubs[in_p["team"]] = clubs.get(in_p["team"], 0) + 1
+    if clubs[in_p["team"]] > MAX_PER_CLUB:
+        return False
+    if out_p["element_type"] == 1:
+        gk_teams = {p["team"] for p in squad if p["element_type"] == 1 and p["id"] != out_p["id"]}
+        if in_p["team"] in gk_teams:
+            return False
+    return True
+
+
+def best_single_transfers(
+    ctx: Context,
+    squad: list[dict[str, Any]],
+    bank: int,
+    *,
+    competition: float,
+    limit: int = 8,
+) -> list[dict[str, Any]]:
+    pool = [p for p in ctx.players if available(p)]
+    moves: list[dict[str, Any]] = []
+    for out_p in squad:
+        out_s = week_score(ctx, out_p, competition=competition)
+        urgency = 3.0 if is_risk(out_p) else 0.0
+        for in_p in pool:
+            if not legal_replacement(squad, out_p, in_p, bank):
+                continue
+            gain = week_score(ctx, in_p, competition=competition) - out_s + urgency
+            if gain <= 0.35 and urgency == 0:
+                continue
+            moves.append(
+                {
+                    "out": out_p,
+                    "in": in_p,
+                    "gain": gain,
+                    "cost_delta": in_p["now_cost"] - out_p["now_cost"],
+                    "must": is_risk(out_p),
+                }
+            )
+    moves.sort(key=lambda m: (m["must"], m["gain"]), reverse=True)
+    # unique outs / ins preference
+    seen_out: set[int] = set()
+    seen_in: set[int] = set()
+    unique: list[dict[str, Any]] = []
+    for m in moves:
+        if m["out"]["id"] in seen_out or m["in"]["id"] in seen_in:
+            continue
+        unique.append(m)
+        seen_out.add(m["out"]["id"])
+        seen_in.add(m["in"]["id"])
+        if len(unique) >= limit:
+            break
+    return unique
+
+
+def apply_move(squad: list[dict[str, Any]], bank: int, move: dict[str, Any]) -> tuple[list[dict[str, Any]], int]:
+    new_squad = []
+    for p in squad:
+        if p["id"] == move["out"]["id"]:
+            new_squad.append(move["in"])
+        else:
+            new_squad.append(p)
+    new_bank = bank + move["out"]["now_cost"] - move["in"]["now_cost"]
+    return new_squad, new_bank
+
+
+def choose_transfer_plan(
+    ctx: Context,
+    squad: list[dict[str, Any]],
+    bank: int,
+    free_transfers: int,
+    *,
+    competition: float,
+) -> dict[str, Any]:
+    baseline = sum(week_score(ctx, p, competition=competition) for p in squad)
+    singles = best_single_transfers(ctx, squad, bank, competition=competition, limit=12)
+
+    plans: list[dict[str, Any]] = [
+        {"moves": [], "gain": 0.0, "hit": 0, "net": 0.0, "squad": squad, "bank": bank}
+    ]
+
+    # 1 transfer
+    if singles:
+        m = singles[0]
+        s1, b1 = apply_move(squad, bank, m)
+        hit = 0 if free_transfers >= 1 else 4
+        plans.append(
+            {
+                "moves": [m],
+                "gain": m["gain"],
+                "hit": hit,
+                "net": m["gain"] - hit,
+                "squad": s1,
+                "bank": b1,
+            }
+        )
+
+    # 2 transfers (sequential)
+    if singles:
+        m1 = singles[0]
+        s1, b1 = apply_move(squad, bank, m1)
+        second = best_single_transfers(ctx, s1, b1, competition=competition, limit=8)
+        if second:
+            m2 = second[0]
+            s2, b2 = apply_move(s1, b1, m2)
+            transfers_used = 2
+            hit = max(0, transfers_used - free_transfers) * 4
+            gain = m1["gain"] + m2["gain"]
+            plans.append(
+                {
+                    "moves": [m1, m2],
+                    "gain": gain,
+                    "hit": hit,
+                    "net": gain - hit,
+                    "squad": s2,
+                    "bank": b2,
+                }
+            )
+
+    # Prefer must-fix if any risky player and a move addresses it
+    must_plans = [p for p in plans if any(m.get("must") for m in p["moves"])]
+    if must_plans:
+        return max(must_plans, key=lambda p: p["net"])
+
+    # Otherwise best net gain; require clear upside for hits
+    viable = [p for p in plans if p["hit"] == 0 or p["net"] >= 2.0]
+    return max(viable, key=lambda p: p["net"])
+
+
+def competition_pressure(cfg: dict[str, Any]) -> float:
+    """0..1.5 — higher when chasing in mini-league."""
+    league_id = cfg.get("league_id")
+    entry_id = cfg.get("entry_id")
+    if not league_id or not entry_id:
+        return 0.5  # default mild differential lean for private leagues
+    data = fetch_json(f"/leagues-classic/{league_id}/standings/", optional=True)
+    if not data:
+        return 0.5
+    results = data.get("standings", {}).get("results") or []
+    if not results:
+        return 0.5
+    my = next((r for r in results if r.get("entry") == entry_id), None)
+    if not my:
+        return 0.5
+    rank = int(my.get("rank") or my.get("entry_rank") or 1)
+    total = len(results)
+    if rank <= 2:
+        return 0.15  # protect lead — more template
+    if rank <= max(3, total // 3):
+        return 0.55
+    return 1.2  # chasing — more differentials
+
+
+def resolve_free_transfers(squad_data: dict[str, Any], cfg: dict[str, Any]) -> int:
+    if "free_transfers" in squad_data:
+        return int(squad_data["free_transfers"])
+    # Preseason / unknown: treat as unlimited for planning display, but suggest building squad
+    if squad_data.get("phase") == "preseason":
+        return 99
+    return 1
+
+
+def print_squad_block(ctx: Context, squad: list[dict[str, Any]], title: str) -> None:
+    print(f"=== {title} ===")
     for pos_id in (1, 2, 3, 4):
         print(f"\n{ctx.positions[pos_id]}:")
         for p in sorted(
@@ -508,106 +716,341 @@ def cmd_draft(ctx: Context, args: argparse.Namespace) -> None:
             key=lambda x: x["now_cost"],
             reverse=True,
         ):
-            own = fnum(p.get("selected_by_percent"))
+            risk = " ⚠" if is_risk(p) else ""
             print(
                 f"  {player_label(ctx, p)}  EP {fnum(p.get('ep_next')):4.1f}  "
-                f"own {own:5.1f}%  FDR6 {avg_fdr(ctx, p['team'], 6):.2f}"
+                f"own {fnum(p.get('selected_by_percent')):5.1f}%{risk}"
             )
-    print("\n=== Foreslått XI ===")
+
+
+def print_xi_block(ctx: Context, xi: list[dict[str, Any]], bench: list[dict[str, Any]], capt: dict[str, Any]) -> None:
+    print("\n=== Startellever ===")
     for p in xi:
-        print(f"  {player_label(ctx, p)}")
-    capt = max(
-        xi,
-        key=lambda p: fnum(p.get("ep_next")) * 2
-        + score_player(p) * 0.15
-        + (3.5 - avg_fdr(ctx, p["team"], 1)),
-    )
-    print(f"\nKaptein-forslag GW: {capt['web_name']}")
-    print("\n=== Benk (rekkefølge) ===")
+        mark = " (C)" if p["id"] == capt["id"] else ""
+        print(f"  {player_label(ctx, p)}{mark}")
+    print("\n=== Benk ===")
     for i, p in enumerate(bench, 1):
         print(f"  {i}. {player_label(ctx, p)}")
-    print(
-        "\nDette er et utgangspunkt — kjør også `rank` / `fixtures` og juster manuelt "
-        "før du lagrer i FPL-appen."
+    vc = max(
+        (p for p in xi if p["id"] != capt["id"]),
+        key=lambda p: fnum(p.get("ep_next")),
+        default=None,
     )
+    print(f"\nKaptein: {capt['web_name']}")
+    if vc:
+        print(f"VC:      {vc['web_name']}")
 
 
-def cmd_weekly(ctx: Context, args: argparse.Namespace) -> None:
-    events = ctx.bootstrap["events"]
-    current = next((e for e in events if e.get("is_current")), None)
-    nxt = next((e for e in events if e.get("is_next")), None)
-    print("=== Ukesrapport ===\n")
-    if current:
-        print(f"Pågående: {current['name']}  ferdig={current.get('finished')}")
+# ---------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------
+
+
+def cmd_link(_ctx: Context | None, args: argparse.Namespace) -> None:
+    entry = fetch_json(f"/entry/{args.entry_id}/")
+    cfg = load_config()
+    cfg["entry_id"] = int(args.entry_id)
+    cfg["manager"] = f"{entry.get('player_first_name', '')} {entry.get('player_last_name', '')}".strip()
+    cfg["team_name"] = entry.get("name")
+    if args.league:
+        cfg["league_id"] = int(args.league)
+    else:
+        # Prefer first private classic league if present
+        private = [
+            lg
+            for lg in (entry.get("leagues", {}) or {}).get("classic", [])
+            if lg.get("league_type") == "x"
+        ]
+        if private and "league_id" not in cfg:
+            cfg["league_id"] = private[0]["id"]
+            print(f"Fant privat liga: {private[0]['name']} (id {private[0]['id']})")
+    save_config(cfg)
+    print(f"Koblet til: {cfg['manager']} — «{cfg['team_name']}» (entry {cfg['entry_id']})")
+    if cfg.get("league_id"):
+        print(f"Mini-liga id: {cfg['league_id']}")
+    print("\nNeste steg: python3 fpl_cli.py suggest")
+
+
+def pull_picks(ctx: Context, entry_id: int) -> dict[str, Any] | None:
+    """Fetch latest public picks for entry. Available after a GW deadline."""
+    # Try next/current event first, then walk backwards
+    candidates: list[int] = []
+    nxt = next_event(ctx)
+    cur = current_or_last_event(ctx)
     if nxt:
-        print(f"Neste:    {nxt['name']}  deadline={nxt.get('deadline_time')}")
-    print()
+        candidates.append(nxt["id"])
+    if cur and cur["id"] not in candidates:
+        candidates.append(cur["id"])
+    for e in sorted(ctx.bootstrap["events"], key=lambda x: x["id"], reverse=True):
+        if e["id"] not in candidates:
+            candidates.append(e["id"])
+        if len(candidates) >= 6:
+            break
 
-    # Price / transfer movers
+    for eid in candidates:
+        picks = fetch_json(f"/entry/{entry_id}/event/{eid}/picks/", optional=True)
+        if not picks or not picks.get("picks"):
+            continue
+        element_ids = [p["element"] for p in sorted(picks["picks"], key=lambda x: x["position"])]
+        hist = picks.get("entry_history") or {}
+        bank = int(hist.get("bank") or 0)
+        return {
+            "entry_id": entry_id,
+            "event": eid,
+            "phase": "in_season",
+            "element_ids": element_ids,
+            "bank": bank,
+            "free_transfers": 1,
+            "source": "fpl_api",
+            "active_chip": picks.get("active_chip"),
+        }
+    return None
+
+
+def cmd_pull(ctx: Context, args: argparse.Namespace) -> None:
+    cfg = load_config()
+    if not cfg.get("entry_id"):
+        print("Ingen FPL-konto koblet. Kjør: python3 fpl_cli.py link <ENTRY_ID>", file=sys.stderr)
+        sys.exit(2)
+    data = pull_picks(ctx, int(cfg["entry_id"]))
+    if not data:
+        print(
+            "Fant ikke laget i FPL API ennå.\n"
+            "Før GW1-deadline er laget privat. Kjør `suggest` for å lage/oppdatere lokalt lag,\n"
+            "eller kjør `pull` igjen etter at en gameweek-deadline har passert."
+        )
+        sys.exit(0)
+    # Validate ids exist
+    missing = [i for i in data["element_ids"] if i not in ctx.by_id]
+    if missing:
+        print(f"Ukjente spiller-ider fra API: {missing}", file=sys.stderr)
+        sys.exit(1)
+    save_squad(data)
+    squad = [ctx.by_id[i] for i in data["element_ids"]]
+    print(f"Hentet lag fra FPL (GW{data['event']}), bank £{data['bank']/10:.1f}m")
+    print_squad_block(ctx, squad, "Ditt lag")
+
+
+def squad_from_ids(ctx: Context, element_ids: list[int]) -> list[dict[str, Any]]:
+    return [ctx.by_id[i] for i in element_ids]
+
+
+def cmd_show(ctx: Context, args: argparse.Namespace) -> None:
+    cfg = load_config()
+    data = load_squad()
+    if cfg:
+        print(f"Manager: {cfg.get('manager')} | Lag: {cfg.get('team_name')} | entry {cfg.get('entry_id')}")
+        if cfg.get("league_id"):
+            print(f"Liga:   {cfg.get('league_id')}")
+    if not data:
+        print("Ingen lokal tropp. Kjør: python3 fpl_cli.py suggest")
+        return
+    squad = squad_from_ids(ctx, data["element_ids"])
+    print(f"Kilde:  {data.get('source')} | fase: {data.get('phase')} | bank £{data.get('bank', 0)/10:.1f}m")
+    print_squad_block(ctx, squad, "Lagret tropp")
+
+
+def cmd_suggest(ctx: Context, args: argparse.Namespace) -> None:
+    cfg = load_config()
+    competition = competition_pressure(cfg)
+    nxt = next_event(ctx)
+    print("=== FPL SUGGEST (konkurransemodus) ===\n")
+    if cfg.get("entry_id"):
+        print(f"Koblet lag: {cfg.get('team_name')} ({cfg.get('manager')}) — entry {cfg['entry_id']}")
+    else:
+        print("Ingen entry koblet ennå (valgfritt): python3 fpl_cli.py link <ENTRY_ID>")
+    if nxt:
+        print(f"Neste: {nxt['name']}  deadline {nxt.get('deadline_time')}")
+    print(f"Differensial-trykk: {competition:.2f} (høyere = mer jakt i ligaen)\n")
+
+    data = load_squad()
+
+    # Auto-pull when linked and no local squad / refresh requested
+    if cfg.get("entry_id") and (data is None or args.refresh):
+        pulled = pull_picks(ctx, int(cfg["entry_id"]))
+        if pulled:
+            save_squad(pulled)
+            data = pulled
+            print(f"Synket tropp fra FPL (GW{pulled['event']}).\n")
+
+    # Preseason / first run: build full squad
+    if data is None:
+        style = "differential" if competition >= 0.9 else "balanced"
+        print(f"Ingen lag lagret — bygger konkurranseutkast ({style})...\n")
+        squad = pick_squad(ctx, style=style, competition=competition)
+        bank = BUDGET - sum(p["now_cost"] for p in squad)
+        xi, bench = suggest_xi(ctx, squad, competition=competition)
+        capt = pick_captain(ctx, xi)
+        print_squad_block(ctx, squad, "Foreslått tropp (£100m)")
+        print_xi_block(ctx, xi, bench, capt)
+        print(f"\nBank: £{bank/10:.1f}m")
+        print("\n→ Legg inn denne troppen i FPL-appen.")
+        payload = {
+            "entry_id": cfg.get("entry_id"),
+            "phase": "preseason",
+            "element_ids": [p["id"] for p in squad],
+            "bank": bank,
+            "free_transfers": 99,
+            "source": "suggest_draft",
+            "style": style,
+        }
+        if args.apply or args.auto_save:
+            save_squad(payload)
+            print(f"Lagret lokalt i {SQUAD_PATH.name} (brukes for ukentlige bytter).")
+        else:
+            save_squad(payload)  # auto-save on first suggest for minimal friction
+            print(f"Lagret lokalt i {SQUAD_PATH.name}. Kjør `suggest` igjen senere for bytter.")
+        return
+
+    # In-season / ongoing: recommend transfers for THIS squad
+    squad = squad_from_ids(ctx, data["element_ids"])
+    bank = int(data.get("bank") or 0)
+    ft = resolve_free_transfers(data, cfg)
+    print_squad_block(ctx, squad, "Ditt lag (grunnlag)")
+    print(f"\nBank: £{bank/10:.1f}m | Gratis bytter (antatt): {ft if ft < 90 else 'ubegrenset (preseason)'}")
+
+    if ft >= 90:
+        # Still preseason: allow full rebuild suggestion vs current
+        style = "differential" if competition >= 0.9 else "balanced"
+        alt = pick_squad(ctx, style=style, competition=competition)
+        print("\n=== Preseason: alternativt konkurranseutkast ===")
+        print("(Ubegrensede bytter — du kan bytte fritt i appen til GW1)")
+        print_squad_block(ctx, alt, "Alternativ tropp")
+        xi, bench = suggest_xi(ctx, alt, competition=competition)
+        capt = pick_captain(ctx, xi)
+        print_xi_block(ctx, xi, bench, capt)
+        if args.apply:
+            bank2 = BUDGET - sum(p["now_cost"] for p in alt)
+            save_squad(
+                {
+                    "entry_id": cfg.get("entry_id"),
+                    "phase": "preseason",
+                    "element_ids": [p["id"] for p in alt],
+                    "bank": bank2,
+                    "free_transfers": 99,
+                    "source": "suggest_draft",
+                    "style": style,
+                }
+            )
+            print(f"\nOppdatert lokal tropp → {SQUAD_PATH.name}")
+        return
+
+    plan = choose_transfer_plan(ctx, squad, bank, min(ft, 2), competition=competition)
+    print("\n=== Anbefalte endringer ===")
+    if not plan["moves"]:
+        print("Ingen bytter. Behold troppen.")
+    else:
+        for i, m in enumerate(plan["moves"], 1):
+            must = " [PRIORITERT — risiko/skade]" if m.get("must") else ""
+            print(
+                f"{i}. UT  {player_label(ctx, m['out'])}\n"
+                f"   INN {player_label(ctx, m['in'])}  "
+                f"(Δscore {m['gain']:+.1f}, Δ£ {m['cost_delta']/10:+.1f}m){must}"
+            )
+        if plan["hit"]:
+            print(f"\nHits: −{plan['hit']} poeng")
+        print(f"Forventet nettogevinst (modell): {plan['net']:+.1f}")
+
+    new_squad = plan["squad"]
+    new_bank = plan["bank"]
+    xi, bench = suggest_xi(ctx, new_squad, competition=competition)
+    capt = pick_captain(ctx, xi)
+    print_xi_block(ctx, xi, bench, capt)
+    print(f"\nBank etter bytter: £{new_bank/10:.1f}m")
+
+    if args.apply and plan["moves"]:
+        save_squad(
+            {
+                "entry_id": cfg.get("entry_id"),
+                "phase": "in_season",
+                "element_ids": [p["id"] for p in new_squad],
+                "bank": new_bank,
+                "free_transfers": 1,
+                "source": "suggest_apply",
+                "last_moves": [
+                    {"out": m["out"]["id"], "in": m["in"]["id"]} for m in plan["moves"]
+                ],
+            }
+        )
+        print(f"\nLokal tropp oppdatert med bytter → {SQUAD_PATH.name}")
+        print("Gjør de samme bytene i FPL-appen.")
+    elif plan["moves"]:
+        print("\nTips: kjør `python3 fpl_cli.py suggest --apply` når du har gjort bytene,")
+        print("eller `python3 fpl_cli.py pull` etter deadline for å synke fra FPL.")
+
+
+def cmd_rank(ctx: Context, args: argparse.Namespace) -> None:
     players = [p for p in ctx.players if available(p)]
-    risers = sorted(players, key=lambda p: p.get("transfers_in_event") or 0, reverse=True)[:8]
-    fallers = sorted(players, key=lambda p: p.get("transfers_out_event") or 0, reverse=True)[:8]
-    print("Mest hentet (denne GW):")
-    for p in risers:
+    if args.pos:
+        want = args.pos.upper()
+        pos_id = next((i for i, n in ctx.positions.items() if n == want), None)
+        if pos_id is None:
+            print(f"Ukjent posisjon: {args.pos}", file=sys.stderr)
+            sys.exit(2)
+        players = [p for p in players if p["element_type"] == pos_id]
+    if args.max_own is not None:
+        players = [p for p in players if fnum(p.get("selected_by_percent")) <= args.max_own]
+    competition = 1.0 if args.differential else 0.0
+    ranked = sorted(
+        players,
+        key=lambda p: week_score(ctx, p, competition=competition),
+        reverse=True,
+    )[: args.top]
+    print(f"{'Spiller':<14} Pos Lag Pris   EP  Own%  FDR{args.next}  Score")
+    print("-" * 70)
+    for p in ranked:
         print(
-            f"  {player_label(ctx, p)}  +{p.get('transfers_in_event', 0):,}  "
-            f"Δ£ {p.get('cost_change_event', 0) / 10:+.1f}"
-        )
-    print("\nMest solgt (denne GW):")
-    for p in fallers:
-        print(
-            f"  {player_label(ctx, p)}  -{p.get('transfers_out_event', 0):,}  "
-            f"Δ£ {p.get('cost_change_event', 0) / 10:+.1f}"
+            f"{player_label(ctx, p)}  {fnum(p.get('ep_next')):4.1f} "
+            f"{fnum(p.get('selected_by_percent')):5.1f}  "
+            f"{avg_fdr(ctx, p['team'], args.next):4.2f}  "
+            f"{week_score(ctx, p, competition=competition):5.1f}"
         )
 
-    print("\nBeste EP neste GW (kandidater til XI/kaptein):")
-    for p in sorted(players, key=lambda p: fnum(p.get("ep_next")), reverse=True)[:12]:
-        print(
-            f"  {player_label(ctx, p)}  EP {fnum(p.get('ep_next')):4.1f}  "
-            f"own {fnum(p.get('selected_by_percent')):5.1f}%"
-        )
 
-    print("\nLetteste lag-runs (neste 4 GW) — vurder cover:")
-    teams = sorted(ctx.teams.values(), key=lambda t: avg_fdr(ctx, t["id"], 4))[:8]
+def cmd_fixtures(ctx: Context, args: argparse.Namespace) -> None:
+    teams = sorted(ctx.teams.values(), key=lambda t: avg_fdr(ctx, t["id"], args.next))
+    print(f"FDR neste {args.next} GW (lavest = lettest)\n")
     for t in teams:
-        print(f"  {t['short_name']}: snitt FDR {avg_fdr(ctx, t['id'], 4):.2f}")
-
-    print("\nNeste steg: sjekk nyheter → sett XI → bytter → kaptein (se uke-sjekkliste.md)")
+        rows = upcoming_fdr(ctx, t["id"], args.next)
+        run = " ".join(f"{'H' if h else 'A'}{opp}({fdr})" for _, fdr, opp, h in rows)
+        print(f"{t['short_name']:<4} {avg_fdr(ctx, t['id'], args.next):5.2f}  {run}")
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="FPL 2026/27 beslutningsstøtte (offisiell API)",
+        description="FPL-coach: foreslå lag og ukentlige bytter for ditt lag",
+        epilog="Hovedflyt: link <id> → suggest → (hver uke) suggest [--apply] → pull etter deadline",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p_rank = sub.add_parser("rank", help="Ranger spillere")
+    p_link = sub.add_parser("link", help="Koble FPL-lag (entry id fra URL)")
+    p_link.add_argument("entry_id", type=int, help="Tall i fantasy.premierleague.com/entry/XXXXX/")
+    p_link.add_argument("--league", type=int, default=None, help="Mini-liga id (valgfritt)")
+    p_link.set_defaults(func=cmd_link, needs_ctx=False)
+
+    p_sug = sub.add_parser("suggest", help="Hovedkommando: lagforslag / ukentlige bytter")
+    p_sug.add_argument("--apply", action="store_true", help="Lagre foreslåtte bytter lokalt")
+    p_sug.add_argument("--refresh", action="store_true", help="Hent tropp fra FPL på nytt")
+    p_sug.add_argument("--auto-save", action="store_true", help=argparse.SUPPRESS)
+    p_sug.set_defaults(func=cmd_suggest, needs_ctx=True)
+
+    p_pull = sub.add_parser("pull", help="Synk tropp fra FPL (etter GW-deadline)")
+    p_pull.set_defaults(func=cmd_pull, needs_ctx=True)
+
+    p_show = sub.add_parser("show", help="Vis kobling og lagret tropp")
+    p_show.set_defaults(func=cmd_show, needs_ctx=True)
+
+    p_rank = sub.add_parser("rank", help="(Avansert) spillerranking")
     p_rank.add_argument("--top", type=int, default=20)
-    p_rank.add_argument("--pos", type=str, default=None, help="GKP/DEF/MID/FWD")
-    p_rank.add_argument("--max-own", type=float, default=None, help="Maks eierskap %")
-    p_rank.add_argument("--max-price", type=float, default=None, help="Maks pris i millioner")
-    p_rank.add_argument("--next", type=int, default=6, help="FDR-vindu")
+    p_rank.add_argument("--pos", type=str, default=None)
+    p_rank.add_argument("--max-own", type=float, default=None)
+    p_rank.add_argument("--next", type=int, default=6)
     p_rank.add_argument("--differential", action="store_true")
-    p_rank.set_defaults(func=cmd_rank)
+    p_rank.set_defaults(func=cmd_rank, needs_ctx=True)
 
-    p_fx = sub.add_parser("fixtures", help="Fixture difficulty per lag")
+    p_fx = sub.add_parser("fixtures", help="(Avansert) fixture difficulty")
     p_fx.add_argument("--next", type=int, default=6)
-    p_fx.set_defaults(func=cmd_fixtures)
-
-    p_val = sub.add_parser("value", help="Verdi per posisjon (EP/pris)")
-    p_val.add_argument("--top", type=int, default=8)
-    p_val.set_defaults(func=cmd_value)
-
-    p_draft = sub.add_parser("draft", help="Foreslå tropp innenfor £100m")
-    p_draft.add_argument(
-        "--style",
-        choices=["balanced", "template", "differential"],
-        default="balanced",
-    )
-    p_draft.set_defaults(func=cmd_draft)
-
-    p_week = sub.add_parser("weekly", help="Ukesrapport før deadline")
-    p_week.set_defaults(func=cmd_weekly)
+    p_fx.set_defaults(func=cmd_fixtures, needs_ctx=True)
 
     return parser
 
@@ -615,8 +1058,12 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
-    ctx = load_context()
-    args.func(ctx, args)
+    needs_ctx = getattr(args, "needs_ctx", True)
+    ctx = load_context() if needs_ctx else None
+    if args.cmd == "link":
+        cmd_link(ctx, args)
+    else:
+        args.func(ctx, args)
 
 
 if __name__ == "__main__":
