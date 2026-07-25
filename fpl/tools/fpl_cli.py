@@ -251,6 +251,17 @@ def avg_fdr(ctx: Context, team_id: int, next_n: int = 6) -> float:
     return sum(r[1] for r in rows) / len(rows)
 
 
+def fdr_for_event(ctx: Context, team_id: int, gw: int) -> float:
+    for fx in ctx.fixtures:
+        if fx.get("event") != gw:
+            continue
+        if fx["team_h"] == team_id:
+            return float(fx["team_h_difficulty"])
+        if fx["team_a"] == team_id:
+            return float(fx["team_a_difficulty"])
+    return 3.0
+
+
 def week_score(ctx: Context, p: dict[str, Any], *, competition: float = 0.0) -> float:
     return (
         score_player(p, competition=competition)
@@ -723,7 +734,14 @@ def print_squad_block(ctx: Context, squad: list[dict[str, Any]], title: str) -> 
             )
 
 
-def print_xi_block(ctx: Context, xi: list[dict[str, Any]], bench: list[dict[str, Any]], capt: dict[str, Any]) -> None:
+def print_xi_block(
+    ctx: Context,
+    xi: list[dict[str, Any]],
+    bench: list[dict[str, Any]],
+    capt: dict[str, Any],
+    *,
+    triple: bool = False,
+) -> None:
     print("\n=== Startellever ===")
     for p in xi:
         mark = " (C)" if p["id"] == capt["id"] else ""
@@ -736,9 +754,442 @@ def print_xi_block(ctx: Context, xi: list[dict[str, Any]], bench: list[dict[str,
         key=lambda p: fnum(p.get("ep_next")),
         default=None,
     )
-    print(f"\nKaptein: {capt['web_name']}")
+    cap_mult = "3× (Triple Captain)" if triple else "2×"
+    print(f"\nKaptein ({cap_mult}): {capt['web_name']}")
     if vc:
         print(f"VC:      {vc['web_name']}")
+
+
+# ---------------------------------------------------------------------------
+# Chips (2 sett: GW1–19 og GW20–38, maks 1 chip / GW)
+# ---------------------------------------------------------------------------
+
+CHIP_NAMES = {
+    "wildcard": "Wildcard",
+    "freehit": "Free Hit",
+    "bboost": "Bench Boost",
+    "3xc": "Triple Captain",
+}
+CHIP_KEYS = ("wildcard", "freehit", "bboost", "3xc")
+HALF1_END = 19
+
+# Official early TC targets 2026/27 (PL Scout): premium home vs promoted
+H1_TC_TARGETS = [
+    (2, "B.Fernandes", "IPS"),
+    (3, "Haaland", "COV"),
+    (7, "Haaland", "IPS"),
+    (14, "B.Fernandes", "COV"),
+    (16, "Haaland", "HUL"),
+]
+
+
+def ensure_chip_state(cfg: dict[str, Any]) -> dict[str, Any]:
+    chips = cfg.setdefault(
+        "chips",
+        {
+            "h1": {k: None for k in CHIP_KEYS},
+            "h2": {k: None for k in CHIP_KEYS},
+        },
+    )
+    for half in ("h1", "h2"):
+        chips.setdefault(half, {})
+        for k in CHIP_KEYS:
+            chips[half].setdefault(k, None)
+    return chips
+
+
+def chip_half_key(gw: int) -> str:
+    return "h1" if gw <= HALF1_END else "h2"
+
+
+def chip_rules_from_api(ctx: Context) -> dict[str, list[dict[str, Any]]]:
+    rules: dict[str, list[dict[str, Any]]] = {k: [] for k in CHIP_KEYS}
+    for chip in ctx.bootstrap.get("chips") or []:
+        name = chip.get("name")
+        if name in rules:
+            rules[name].append(chip)
+    return rules
+
+
+def chip_window(ctx: Context, name: str, gw: int) -> dict[str, Any] | None:
+    for chip in chip_rules_from_api(ctx).get(name, []):
+        if chip["start_event"] <= gw <= chip["stop_event"]:
+            return chip
+    return None
+
+
+def chip_available(cfg: dict[str, Any], ctx: Context, name: str, gw: int) -> bool:
+    ensure_chip_state(cfg)
+    if chip_window(ctx, name, gw) is None:
+        return False
+    half = chip_half_key(gw)
+    if cfg["chips"][half].get(name) is not None:
+        return False
+    # Official: FH not in GW1; FH in GW19 blocks FH in GW20
+    if name == "freehit" and gw == 1:
+        return False
+    if name == "freehit" and gw == 20 and cfg["chips"]["h1"].get("freehit") == 19:
+        return False
+    return True
+
+
+def mark_chip_used(cfg: dict[str, Any], name: str, gw: int) -> None:
+    ensure_chip_state(cfg)
+    half = chip_half_key(gw)
+    cfg["chips"][half][name] = gw
+    save_config(cfg)
+
+
+def team_fixture_counts(ctx: Context, gw: int) -> dict[int, int]:
+    counts = {tid: 0 for tid in ctx.teams}
+    for fx in ctx.fixtures:
+        if fx.get("event") != gw:
+            continue
+        counts[fx["team_h"]] = counts.get(fx["team_h"], 0) + 1
+        counts[fx["team_a"]] = counts.get(fx["team_a"], 0) + 1
+    return counts
+
+
+def gw_structure(ctx: Context, gw: int) -> dict[str, Any]:
+    counts = team_fixture_counts(ctx, gw)
+    blanks = [tid for tid, n in counts.items() if n == 0]
+    doubles = [tid for tid, n in counts.items() if n >= 2]
+    return {
+        "blank_teams": blanks,
+        "double_teams": doubles,
+        "is_bgw": len(blanks) >= 2,
+        "is_dgw": len(doubles) >= 1,
+        "fixture_total": sum(counts.values()) // 2,
+    }
+
+
+def player_ep(p: dict[str, Any]) -> float:
+    return fnum(p.get("ep_next"))
+
+
+def estimate_lineup_ep(xi: list[dict[str, Any]], capt: dict[str, Any], *, triple: bool = False) -> float:
+    """Expected points: sum EP + extra captain multiplier (C is already 1× in sum)."""
+    base = sum(player_ep(p) for p in xi)
+    extra = player_ep(capt) * (2.0 if triple else 1.0)  # normal C=2× => +1×; TC=3× => +2×
+    return base + extra
+
+
+def remaining_tc_targets(cfg: dict[str, Any], gw: int) -> list[tuple[int, str, str]]:
+    if gw > HALF1_END:
+        return []
+    if cfg.get("chips", {}).get("h1", {}).get("3xc") is not None:
+        return []
+    return [(g, n, o) for g, n, o in H1_TC_TARGETS if g >= gw]
+
+
+def recommend_chip(
+    ctx: Context,
+    cfg: dict[str, Any],
+    gw: int,
+    squad: list[dict[str, Any]],
+    xi: list[dict[str, Any]],
+    bench: list[dict[str, Any]],
+    capt: dict[str, Any],
+) -> dict[str, Any]:
+    """Pick at most one chip for this GW by expected incremental points."""
+    ensure_chip_state(cfg)
+    structure = gw_structure(ctx, gw)
+    baseline = estimate_lineup_ep(xi, capt, triple=False)
+    bench_ep = sum(player_ep(p) for p in bench)
+    capt_ep = player_ep(capt)
+    tc_extra = capt_ep  # TC adds one more copy vs normal captain
+    bb_extra = bench_ep
+    half = chip_half_key(gw)
+    weeks_left = (HALF1_END - gw) if half == "h1" else (38 - gw)
+    forced = weeks_left <= 1  # expire soon
+
+    candidates: list[dict[str, Any]] = []
+
+    # --- Triple Captain ---
+    if chip_available(cfg, ctx, "3xc", gw):
+        def tc_captain_score(p: dict[str, Any]) -> float:
+            s = player_ep(p) * 2  # prefer higher EP
+            fdr = fdr_for_event(ctx, p["team"], gw)
+            if fdr <= 2:
+                s += 1.5
+            if structure["is_dgw"] and p["team"] in structure["double_teams"]:
+                s += 5.0
+            for g, name, opp in remaining_tc_targets(cfg, gw):
+                if g == gw and p["web_name"] == name:
+                    s += 4.0
+            if is_risk(p):
+                s -= 5.0
+            return s
+
+        tc_capt = max(xi, key=tc_captain_score)
+        tc_extra = player_ep(tc_capt)
+        score = tc_extra
+        reason = f"TC gir +{tc_extra:.1f} EP (ekstra 1× på {tc_capt['web_name']})"
+        if tc_capt["id"] != capt["id"]:
+            reason += f" | bytt kaptein fra {capt['web_name']} → {tc_capt['web_name']}"
+        fdr = fdr_for_event(ctx, tc_capt["team"], gw)
+        if structure["is_dgw"] and tc_capt["team"] in structure["double_teams"]:
+            score += 4.0
+            reason += " | kaptein har DGW (høyeste TC-EV)"
+        for g, name, opp in remaining_tc_targets(cfg, gw):
+            if g == gw and tc_capt["web_name"] == name:
+                score += 2.5
+                reason += f" | Scout-mål: {name} H vs {opp}"
+                break
+        if fdr <= 2:
+            score += 1.0
+        later = [t for t in remaining_tc_targets(cfg, gw) if t[0] > gw]
+        # If this IS a scout target week, don't penalize for later windows
+        is_target_week = any(g == gw and tc_capt["web_name"] == n for g, n, _ in H1_TC_TARGETS)
+        if later and score < 7.0 and not structure["is_dgw"] and not forced and not is_target_week:
+            score -= 1.5
+            reason += f" | bedre TC-vindu senere: GW{later[0][0]} {later[0][1]}"
+        if forced and score < 3:
+            score += 2.0
+            reason += " | halvdelen utløper — bruk TC nå"
+        play = score >= 5.5 or (forced and score >= 3) or (is_target_week and score >= 5.0)
+        candidates.append(
+            {
+                "chip": "3xc",
+                "ev": score,
+                "delta_ep": tc_extra,
+                "reason": reason,
+                "play": play,
+                "captain": tc_capt["web_name"],
+            }
+        )
+
+    # --- Bench Boost ---
+    if chip_available(cfg, ctx, "bboost", gw):
+        score = bb_extra
+        reason = f"BB gir +{bb_extra:.1f} EP fra benken"
+        risky_bench = sum(1 for p in bench if is_risk(p))
+        if risky_bench:
+            score -= 2.0 * risky_bench
+            reason += f" | {risky_bench} usikre på benk"
+        if structure["is_dgw"]:
+            dgw_bench = sum(1 for p in bench if p["team"] in structure["double_teams"])
+            score += 1.5 * dgw_bench
+            reason += f" | {dgw_bench} DGW på benk"
+        # Prefer after WC in same half (unlimited transfers to build 15)
+        wc_gw = cfg["chips"][half].get("wildcard")
+        if wc_gw is not None and gw == wc_gw + 1:
+            score += 2.0
+            reason += " | uken etter Wildcard (klassisk høy-EV)"
+        if gw == 1 and bb_extra < 10:
+            score -= 2.0
+            reason += " | GW1-BB ofte svakere enn senere"
+        if forced and bb_extra >= 6:
+            score += 2.0
+            reason += " | halvdelen utløper"
+        play = score >= 10.0 or (forced and bb_extra >= 6) or (structure["is_dgw"] and bb_extra >= 8)
+        candidates.append(
+            {"chip": "bboost", "ev": score, "delta_ep": bb_extra, "reason": reason, "play": play}
+        )
+
+    # --- Free Hit ---
+    if chip_available(cfg, ctx, "freehit", gw):
+        blank_in_squad = sum(
+            1 for p in squad if team_fixture_counts(ctx, gw).get(p["team"], 0) == 0
+        )
+        score = 0.0
+        reason = "FH: midlertidig tropp, tilbakestilles neste deadline"
+        if structure["is_bgw"] and blank_in_squad >= 3:
+            score = 6.0 + blank_in_squad
+            reason = f"BGW: {blank_in_squad} i troppen blanker — FH er beste redning"
+        elif blank_in_squad >= 4:
+            score = 5.0 + blank_in_squad * 0.5
+            reason = f"{blank_in_squad} uten kamp — vurder FH"
+        elif forced and not structure["is_bgw"]:
+            score = 2.0
+            reason = "Halvdelen utløper uten BGW — bruk FH på verste fixture-uke, ikke kast bort"
+        # Don't burn FH early without blanks
+        if gw <= 10 and not structure["is_bgw"]:
+            score -= 3.0
+        play = score >= 8.0 or (forced and structure["is_bgw"])
+        # Never recommend FH19 if it blocks nothing useful - actually FH19 blocks FH20
+        if gw == 19:
+            score -= 1.0
+            reason += " | unngå FH i GW19 hvis du vil ha FH i GW20"
+        candidates.append(
+            {"chip": "freehit", "ev": score, "delta_ep": max(score, 0), "reason": reason, "play": play}
+        )
+
+    # --- Wildcard ---
+    if chip_available(cfg, ctx, "wildcard", gw):
+        risks = sum(1 for p in squad if is_risk(p))
+        score = 0.0
+        reason = "WC: permanente ubegrensede bytter"
+        if risks >= 3:
+            score = 8.0 + risks
+            reason = f"{risks} skade/tvil — WC for å redde troppen"
+        elif half == "h1" and 6 <= gw <= 9:
+            score = 6.5
+            reason = "H1-vindu GW6–9: nok data + tid til å bygge BB-benk"
+        elif half == "h2" and structure["is_dgw"]:
+            score = 5.0
+            reason = "Vurder WC *før* stor DGW (ikke nødvendigvis denne uken)"
+        elif half == "h2" and 25 <= gw <= 32:
+            score = 6.0
+            reason = "H2-vindu: sett opp DGW/BB-tropp"
+        if forced and risks >= 1:
+            score += 3.0
+            reason += " | utløper snart"
+        # Don't WC GW2 unless disaster
+        if gw <= 3 and risks < 3:
+            score -= 4.0
+            reason += " | for tidlig uten krise"
+        play = score >= 7.5 or (forced and risks >= 2)
+        candidates.append(
+            {"chip": "wildcard", "ev": score, "delta_ep": score, "reason": reason, "play": play}
+        )
+
+    candidates.sort(key=lambda c: c["ev"], reverse=True)
+    playable = [c for c in candidates if c["play"]]
+    chosen = playable[0] if playable else None
+
+    # Max one chip / week already enforced by returning single choice
+    return {
+        "gw": gw,
+        "half": half,
+        "baseline_ep": baseline,
+        "bench_ep": bench_ep,
+        "capt_ep": capt_ep,
+        "structure": structure,
+        "candidates": candidates,
+        "chosen": chosen,
+        "weeks_left_in_half": weeks_left,
+    }
+
+
+def print_chip_advice(advice: dict[str, Any], cfg: dict[str, Any]) -> None:
+    gw = advice["gw"]
+    half_label = "1. halvdel (GW1–19)" if advice["half"] == "h1" else "2. halvdel (GW20–38)"
+    print(f"\n=== Chips — {half_label}, GW{gw} ===")
+    print("Regler: 2 sett (WC/FH/BB/TC hver) · maks 1 chip per uke · sett 1 utløper GW19-deadline")
+    st = advice["structure"]
+    if st["is_dgw"]:
+        print(f"Struktur: DOUBLE GW ({len(st['double_teams'])} lag med 2 kamper)")
+    elif st["is_bgw"]:
+        print(f"Struktur: BLANK GW ({len(st['blank_teams'])} lag uten kamp)")
+    else:
+        print("Struktur: vanlig GW (10 kamper)")
+    print(
+        f"Modell: XI+C ≈ {advice['baseline_ep']:.1f} EP | "
+        f"benk ≈ {advice['bench_ep']:.1f} EP | kaptein EP {advice['capt_ep']:.1f}"
+    )
+
+    ensure_chip_state(cfg)
+    status = cfg["chips"][advice["half"]]
+    bits = []
+    for k in CHIP_KEYS:
+        used = status.get(k)
+        bits.append(f"{CHIP_NAMES[k]}={'GW'+str(used) if used else 'ledig'}")
+    print("Status:", " · ".join(bits))
+
+    chosen = advice["chosen"]
+    if chosen:
+        print(
+            f"\n→ ANBEFALT CHIP: {CHIP_NAMES[chosen['chip']]} "
+            f"(modell-EV {chosen['ev']:.1f})"
+        )
+        print(f"  {chosen['reason']}")
+        print("  Merk av: python3 fpl_cli.py chips use " + chosen["chip"])
+    else:
+        print("\n→ ANBEFALT CHIP: ingen denne uken (spar til høyere EV)")
+        later_tc = remaining_tc_targets(cfg, gw)
+        if later_tc:
+            g, n, o = later_tc[0]
+            print(f"  Neste TC-mål H1: GW{g} {n} hjemme vs {o}")
+        top = advice["candidates"][0] if advice["candidates"] else None
+        if top:
+            print(
+                f"  Nærmeste kandidat: {CHIP_NAMES[top['chip']]} "
+                f"(EV {top['ev']:.1f}) — {top['reason']}"
+            )
+
+
+def print_season_chip_plan(ctx: Context, cfg: dict[str, Any]) -> None:
+    ensure_chip_state(cfg)
+    print("=== Optimal chip-taktikk 2026/27 (forventet mest poeng) ===\n")
+    print("Poengsystem (kort): minutter 1/2 · mål GKP10/DEF6/MID5/FWD4 · assist 3 ·")
+    print("CS GKP/DEF 4, MID 1 · saves 1/3 · DC +2 · bonus 1–3 · C=2× / TC=3×\n")
+    print("Hvorfor denne rekkefølgen:")
+    print("  1) BB på DGW (eller 15 starters) = høyeste enkelt-EV i spillet")
+    print("  2) TC på DGW-premium eller beste enkeltkamp (Scout: Haaland/Bruno vs opprykk)")
+    print("  3) WC for å *bygge* BB/TC-vinduer — ikke panikkuke 2")
+    print("  4) FH nesten bare på BGW (mange blanke)\n")
+
+    print("--- 1. halvdel (bruk før GW19-deadline 2. jan 2027 14:30) ---")
+    print("  WC:  mål GW6–9 (etter data). Bygg sterke 15 før BB.")
+    print("  BB:  uken etter WC, eller når benk-EP ≳ 10–12. Unngå svak GW1-BB.")
+    print("  TC:  beste av GW2 Bruno–IPS, GW3 Haaland–COV, GW7 Haaland–IPS,")
+    print("       GW14 Bruno–COV, GW16 Haaland–HUL — ellers hold til DGW hvis den kommer.")
+    print("  FH:  hold til BGW. Ikke FH i GW19 hvis du vil ha FH i GW20.")
+    h1 = cfg["chips"]["h1"]
+    for k in CHIP_KEYS:
+        print(f"    {CHIP_NAMES[k]}: {'brukt GW'+str(h1[k]) if h1[k] else 'ledig'}")
+
+    print("\n--- 2. halvdel (GW20–38) ---")
+    print("  Hold chips til cup-omberamming → BGW/DGW.")
+    print("  WC → sett opp 15 DGW-spillere → BB på beste DGW.")
+    print("  TC på DGW-premium (ofte bedre enn H1-enkeltkamp).")
+    print("  FH på verste BGW.")
+    h2 = cfg["chips"]["h2"]
+    for k in CHIP_KEYS:
+        print(f"    {CHIP_NAMES[k]}: {'brukt GW'+str(h2[k]) if h2[k] else 'ledig'}")
+
+    nxt = next_event(ctx)
+    if nxt:
+        print(f"\nNeste deadline: {nxt['name']} {nxt.get('deadline_time')}")
+
+
+def cmd_chips(ctx: Context, args: argparse.Namespace) -> None:
+    cfg = load_config()
+    ensure_chip_state(cfg)
+    if args.action == "plan" or args.action is None:
+        print_season_chip_plan(ctx, cfg)
+        # Also this-week advice if we have a squad
+        data = load_squad()
+        nxt = next_event(ctx)
+        gw = nxt["id"] if nxt else 1
+        if data:
+            squad = squad_from_ids(ctx, data["element_ids"])
+            xi, bench = suggest_xi(ctx, squad)
+            capt = pick_captain(ctx, xi)
+            advice = recommend_chip(ctx, cfg, gw, squad, xi, bench, capt)
+            print_chip_advice(advice, cfg)
+        else:
+            print("\n(Kjør `suggest` først for ukentlig chip-råd knyttet til troppen din.)")
+        return
+
+    if args.action == "use":
+        if not args.chip:
+            print("Bruk: python3 fpl_cli.py chips use 3xc|bboost|freehit|wildcard", file=sys.stderr)
+            sys.exit(2)
+        name = args.chip.lower().replace("tc", "3xc").replace("bb", "bboost").replace("fh", "freehit").replace("wc", "wildcard")
+        aliases = {"triplecaptain": "3xc", "benchboost": "bboost"}
+        name = aliases.get(name, name)
+        if name not in CHIP_KEYS:
+            print(f"Ukjent chip: {args.chip}", file=sys.stderr)
+            sys.exit(2)
+        nxt = next_event(ctx)
+        gw = int(args.gw) if args.gw else (nxt["id"] if nxt else 1)
+        if not chip_available(cfg, ctx, name, gw):
+            print(f"Kan ikke merke {CHIP_NAMES[name]} som brukt i GW{gw} (ikke tilgjengelig).", file=sys.stderr)
+            sys.exit(2)
+        mark_chip_used(cfg, name, gw)
+        print(f"Merket {CHIP_NAMES[name]} som brukt i GW{gw} ({chip_half_key(gw)}).")
+        return
+
+    if args.action == "reset":
+        cfg["chips"] = {"h1": {k: None for k in CHIP_KEYS}, "h2": {k: None for k in CHIP_KEYS}}
+        save_config(cfg)
+        print("Chip-status nullstilt.")
+        return
+
+    print(f"Ukjent action: {args.action}", file=sys.stderr)
+    sys.exit(2)
 
 
 # ---------------------------------------------------------------------------
@@ -764,6 +1215,7 @@ def cmd_link(_ctx: Context | None, args: argparse.Namespace) -> None:
         if private and "league_id" not in cfg:
             cfg["league_id"] = private[0]["id"]
             print(f"Fant privat liga: {private[0]['name']} (id {private[0]['id']})")
+    ensure_chip_state(cfg)
     save_config(cfg)
     print(f"Koblet til: {cfg['manager']} — «{cfg['team_name']}» (entry {cfg['entry_id']})")
     if cfg.get("league_id"):
@@ -884,7 +1336,11 @@ def cmd_suggest(ctx: Context, args: argparse.Namespace) -> None:
         print_squad_block(ctx, squad, "Foreslått tropp (£100m)")
         print_xi_block(ctx, xi, bench, capt)
         print(f"\nBank: £{bank/10:.1f}m")
+        gw = nxt["id"] if nxt else 1
+        advice = recommend_chip(ctx, cfg, gw, squad, xi, bench, capt)
+        print_chip_advice(advice, cfg)
         print("\n→ Legg inn denne troppen i FPL-appen.")
+        print("   Full chip-plan: python3 fpl_cli.py chips")
         payload = {
             "entry_id": cfg.get("entry_id"),
             "phase": "preseason",
@@ -919,6 +1375,9 @@ def cmd_suggest(ctx: Context, args: argparse.Namespace) -> None:
         xi, bench = suggest_xi(ctx, alt, competition=competition)
         capt = pick_captain(ctx, xi)
         print_xi_block(ctx, xi, bench, capt)
+        gw = nxt["id"] if nxt else 1
+        advice = recommend_chip(ctx, cfg, gw, alt, xi, bench, capt)
+        print_chip_advice(advice, cfg)
         if args.apply:
             bank2 = BUDGET - sum(p["now_cost"] for p in alt)
             save_squad(
@@ -955,8 +1414,13 @@ def cmd_suggest(ctx: Context, args: argparse.Namespace) -> None:
     new_bank = plan["bank"]
     xi, bench = suggest_xi(ctx, new_squad, competition=competition)
     capt = pick_captain(ctx, xi)
-    print_xi_block(ctx, xi, bench, capt)
+    advice = recommend_chip(
+        ctx, cfg, nxt["id"] if nxt else 1, new_squad, xi, bench, capt
+    )
+    use_tc = bool(advice["chosen"] and advice["chosen"]["chip"] == "3xc")
+    print_xi_block(ctx, xi, bench, capt, triple=use_tc)
     print(f"\nBank etter bytter: £{new_bank/10:.1f}m")
+    print_chip_advice(advice, cfg)
 
     if args.apply and plan["moves"]:
         save_squad(
@@ -977,6 +1441,10 @@ def cmd_suggest(ctx: Context, args: argparse.Namespace) -> None:
     elif plan["moves"]:
         print("\nTips: kjør `python3 fpl_cli.py suggest --apply` når du har gjort bytene,")
         print("eller `python3 fpl_cli.py pull` etter deadline for å synke fra FPL.")
+    if advice.get("chosen"):
+        print(
+            f"Hvis du spiller chip: python3 fpl_cli.py chips use {advice['chosen']['chip']}"
+        )
 
 
 def cmd_rank(ctx: Context, args: argparse.Namespace) -> None:
@@ -1039,6 +1507,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_show = sub.add_parser("show", help="Vis kobling og lagret tropp")
     p_show.set_defaults(func=cmd_show, needs_ctx=True)
+
+    p_chips = sub.add_parser("chips", help="Chip-plan + ukentlig anbefaling (EV)")
+    p_chips.add_argument(
+        "action",
+        nargs="?",
+        default="plan",
+        choices=["plan", "use", "reset"],
+        help="plan (standard) | use | reset",
+    )
+    p_chips.add_argument(
+        "chip",
+        nargs="?",
+        default=None,
+        help="Ved use: 3xc|bboost|freehit|wildcard (eller tc/bb/fh/wc)",
+    )
+    p_chips.add_argument("--gw", type=int, default=None, help="Gameweek for chips use")
+    p_chips.set_defaults(func=cmd_chips, needs_ctx=True)
 
     p_rank = sub.add_parser("rank", help="(Avansert) spillerranking")
     p_rank.add_argument("--top", type=int, default=20)

@@ -1,61 +1,35 @@
 # FPL 2026/27 — bare kjør dette
 
-Mål: **minst mulig lesing**. Én kommando gir lagforslag / ukentlige bytter, koblet til ditt FPL-lag.
+Mål: **minst mulig lesing**. Én kommando gir lagforslag, bytter og chip-råd.
 
-## 1) Koble laget ditt (én gang)
-
-1. Åpne FPL → Points (eller laget ditt).
-2. Se på URL-en: `fantasy.premierleague.com/entry/`**`1234567`**`/`
-3. Kjør:
+## 1) Koble laget (én gang)
 
 ```bash
 cd fpl/tools
-python3 fpl_cli.py link 1234567
-```
-
-Valgfritt mini-liga-id (fra liga-URL):
-
-```bash
+python3 fpl_cli.py link 1234567          # ID fra /entry/1234567/
 python3 fpl_cli.py link 1234567 --league 987654
 ```
 
-## 2) Hver gang du skal bestemme lag
+## 2) Hver uke
 
 ```bash
 python3 fpl_cli.py suggest
 ```
 
-Det gir deg:
-
-- **Før GW1:** komplett konkurransetropp + XI + kaptein (lagres lokalt)
-- **Underveis:** anbefalte bytter for *ditt* lag, ny XI og kaptein
-
-Når du har gjort bytene i FPL-appen:
+Gir: bytter · XI · kaptein · **chip-anbefaling (EV)** basert på ditt lag.
 
 ```bash
-python3 fpl_cli.py suggest --apply
+python3 fpl_cli.py suggest --apply       # lagre bytter lokalt
+python3 fpl_cli.py chips                 # sesongplan + status
+python3 fpl_cli.py chips use 3xc         # merk chip brukt (tc/bb/fh/wc)
+python3 fpl_cli.py pull                  # synk etter deadline
 ```
 
-## 3) Synk fra FPL etter deadline
+## Chip-regler (kort)
 
-Etter at en gameweek-deadline har gått (laget blir offentlig):
+- **2 sett** WC/FH/BB/TC (GW1–19 og GW20–38)
+- **Maks 1 chip per uke**
+- Sett 1 utløper GW19-deadline — brukes ikke → bort
+- Beste EV: BB på DGW → TC på DGW/premium → WC for å bygge → FH på BGW
 
-```bash
-python3 fpl_cli.py pull
-```
-
-Da hentes den offisielle troppen din og overskriver den lokale — så forslagene følger sesongen.
-
-## Kommandoer
-
-| Kommando | Hva |
-|----------|-----|
-| `link <id>` | Koble FPL-entry |
-| `suggest` | **Hovedkommando** — forslag |
-| `suggest --apply` | Lagre bytter lokalt |
-| `pull` | Synk tropp fra FPL |
-| `show` | Vis lagret tropp |
-
-Ingen pip-install. Krever Python 3 + nett.
-
-GW1-deadline: **21. august 2026, 18:30** norsk tid.
+Se [04-chips-og-strategi.md](04-chips-og-strategi.md) for poengtabell.
