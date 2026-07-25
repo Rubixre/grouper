@@ -1,35 +1,40 @@
-# Chips og sesongstrategi
+# Chips og poeng — 2026/27
 
-Chips er begrensede. Behandle dem som sesongressurser, ikke panikk-knapper.
+Offisielle regler (API + Premier League):
 
-## Chip-oversikt
+## Chips (2 sett)
 
-| Chip | Effekt | Når den typisk brukes |
-|------|--------|------------------------|
-| **Wildcard (WC)** | Ubegrensede bytter den GW | Stor fixture-sving / internasjonale pauser / mid-season reset |
-| **Free Hit (FH)** | Engangslag den GW, tilbake etterpå | Blank GW / stygg fixture-uke / cup-kaos |
-| **Bench Boost (BB)** | Benken scorer også | Når alle 15 har minutter + OK fixtures |
-| **Triple Captain (TC)** | Kaptein scorer 3× | Dobbel GW eller ekstremt god enkeltkamp |
+| Chip | Effekt | Sett 1 | Sett 2 |
+|------|--------|--------|--------|
+| Wildcard | Ubegrensede **permanente** bytter | GW2–19 | GW20–38 |
+| Free Hit | Ubegrensede bytter **én uke**, deretter tilbake | GW2–19 | GW20–38 |
+| Bench Boost | Benken scorer også | GW1–19 | GW20–38 |
+| Triple Captain | Kaptein 3× (i stedet for 2×) | GW1–19 | GW20–38 |
 
-*(Bekreft antall Wildcards og perioder i offisiell FPL-app — format kan justeres litt år for år.)*
+- **Maks 1 chip per gameweek**
+- Sett 1 **utløper** ved GW19-deadline (lør 2. jan 2027, 14:30 norsk tid) — ingen overføring
+- Free Hit **ikke** i GW1; FH i GW19 → kan **ikke** FH i GW20
+- Opptil **5 gratis bytter** kan rulles (1 + 4 ekstra)
 
-## Planleggingsregler
+## Poeng (hovedtrekk)
 
-1. **Ikke WC før du har sett 4–6 GW** med mindre troppen er knust av skader.
-2. **BB krever forberedelse** — bygg benken 1–2 GW før (ofte med WC eller flere gratis bytter).
-3. **TC** på dobbel gameweek når mulig; ellers på premium med hjemme/lett kamp.
-4. **FH** når mange i troppen blanker eller har elendige fixtures samme uke.
+| Handling | Poeng |
+|----------|-------|
+| <60 min / ≥60 min | 1 / 2 |
+| Mål | GKP 10 · DEF 6 · MID 5 · FWD 4 |
+| Assist | 3 |
+| Clean sheet | GKP/DEF 4 · MID 1 |
+| Saves | 1 per 3 |
+| Defensive contribution | +2 (terskel) |
+| Bonus | 1–3 |
+| Gult / rødt / eget mål / straffe bom | −1 / −3 / −2 / −2 |
+| Kaptein / Triple Captain | 2× / 3× |
 
-## Grovmål 2026/27
+## Taktikk med høyest forventet poeng
 
-Se [sesongkalender.md](sesongkalender.md). Oppdater etter at fixture-liste og DGW/BGW er kjent (ofte rundt cup-trekk / omberamming).
+1. **BB på DGW** (eller 15 sikre starters) — høyeste enkelt-EV  
+2. **TC på DGW-premium** eller beste H1-enkeltkamp (Haaland/Bruno hjemme vs opprykk)  
+3. **WC for å bygge** BB/TC-vinduer (H1: typisk GW6–9)  
+4. **FH nesten bare på BGW**
 
-## Hits (−4 poeng)
-
-Ta −4 kun når forventet poenggevinst **klart** overstiger 4 (tommelfinger: sikte på +6 eller mer i forventning over 1–2 GW).
-
-Unngå:
-
-- −4 for «finjustering»
-- −4 bare for å jage kaptein
-- Stable hits uke etter uke
+Kjør: `python3 fpl_cli.py chips` og `suggest` (gir ukentlig chip-råd).

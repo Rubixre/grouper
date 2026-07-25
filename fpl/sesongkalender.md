@@ -1,35 +1,18 @@
-# Sesongkalender 2026/27
+# Sesongkalender 2026/27 — chips
 
-Oppdater denne filen etter hvert som DGW/BGW og chip-vinduer blir kjent.
+| Periode | Handling |
+|---------|----------|
+| **Nå → GW1** | Bygg tropp (`suggest`). Ingen chip nødvendig. |
+| **GW2** | Sterk TC-kandidat: Bruno hjemme vs IPS |
+| **GW3** | Sterk TC-kandidat: Haaland hjemme vs COV |
+| **GW6–9** | Wildcard-vindu H1 → bygg 15 for Bench Boost |
+| **Uken etter WC** | Bench Boost hvis benk-EP ≳ 10–12 |
+| **GW7 / 14 / 16** | Flere TC-mål (Haaland/Bruno vs opprykk) |
+| **Før GW19-deadline** | Bruk resterende H1-chips (utløper 2. jan 2027) |
+| **GW20–38** | Nytt sett. Hold til BGW/DGW: WC→BB, TC på DGW, FH på BGW |
 
-## Faste milepæler
+Oppdater når cup gir blank/dobbel gameweeks.
 
-| Tidspunkt | Handling |
-|-----------|----------|
-| **Nå → GW1** | Bygg 3 utkast, last opp før 21.08.2026 18:30 |
-| **GW1–4** | Observer minutter/form. Unngå WC. Små justeringer. |
-| **GW5–8** | Evaluer tropp. Første reelle WC-vindu hvis struktur feiler. |
-| **Høst internasjonale pauser** | Bra tid for WC / omstrukturering |
-| **Vinter (cup + omberamming)** | Kartlegg mulige BGW/DGW → planlegg FH/BB/TC |
-| **Vår** | Bruk gjenværende chips; jakt liga-plassering |
+## Chip-tracker (fylles via `chips use`)
 
-## Chip-tracker
-
-| Chip | Planlagt GW | Brukt? | Notat |
-|------|-------------|--------|-------|
-| Wildcard 1 | | ☐ | |
-| Wildcard 2 (hvis tilgjengelig) | | ☐ | |
-| Free Hit | | ☐ | |
-| Bench Boost | | ☐ | |
-| Triple Captain | | ☐ | |
-
-## Fixture-faser (fyll inn)
-
-| Periode | Lag med god run | Lag med dårlig run |
-|---------|-----------------|--------------------|
-| GW1–6 | *(kjør `fixtures --next 6`)* | |
-| GW7–12 | | |
-| GW13–19 | | |
-| GW20–26 | | |
-| GW27–32 | | |
-| GW33–38 | | |
+Kjøres automatisk i `config.json`. Se `python3 fpl_cli.py chips`.
