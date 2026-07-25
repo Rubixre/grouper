@@ -584,6 +584,7 @@ import {
     producingHexCount: 1,
     desertNeighbors: 1,
     hasRedNumber: true,
+    redPipTotal: 5 / 36,
     resources: new Set(['ore']),
     breakdown: [{ resource: 'ore' as const, value: (5 / 36) * DEFAULT_RESOURCE_WEIGHTS.ore }],
   };
@@ -614,6 +615,7 @@ import {
     producingHexCount: 3,
     desertNeighbors: 0,
     hasRedNumber: true,
+    redPipTotal: 5 / 36,
     resources: new Set(['wood', 'brick', 'sheep']),
     breakdown: [],
   };
@@ -626,8 +628,8 @@ import {
     'Mono-resource 6 gets mono penalty'
   );
   assert(
-    monoScore.components.desertPenalty === 0,
-    'Desert adjacency has no extra penalty (zero production already)'
+    (monoScore.components.desertPenalty ?? 0) > 0,
+    'Desert adjacency applies desert penalty'
   );
   assert(
     (monoScore.components.lowHexPenalty ?? 0) > 0,
@@ -636,6 +638,14 @@ import {
   assert(
     balancedScore.total > monoScore.total,
     'Balanced 3-hex outranks mono 6'
+  );
+  assert(
+    (balancedScore.components.redAnchorBonus ?? 0) > 0,
+    'Diverse spot with 6/8 gets red anchor bonus'
+  );
+  assert(
+    (balancedScore.components.pipBonus ?? 0) > 0,
+    'High-pip 3-hex gets pip quality bonus'
   );
 
   const eliteCoast = {
@@ -660,6 +670,7 @@ import {
     producingHexCount: 2,
     desertNeighbors: 0,
     hasRedNumber: true,
+    redPipTotal: 10 / 36,
     resources: new Set(['ore', 'wheat']),
     breakdown: [],
   };
@@ -668,14 +679,9 @@ import {
     (coastScore.components.lowHexPenalty ?? 0) > 0,
     '2-hex always pays low-hex penalty (no full waiver)'
   );
-  // Production drives: elite ore/wheat 6+8 may beat weaker 3-hex wood/brick/sheep.
-  // Pip/red/pair-pip bonuses must stay disabled (no double-count of NUMBER_PROB).
   assert(
-    balancedScore.components.pipBonus === 0 &&
-      coastScore.components.pipBonus === 0 &&
-      balancedScore.components.pairPipBonus === 0 &&
-      balancedScore.components.redAnchorBonus === 0,
-    'Pip / red / pair-pip bonuses are disabled'
+    (coastScore.components.redAnchorBonus ?? 0) > 0,
+    'Elite coast with 6+8 and two resources gets red anchor'
   );
   assert(
     coastScore.components.production > balancedScore.components.production,
@@ -708,6 +714,7 @@ import {
       (2 / 36) * DEFAULT_RESOURCE_WEIGHTS.brick,
     pipTotal: 5 / 36,
     hasRedNumber: false,
+    redPipTotal: 0,
     resources: new Set(['sheep', 'brick']),
   };
   const weakCoastScore = scoreFirstPlacement(weakCoast, DEFAULT_RESOURCE_WEIGHTS, 0);
@@ -1515,20 +1522,18 @@ if (board) {
         (o.portfolio ?? 0) +
         (o.buildingSynergy ?? 0) +
         (o.coordination ?? 0) +
+        (o.pairPipBonus ?? 0) +
         o.diversity +
         o.harbor +
         (o.expansion ?? 0) -
         (o.overlap ?? 0) -
         (o.robberExposure ?? 0) -
+        (o.desertPenalty ?? 0) -
         (o.lowHexPenalty ?? 0) -
         (o.monoResourcePenalty ?? 0);
       return Math.abs(recomposed - o.total) < 1e-6;
     }),
     'Second settlement score components sum to total'
-  );
-  assert(
-    secondOpts.every((o) => (o.pairPipBonus ?? 0) === 0 && (o.pipBonus ?? 0) === 0),
-    'Pair scoring has no pip double-count bonuses'
   );
   assert(
     secondOpts.every((o) => (o.buildingSynergy ?? 0) >= 0),
