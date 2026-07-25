@@ -1,66 +1,61 @@
-# FPL 2026/27 — konkurranseprosess
+# FPL 2026/27 — bare kjør dette
 
-Prosess + dataverktøy for å bygge et sterkt startlag og ta gode beslutninger hver gameweek i mini-ligaen.
+Mål: **minst mulig lesing**. Én kommando gir lagforslag / ukentlige bytter, koblet til ditt FPL-lag.
 
-**Sesong:** 2026/27  
-**GW1-deadline:** fredag 21. august 2026, 18:30 norsk tid  
-**Budsjett:** £100m · 15 spillere · maks 3 per klubb
+## 1) Koble laget ditt (én gang)
 
-## Anbefalt valg
-
-For liga-konkurranse med godt beslutningsgrunnlag: **prosess + data**.
-
-| Del | Hvorfor |
-|-----|---------|
-| **Prosess** | Samme sjekkliste hver uke → færre impulsive bytter, bedre chips-timing |
-| **Dataverktøy** | Tall bak valgene (EP, fixtures, eierskap, verdi) → bedre enn magefølelse alene |
-
-## Dokumenter
-
-| Fil | Innhold |
-|-----|---------|
-| [01-regler-og-mal.md](01-regler-og-mal.md) | Regler, poeng og målene dine |
-| [02-preseason-lagbygging.md](02-preseason-lagbygging.md) | Hvordan bygge startlaget før GW1 |
-| [03-ukentlig-prosess.md](03-ukentlig-prosess.md) | Fast rutine før hver deadline |
-| [04-chips-og-strategi.md](04-chips-og-strategi.md) | Wildcard, Free Hit, Bench Boost, Triple Captain |
-| [05-mini-liga.md](05-mini-liga.md) | Differensialer og liga-taktikk |
-| [sesongkalender.md](sesongkalender.md) | Grovmål for chips og milepæler |
-| [uke-sjekkliste.md](uke-sjekkliste.md) | Kopiérbar sjekkliste før deadline |
-| [tools/](tools/) | Python-verktøy mot offisiell FPL API |
-
-## Arbeidsflyt
-
-```mermaid
-flowchart TD
-    subgraph pre [Preseason]
-        A[Les_regler] --> B[Kjor_rank_og_fixtures]
-        B --> C[Bygg_3_utkast]
-        C --> D[Last_opp_for_GW1]
-    end
-    subgraph weekly [Hver_gameweek]
-        E[Kjor_weekly] --> F[Sjekk_nyheter]
-        F --> G[Bestem_XI_og_bytter]
-        G --> H[Oppdater_chips_plan]
-    end
-    pre --> weekly
-```
-
-## Kom i gang (5 minutter)
+1. Åpne FPL → Points (eller laget ditt).
+2. Se på URL-en: `fantasy.premierleague.com/entry/`**`1234567`**`/`
+3. Kjør:
 
 ```bash
 cd fpl/tools
-python3 fpl_cli.py rank --top 15
-python3 fpl_cli.py fixtures --next 6
-python3 fpl_cli.py draft
-python3 fpl_cli.py weekly
+python3 fpl_cli.py link 1234567
 ```
 
-Ingen ekstra pakker kreves (kun Python 3 + nett).
+Valgfritt mini-liga-id (fra liga-URL):
 
-## Beslutningsprinsipper (kort)
+```bash
+python3 fpl_cli.py link 1234567 --league 987654
+```
 
-1. **Fixtures først** — gode kamper de neste 4–6 GW er viktigere enn «navn».
-2. **Verdi over stjerner** — £-per-poeng og billige starters frigjør midler til premium.
-3. **Én plan, få bytter** — bruk gratis bytter; unngå −4 med mindre oppsiden er tydelig.
-4. **Mini-liga krever differensialer** — noen ikke-template-valg (typisk 5–15 % eierskap).
-5. **Chips er sesongressurser** — planlegg dem; ikke bruk panikk-wildcard i uke 3.
+## 2) Hver gang du skal bestemme lag
+
+```bash
+python3 fpl_cli.py suggest
+```
+
+Det gir deg:
+
+- **Før GW1:** komplett konkurransetropp + XI + kaptein (lagres lokalt)
+- **Underveis:** anbefalte bytter for *ditt* lag, ny XI og kaptein
+
+Når du har gjort bytene i FPL-appen:
+
+```bash
+python3 fpl_cli.py suggest --apply
+```
+
+## 3) Synk fra FPL etter deadline
+
+Etter at en gameweek-deadline har gått (laget blir offentlig):
+
+```bash
+python3 fpl_cli.py pull
+```
+
+Da hentes den offisielle troppen din og overskriver den lokale — så forslagene følger sesongen.
+
+## Kommandoer
+
+| Kommando | Hva |
+|----------|-----|
+| `link <id>` | Koble FPL-entry |
+| `suggest` | **Hovedkommando** — forslag |
+| `suggest --apply` | Lagre bytter lokalt |
+| `pull` | Synk tropp fra FPL |
+| `show` | Vis lagret tropp |
+
+Ingen pip-install. Krever Python 3 + nett.
+
+GW1-deadline: **21. august 2026, 18:30** norsk tid.
