@@ -3,3 +3,7 @@ __pycache__/
 .pytest_cache/
 config.json
 my_squad.json
+data/snapshots/*
+!data/snapshots/.gitkeep
+data/history/*
+!data/history/.gitkeep
