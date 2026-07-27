@@ -1,56 +1,36 @@
 # Kjør FPL-coach på PC (Windows)
 
 Du trenger bare **Python 3** (ingen pip-pakker).  
-Kjør **ikke** fra `C:\WINDOWS\system32` — lag en egen mappe.
+Kjør **ikke** fra `C:\WINDOWS\system32`.
 
-## Alternativ A — last ned én fil (enklest)
+## Enklest: dobbeltklikk
 
-I **PowerShell**:
+1. Last ned [INSTALLER-PÅ-PC.bat](https://raw.githubusercontent.com/Rubixre/grouper/cursor/fpl-stats-model-127c/fpl/INSTALLER-P%C3%85-PC.bat) (høyreklikk lenken → Lagre som…)
+2. Dobbeltklikk filen → den lager `C:\Users\<deg>\fpl-coach`
+3. Dobbeltklikk **`START-FPL.bat`** i den mappen → menyen åpnes
+
+Etter det: bare `START-FPL.bat` hver gang.
+
+## Alternativ — PowerShell (én gang)
 
 ```powershell
-# 1) Lag mappe og gå dit
 mkdir $HOME\fpl-coach -Force
 cd $HOME\fpl-coach
 
-# 2) Last ned siste coach (stats-modell-branchen)
 Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Rubixre/grouper/cursor/fpl-stats-model-127c/fpl/tools/fpl_cli.py" -OutFile "fpl_cli.py"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Rubixre/grouper/cursor/fpl-stats-model-127c/fpl/tools/START-FPL.bat" -OutFile "START-FPL.bat"
 
-# 3) Kjør (bruk `python` hvis `python3` ikke finnes)
-python fpl_cli.py refresh --top 40
-python fpl_cli.py suggest
-python fpl_cli.py overunder
-```
-
-Eller bare meny:
-
-```powershell
-cd $HOME\fpl-coach
-python fpl_cli.py
-```
-
-## Alternativ B — hele repoet (Git)
-
-```powershell
-cd $HOME
-git clone https://github.com/Rubixre/grouper.git
-cd grouper
-git checkout cursor/fpl-stats-model-127c
-cd fpl\tools
-python fpl_cli.py suggest
+.\START-FPL.bat
 ```
 
 ## Vanlige feil
 
-| Feil | Årsak | Fix |
-|------|--------|-----|
-| `Cannot find path '...\system32\fpl\tools'` | Du sto i System32 | `cd $HOME\fpl-coach` først |
-| `can't open file '...\fpl_cli.py'` | Filen ligger ikke der du er | Sjekk med `dir` at `fpl_cli.py` finnes |
-| `python3` ikke funnet | Windows bruker ofte `python` | Bytt til `python` |
+| Feil | Fix |
+|------|-----|
+| `Cannot find path '...\system32\fpl\tools'` | Bruk `%USERPROFILE%\fpl-coach`, ikke System32 |
+| `python` ikke funnet | Installer Python og huk av **Add to PATH** |
+| Svart vindu lukkes med en gang | Kjør `START-FPL.bat` (den pauser til slutt) |
 
 ## Finn entry-id
 
-I FPL: Points → URL `.../entry/1234567/` →
-
-```powershell
-python fpl_cli.py link 1234567
-```
+I FPL: Points → URL `.../entry/1234567/` → i menyen: valg **1** (koble lag).
