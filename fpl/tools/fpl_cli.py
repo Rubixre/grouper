@@ -773,13 +773,30 @@ def player_fixture_label(ctx: Context, p: dict[str, Any], gw: int | None = None)
 # ---------------------------------------------------------------------------
 
 
-def find_premium_forward(playing_fwds: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """Prefer Haaland; else best FWD at £12.0m+."""
-    haaland = next((p for p in playing_fwds if p["web_name"] == "Haaland"), None)
-    if haaland:
-        return haaland
-    premiums = [p for p in playing_fwds if p["now_cost"] >= 120]
-    return premiums[0] if premiums else None
+def find_premium_forward(
+    playing_fwds: list[dict[str, Any]],
+    key_fn,
+    *,
+    min_cost: int = 90,
+) -> dict[str, Any] | None:
+    """Best premium FWD by expected points / value — not locked to a named player.
+
+    Among £9.0m+ attackers, pick the highest value-adjusted score
+    (draft key per £m), with absolute score as tie-break.
+    """
+    pool = [p for p in playing_fwds if p["now_cost"] >= min_cost]
+    if not pool:
+        # Fallback: most expensive playing FWDs
+        pool = sorted(playing_fwds, key=lambda p: p["now_cost"], reverse=True)[:5]
+    if not pool:
+        return None
+
+    def value_ev_key(p: dict[str, Any]) -> tuple[float, float]:
+        cost_m = max(p["now_cost"] / 10.0, 7.0)
+        score = key_fn(p)
+        return (score / cost_m, score)
+
+    return max(pool, key=value_ev_key)
 
 
 def find_premium_mids(
@@ -861,7 +878,7 @@ def pick_squad(ctx: Context, style: str = "balanced", *, competition: float = 0.
     Structure targets:
     - GK ~£8.5–9.5 total (mid-price starter + £4.0 fodder) — not premium GK
     - Heavy DEF (3 XI + 2 cheap playing bench) and MID (2 premium £8–10)
-    - FWD: 1 premium (Haaland) + 1 mid/cheap + fodder
+    - FWD: 1 premium (best EV/value among £9m+) + 1 mid/cheap + fodder
     """
     weights = {
         "balanced": {
@@ -968,12 +985,15 @@ def pick_squad(ctx: Context, style: str = "balanced", *, competition: float = 0.
         return bench_pack + extra * 50
 
     # --- Phase 0: Premium core ---
-    premium_fwd = find_premium_forward(playing_by_pos[4])
+    premium_fwd = find_premium_forward(playing_by_pos[4], key)
+    premium_fwd_id = premium_fwd["id"] if premium_fwd else None
     if not try_add(premium_fwd, reserve=seats_reserve()):
         try_add(
             next((p for p in playing_by_pos[4] if can_add(p, reserve=seats_reserve())), None),
             reserve=seats_reserve(),
         )
+        if squad and squad[-1]["element_type"] == 4:
+            premium_fwd_id = squad[-1]["id"]
 
     for mid in find_premium_mids(playing_by_pos[3], key, n=2, exclude_ids={p["id"] for p in squad}):
         if not try_add(mid, reserve=seats_reserve()):
@@ -1161,11 +1181,11 @@ def pick_squad(ctx: Context, style: str = "balanced", *, competition: float = 0.
                 if picked:
                     break
         if picked is None:
-            # Downgrade expensive non-core only — never gut Haaland / prem mids / 2nd FWD
+            # Downgrade expensive non-core only — never gut premium FWD / prem mids / 2nd FWD
             def is_core(p: dict[str, Any]) -> bool:
-                if p["web_name"] == "Haaland":
+                if premium_fwd_id is not None and p["id"] == premium_fwd_id:
                     return True
-                if p["element_type"] == 4 and p["now_cost"] >= 120:
+                if p["element_type"] == 4 and p["now_cost"] >= PREMIUM_FWD:
                     return True
                 if p["element_type"] == 4 and is_playing_candidate(p) and counts[4] <= 2:
                     return True
@@ -1239,9 +1259,10 @@ def pick_squad(ctx: Context, style: str = "balanced", *, competition: float = 0.
             )
             for i in order:
                 cur = squad[i]
-                if cur["web_name"] == "Haaland":
-                    continue  # never replace Haaland
-                if cur["element_type"] == 4 and cur["now_cost"] >= 120:
+                # Don't replace the locked-in premium FWD via cheap ITB swaps
+                if premium_fwd_id is not None and cur["id"] == premium_fwd_id:
+                    continue
+                if cur["element_type"] == 4 and cur["now_cost"] >= PREMIUM_FWD:
                     continue
                 best = None
                 best_gain = 0.0
