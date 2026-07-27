@@ -7,6 +7,8 @@ Hovedbruk:
   python3 fpl_cli.py link <ENTRY_ID>
   python3 fpl_cli.py suggest
   python3 fpl_cli.py suggest --apply
+  python3 fpl_cli.py refresh
+  python3 fpl_cli.py overunder
   python3 fpl_cli.py pull
 """
 
@@ -15,9 +17,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +31,15 @@ MAX_PER_CLUB = 3
 TOOLS_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = TOOLS_DIR / "config.json"
 SQUAD_PATH = TOOLS_DIR / "my_squad.json"
+DATA_DIR = TOOLS_DIR / "data"
+SNAPSHOT_DIR = DATA_DIR / "snapshots"
+HISTORY_DIR = DATA_DIR / "history"
+# Mathematically Safe / modern papers: premium fixtures matter more than budget rotation
+PREMIUM_MID_DEF = 80  # £8.0m
+PREMIUM_GK = 55  # £5.5m
+PREMIUM_FWD = 100  # £10.0m
+HISTORY_REFRESH_TOP_N = 80
+HISTORY_RECENCY_N = 5
 
 
 # ---------------------------------------------------------------------------
@@ -55,6 +67,7 @@ def fetch_json(path: str, *, optional: bool = False) -> Any | None:
 class Context:
     bootstrap: dict[str, Any]
     fixtures: list[dict[str, Any]]
+    history_cache: dict[int, dict[str, Any]] = field(default_factory=dict)
 
     @property
     def teams(self) -> dict[int, dict[str, Any]]:
@@ -73,8 +86,183 @@ class Context:
         return {p["id"]: p for p in self.bootstrap["elements"]}
 
 
-def load_context() -> Context:
-    return Context(bootstrap=fetch_json("/bootstrap-static/"), fixtures=fetch_json("/fixtures/"))
+def ensure_data_dirs() -> None:
+    SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def history_path(player_id: int) -> Path:
+    return HISTORY_DIR / f"{player_id}.json"
+
+
+def load_player_history(player_id: int) -> dict[str, Any] | None:
+    path = history_path(player_id)
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def save_player_history(player_id: int, data: dict[str, Any]) -> None:
+    ensure_data_dirs()
+    history_path(player_id).write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+def get_player_history(ctx: Context, player_id: int) -> dict[str, Any] | None:
+    if player_id in ctx.history_cache:
+        return ctx.history_cache[player_id]
+    data = load_player_history(player_id)
+    if data is not None:
+        ctx.history_cache[player_id] = data
+    return data
+
+
+def fetch_element_summary(player_id: int) -> dict[str, Any] | None:
+    return fetch_json(f"/element-summary/{player_id}/", optional=True)
+
+
+def fetch_event_live(gw: int) -> dict[str, Any] | None:
+    return fetch_json(f"/event/{gw}/live/", optional=True)
+
+
+def save_gw_snapshot(ctx: Context, gw: int, *, live: dict[str, Any] | None = None) -> None:
+    ensure_data_dirs()
+    payload = {
+        "gw": gw,
+        "saved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "events": [
+            {
+                "id": e["id"],
+                "finished": e.get("finished"),
+                "is_current": e.get("is_current"),
+                "is_next": e.get("is_next"),
+                "deadline_time": e.get("deadline_time"),
+            }
+            for e in ctx.bootstrap.get("events", [])
+        ],
+        "players": [
+            {
+                "id": p["id"],
+                "web_name": p["web_name"],
+                "element_type": p["element_type"],
+                "team": p["team"],
+                "now_cost": p["now_cost"],
+                "total_points": p.get("total_points"),
+                "form": p.get("form"),
+                "points_per_game": p.get("points_per_game"),
+                "ep_next": p.get("ep_next"),
+                "selected_by_percent": p.get("selected_by_percent"),
+                "minutes": p.get("minutes"),
+                "starts": p.get("starts"),
+                "expected_goals": p.get("expected_goals"),
+                "expected_assists": p.get("expected_assists"),
+                "expected_goal_involvements": p.get("expected_goal_involvements"),
+                "expected_goals_conceded": p.get("expected_goals_conceded"),
+                "ict_index": p.get("ict_index"),
+                "influence": p.get("influence"),
+                "creativity": p.get("creativity"),
+                "threat": p.get("threat"),
+                "goals_scored": p.get("goals_scored"),
+                "assists": p.get("assists"),
+                "clean_sheets": p.get("clean_sheets"),
+                "saves": p.get("saves"),
+                "status": p.get("status"),
+            }
+            for p in ctx.bootstrap.get("elements", [])
+        ],
+        "fixtures": ctx.fixtures,
+        "live": live,
+    }
+    (SNAPSHOT_DIR / f"gw{gw}.json").write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+
+def priority_player_ids(ctx: Context, *, limit: int = HISTORY_REFRESH_TOP_N) -> list[int]:
+    """Squad + high ownership / EP players — avoid fetching all ~700 every run."""
+    ids: list[int] = []
+    seen: set[int] = set()
+    squad = load_squad()
+    if squad:
+        for pid in squad.get("player_ids") or []:
+            pid = int(pid)
+            if pid not in seen:
+                seen.add(pid)
+                ids.append(pid)
+    ranked = sorted(
+        ctx.players,
+        key=lambda p: (
+            fnum(p.get("selected_by_percent")),
+            fnum(p.get("ep_next")),
+            fnum(p.get("form")),
+        ),
+        reverse=True,
+    )
+    for p in ranked:
+        if len(ids) >= limit:
+            break
+        if p["id"] in seen:
+            continue
+        seen.add(p["id"])
+        ids.append(p["id"])
+    return ids
+
+
+def refresh_histories(
+    ctx: Context,
+    *,
+    player_ids: list[int] | None = None,
+    sleep_s: float = 0.12,
+    force: bool = False,
+) -> tuple[int, int]:
+    """Fetch element-summary for selected players. Returns (ok, failed)."""
+    ensure_data_dirs()
+    ids = player_ids or priority_player_ids(ctx)
+    ok = 0
+    failed = 0
+    for i, pid in enumerate(ids):
+        path = history_path(pid)
+        if path.exists() and not force:
+            # Refresh if cache is older than ~12h or season history grew
+            age = time.time() - path.stat().st_mtime
+            cached = load_player_history(pid)
+            if cached and age < 12 * 3600:
+                ctx.history_cache[pid] = cached
+                ok += 1
+                continue
+        data = fetch_element_summary(pid)
+        if data is None:
+            failed += 1
+            continue
+        slim = {
+            "id": pid,
+            "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "history": data.get("history") or [],
+            "history_past": data.get("history_past") or [],
+            "fixtures": data.get("fixtures") or [],
+        }
+        save_player_history(pid, slim)
+        ctx.history_cache[pid] = slim
+        ok += 1
+        if sleep_s and i + 1 < len(ids):
+            time.sleep(sleep_s)
+    return ok, failed
+
+
+def load_context(*, load_histories: bool = True) -> Context:
+    ctx = Context(bootstrap=fetch_json("/bootstrap-static/"), fixtures=fetch_json("/fixtures/"))
+    if load_histories:
+        ensure_data_dirs()
+        # Warm cache from disk for known files (no network)
+        for path in HISTORY_DIR.glob("*.json"):
+            try:
+                pid = int(path.stem)
+            except ValueError:
+                continue
+            data = load_player_history(pid)
+            if data:
+                ctx.history_cache[pid] = data
+    return ctx
 
 
 def fnum(value: Any, default: float = 0.0) -> float:
@@ -213,12 +401,36 @@ def team_fixtures_in_gw(ctx: Context, team_id: int, gw: int) -> list[tuple[int, 
     return rows
 
 
-def fixture_multiplier(fdr: int, is_home: bool) -> float:
-    """Scale average-fixture points for this opponent (FDR 1=easy … 5=hard)."""
+def fixture_multiplier(
+    fdr: int,
+    is_home: bool,
+    *,
+    cost: int = 50,
+    pos: int = 3,
+) -> float:
+    """Scale average-fixture points for this opponent (FDR 1=easy … 5=hard).
+
+    Mathematically Safe Part Three: fixture ease matters most for expensive
+    assets; budget rotation is closer to a coin flip — dampen FDR for cheap.
+    """
     table = {1: 1.20, 2: 1.10, 3: 1.00, 4: 0.90, 5: 0.78}
     mult = table.get(int(fdr), 1.0)
     mult *= 1.05 if is_home else 0.97
-    return mult
+    if is_premium_asset(cost, pos):
+        sensitivity = 1.15
+    elif cost <= 55:
+        sensitivity = 0.40
+    else:
+        sensitivity = 0.70
+    return 1.0 + (mult - 1.0) * sensitivity
+
+
+def is_premium_asset(cost: int, pos: int) -> bool:
+    if pos == 1:
+        return cost >= PREMIUM_GK
+    if pos == 4:
+        return cost >= PREMIUM_FWD
+    return cost >= PREMIUM_MID_DEF
 
 
 def minutes_probability(p: dict[str, Any]) -> float:
@@ -241,7 +453,6 @@ def minutes_probability(p: dict[str, Any]) -> float:
         return 0.75
     if starts >= 3 or minutes >= 270:
         return 0.60
-    # Preseason / unknown: lean on ownership + ep as weak minutes proxy
     ep = fnum(p.get("ep_next"))
     own = fnum(p.get("selected_by_percent"))
     if ep >= 3.0 or own >= 20:
@@ -253,25 +464,117 @@ def minutes_probability(p: dict[str, Any]) -> float:
     return 0.55
 
 
-def baseline_points_rate(p: dict[str, Any]) -> float:
+def xgi_as_fpl_points(p: dict[str, Any], xgi90: float | None = None) -> float:
+    """Rough conversion of xGI/90 toward FPL attacking points."""
+    if xgi90 is None:
+        xgi90 = reliable_xgi90(p)
+    pos = p["element_type"]
+    goal_pts = {1: 10, 2: 6, 3: 5, 4: 4}.get(pos, 4)
+    return xgi90 * (0.65 * goal_pts + 0.35 * 3.0)
+
+
+def defence_cs_proxy(ctx: Context, p: dict[str, Any]) -> float:
+    """Small clean-sheet / defensive floor for GK/DEF (not attacking-FB biased)."""
+    if p["element_type"] not in {1, 2}:
+        return 0.0
+    team = ctx.teams.get(p["team"], {})
+    home_def = fnum(team.get("strength_defence_home"), 1100)
+    away_def = fnum(team.get("strength_defence_away"), 1100)
+    strength = (home_def + away_def) / 2.0
+    base = max(0.10, min(0.55, (strength - 1000) / 700.0 * 0.45 + 0.15))
+    xgc = fnum(p.get("expected_goals_conceded"))
+    minutes = int(p.get("minutes") or 0)
+    if minutes >= 600 and xgc > 0:
+        xgc90 = xgc / (minutes / 90.0)
+        base += max(-0.10, min(0.15, (1.2 - xgc90) * 0.12))
+    if p["element_type"] == 1 and minutes >= 600:
+        saves = int(p.get("saves") or 0)
+        base += min(0.12, saves / max(minutes / 90.0, 1.0) * 0.04)
+    return base
+
+
+def recent_history_rows(hist: dict[str, Any] | None, n: int = HISTORY_RECENCY_N) -> list[dict[str, Any]]:
+    if not hist:
+        return []
+    rows = [r for r in (hist.get("history") or []) if int(r.get("minutes") or 0) > 0]
+    return rows[-n:]
+
+
+def recency_points_rate(hist: dict[str, Any] | None, n: int = HISTORY_RECENCY_N) -> float | None:
+    """Weighted average FPL points per appearance over last n GWs."""
+    rows = recent_history_rows(hist, n)
+    if not rows:
+        return None
+    weights = [0.10, 0.15, 0.20, 0.25, 0.30][-len(rows) :]
+    total_w = sum(weights)
+    score = sum(w * fnum(r.get("total_points")) for w, r in zip(weights, rows))
+    return score / total_w
+
+
+def past_season_ppg(hist: dict[str, Any] | None) -> float | None:
+    if not hist:
+        return None
+    past = hist.get("history_past") or []
+    if not past:
+        return None
+    last = past[-1]
+    mins = int(last.get("minutes") or 0)
+    if mins < 450:
+        return None
+    starts = int(last.get("starts") or 0) or max(1, mins // 90)
+    return fnum(last.get("total_points")) / starts
+
+
+def residual_tilt(ctx: Context, p: dict[str, Any]) -> float:
+    """Mild due/caution from actual pts vs xGI (Part Two: weekly is noisy)."""
+    hist = get_player_history(ctx, p["id"])
+    rows = recent_history_rows(hist, HISTORY_RECENCY_N)
+    if len(rows) < 2:
+        goals = fnum(p.get("goals_scored"))
+        assists = fnum(p.get("assists"))
+        xg = fnum(p.get("expected_goals"))
+        xa = fnum(p.get("expected_assists"))
+        if xg + xa < 0.5:
+            return 0.0
+        over = (goals + assists) - (xg + xa)
+        return max(-0.25, min(0.25, -over * 0.15))
+
+    actual = sum(fnum(r.get("total_points")) for r in rows) / len(rows)
+    xgi_vals = []
+    for r in rows:
+        xg = fnum(r.get("expected_goals"))
+        xa = fnum(r.get("expected_assists"))
+        if xg + xa > 0:
+            xgi_vals.append(xgi_as_fpl_points(p, xg + xa))
+    if not xgi_vals:
+        return 0.0
+    expected_atk = sum(xgi_vals) / len(xgi_vals)
+    expected_total = 1.8 + expected_atk * 0.85
+    if p["element_type"] in {1, 2}:
+        expected_total += 0.4
+    gap = expected_total - actual
+    return max(-0.30, min(0.30, gap * 0.20))
+
+
+def baseline_points_rate(ctx: Context, p: dict[str, Any]) -> float:
     """Fixture-neutral points expectation for a full appearance (before FDR/home)."""
     ep = fnum(p.get("ep_next"))
     form = fnum(p.get("form"))
     ppg = fnum(p.get("points_per_game"))
     xgi90 = reliable_xgi90(p)
-    pos = p["element_type"]
-    # Convert xGI/90 toward FPL points (goal pts by position + assist≈3)
-    goal_pts = {1: 10, 2: 6, 3: 5, 4: 4}.get(pos, 4)
-    xgi_as_pts = xgi90 * (0.65 * goal_pts + 0.35 * 3.0)
-    # Defensive floor for GK/DEF from clean-sheet potential (very rough)
-    if pos in {1, 2}:
-        xgi_as_pts += 0.35  # small CS/saves baseline noise
+    xgi_as_pts = xgi_as_fpl_points(p, xgi90) + defence_cs_proxy(ctx, p)
 
-    if form > 0 and ppg > 0:
-        # In-season: form + recent PPG dominate
+    hist = get_player_history(ctx, p["id"])
+    recent = recency_points_rate(hist)
+    past_ppg = past_season_ppg(hist)
+
+    if recent is not None and form > 0:
+        rate = 0.35 * recent + 0.25 * form + 0.20 * ppg + 0.20 * max(xgi_as_pts, ep)
+    elif form > 0 and ppg > 0:
         rate = 0.50 * form + 0.30 * ppg + 0.20 * max(xgi_as_pts, ep)
+    elif past_ppg is not None and form <= 0:
+        rate = 0.30 * ep + 0.35 * past_ppg + 0.20 * ppg + 0.15 * max(xgi_as_pts, ep * 0.8)
     elif ppg > 0:
-        # Preseason: last-season PPG + official EP + xGI
         rate = 0.35 * ep + 0.40 * ppg + 0.25 * max(xgi_as_pts, ep * 0.8)
     else:
         rate = 0.65 * ep + 0.35 * xgi_as_pts
@@ -291,39 +594,34 @@ def resolve_target_gw(ctx: Context, gw: int | None = None) -> int:
 def gw_expected_points(ctx: Context, p: dict[str, Any], gw: int | None = None) -> float:
     """Expected FPL points for a player in a specific gameweek.
 
-    Combines:
-    - official FPL ep_next (when evaluating the next GW — already fixture-aware)
-    - our baseline rate × THIS week's FDR + home/away (and blanks/doubles)
-    - minutes probability from injury news / history
-    - form (via baseline_points_rate)
+    Combines official ep_next, recency/xGI baseline, price-tier FDR, minutes,
+    and a mild xGI residual tilt (not a weekly auto-transfer trigger).
     """
     target = resolve_target_gw(ctx, gw)
     fixtures = team_fixtures_in_gw(ctx, p["team"], target)
     if not fixtures:
-        return 0.0  # blank GW for this club
+        return 0.0
 
     p_min = minutes_probability(p)
-    rate = baseline_points_rate(p)
+    rate = baseline_points_rate(ctx, p)
+    tilt = residual_tilt(ctx, p)
     nxt = next_event(ctx)
     is_next = bool(nxt and target == nxt["id"])
     official = fnum(p.get("ep_next"))
+    cost = int(p.get("now_cost") or 50)
+    pos = int(p["element_type"])
 
     total = 0.0
     for fdr, is_home, _opp in fixtures:
-        mult = fixture_multiplier(fdr, is_home)
-        model = rate * mult * p_min
+        mult = fixture_multiplier(fdr, is_home, cost=cost, pos=pos)
+        model = rate * mult * p_min + tilt
         if is_next and len(fixtures) == 1:
-            # ep_next already includes next fixture + much of minutes risk.
-            # Blend rather than stack FDR on top of ep_next (avoids double-counting).
-            # When form is live, trust recent form more inside rate/model.
             form = fnum(p.get("form"))
             if form > 0:
                 total += 0.45 * official + 0.55 * model
             else:
                 total += 0.60 * official + 0.40 * model
         elif is_next and len(fixtures) > 1:
-            # DGW: ep_next is often single-fixture-ish early; sum our model per fixture
-            # but keep a floor from official EP
             total += max(model, official * 0.45)
         else:
             total += model
@@ -347,6 +645,11 @@ def value_ev(ctx: Context, p: dict[str, Any], gw: int | None = None) -> float:
     return gw_expected_points(ctx, p, gw) / cost
 
 
+def position_value_weight(pos: int) -> float:
+    """Part Four: DEF/MID steep value per £; GK/FWD shallower (except premium FWD)."""
+    return {1: 0.55, 2: 1.25, 3: 1.20, 4: 0.65}.get(pos, 1.0)
+
+
 def decision_score(
     ctx: Context,
     p: dict[str, Any],
@@ -355,24 +658,21 @@ def decision_score(
     gw: int | None = None,
     horizon: int = 3,
 ) -> float:
-    """Single score for XI/transfers: next-GW EV + short horizon + mild value/diff.
-
-    Units are approximately FPL points (not arbitrary), so −4 hits compare fairly.
-    """
+    """Single score for XI/transfers: next-GW EV + short horizon + mild value/diff."""
     target = resolve_target_gw(ctx, gw)
     ev = gw_expected_points(ctx, p, target)
-    # Horizon: average of next GWs excluding current already counted → use remaining
     events = sorted(
         (e for e in ctx.bootstrap["events"] if not e.get("finished")),
         key=lambda e: e["id"],
     )
     future = [e for e in events if int(e["id"]) != target][: max(0, horizon - 1)]
     horiz = sum(gw_expected_points(ctx, p, int(e["id"])) for e in future)
-    # Weight: this week matters most for transfers; keep some run quality
     score = ev * 1.0 + horiz * 0.35
-    # Mild value tilt (don't overfit cheap junk)
-    score += min(value_ev(ctx, p, target), 0.85) * 1.2
-    # Competition differentials: small bonus for low ownership when chasing
+    val = min(value_ev(ctx, p, target), 0.85) * 1.2 * position_value_weight(p["element_type"])
+    if p["element_type"] == 4 and p["now_cost"] >= PREMIUM_FWD:
+        val *= 0.85
+        score += 0.35
+    score += val
     own = fnum(p.get("selected_by_percent"))
     score += competition * max(0.0, 25.0 - own) / 40.0
     if is_risk(p):
@@ -406,6 +706,8 @@ def score_player(
     xgi90 = reliable_xgi90(p)
     cost = max(p["now_cost"] / 10.0, 3.5)
     value = (ep + form * 0.5 + xgi90) / cost
+    # Part Four: weight DEF/MID value higher in legacy scorer too
+    value *= position_value_weight(p["element_type"])
     own = fnum(p.get("selected_by_percent"))
     p_min = minutes_probability(p)
     starter = (p_min - 0.5) * 6.0
@@ -554,13 +856,12 @@ def find_second_forward(
 
 
 def pick_squad(ctx: Context, style: str = "balanced", *, competition: float = 0.4) -> list[dict[str, Any]]:
-    """Consensus draft: Haaland + premium mids + 2nd FWD + playing bench.
+    """Consensus draft aligned with Mathematically Safe Part Four + 2026 meta.
 
-    Structure targets (2026/27 meta):
-    - Premium FWD (Haaland) + 1 mid-price playing FWD
-    - 2 premium MIDs (£8.0m+) + 3 playing MIDs
-    - Playing GK + 3 XI DEF + 2 cheap playing DEF (BB/auto-sub)
-    - 2 ultra-cheap enablers (fodder GK + fodder FWD/MID)
+    Structure targets:
+    - GK ~£8.5–9.5 total (mid-price starter + £4.0 fodder) — not premium GK
+    - Heavy DEF (3 XI + 2 cheap playing bench) and MID (2 premium £8–10)
+    - FWD: 1 premium (Haaland) + 1 mid/cheap + fodder
     """
     weights = {
         "balanced": {
@@ -590,8 +891,10 @@ def pick_squad(ctx: Context, style: str = "balanced", *, competition: float = 0.
     }[style]
 
     def key(p: dict[str, Any]) -> float:
+        # Extra absolute weight on DEF/MID EV (steep £ gradient in Part Four)
+        pos_w = {1: 0.95, 2: 1.12, 3: 1.15, 4: 1.0}.get(p["element_type"], 1.0)
         return (
-            gw_expected_points(ctx, p) * 1.2
+            gw_expected_points(ctx, p) * 1.2 * pos_w
             + horizon_expected_points(ctx, p, 5) * 0.25
             + score_player(p, weights, competition=competition) * 0.08
         )
@@ -690,11 +993,20 @@ def pick_squad(ctx: Context, style: str = "balanced", *, competition: float = 0.
             if try_add(p, reserve=seats_reserve()):
                 break
 
-    # --- Phase 1: XI foundations — playing GK + 3 DEF ---
-    try_add(
-        next((p for p in playing_by_pos[1] if can_add(p, reserve=seats_reserve())), None),
-        reserve=seats_reserve(),
-    )
+    # --- Phase 1: XI foundations — mid-price playing GK + 3 DEF ---
+    # Part Four: Mid-Price (Lower) GK best value; avoid £5.5+ unless needed
+    gk_mid = [
+        p
+        for p in playing_by_pos[1]
+        if 45 <= p["now_cost"] <= 55 and can_add(p, reserve=seats_reserve())
+    ]
+    if gk_mid:
+        try_add(max(gk_mid, key=value_key), reserve=seats_reserve())
+    else:
+        try_add(
+            next((p for p in playing_by_pos[1] if can_add(p, reserve=seats_reserve())), None),
+            reserve=seats_reserve(),
+        )
     if counts[1] == 0:
         try_add(
             next((p for p in playing_by_pos[1] if can_add(p, reserve=bench_pack)), None),
@@ -2062,6 +2374,104 @@ def squad_from_ids(ctx: Context, element_ids: list[int]) -> list[dict[str, Any]]
     return [ctx.by_id[i] for i in element_ids]
 
 
+def cmd_refresh(ctx: Context, args: argparse.Namespace) -> None:
+    """Fetch element-summary history + optional live GW snapshot."""
+    ensure_data_dirs()
+    nxt = next_event(ctx)
+    cur = current_or_last_event(ctx)
+    snap_gw = int((cur or nxt or {"id": 1})["id"])
+    print("=== FPL REFRESH ===\n")
+    print(f"Lagrer snapshot for GW{snap_gw} …")
+    live = None
+    if cur and cur.get("finished"):
+        live = fetch_event_live(int(cur["id"]))
+        if live:
+            print(f"Hentet live-poeng for ferdig GW{cur['id']}.")
+    elif cur and not cur.get("finished"):
+        live = fetch_event_live(int(cur["id"]))
+    save_gw_snapshot(ctx, snap_gw, live=live)
+
+    limit = int(getattr(args, "top", HISTORY_REFRESH_TOP_N) or HISTORY_REFRESH_TOP_N)
+    force = bool(getattr(args, "force", False))
+    ids = priority_player_ids(ctx, limit=limit)
+    print(f"Henter element-summary for {len(ids)} spillere (tropp + topp eierskap/EP) …")
+    ok, failed = refresh_histories(ctx, player_ids=ids, force=force, sleep_s=0.08)
+    print(f"Historikk: {ok} OK, {failed} feilet → {HISTORY_DIR}")
+    print(f"Snapshot:  {SNAPSHOT_DIR / f'gw{snap_gw}.json'}")
+    print("\nTips: kjør `suggest` etter refresh. `overunder` viser xGI-residualer.")
+
+
+def player_overunder_row(ctx: Context, p: dict[str, Any]) -> dict[str, Any]:
+    """goals+assists − (xG+xA); positive = overperformed underlying."""
+    goals = fnum(p.get("goals_scored"))
+    assists = fnum(p.get("assists"))
+    xg = fnum(p.get("expected_goals"))
+    xa = fnum(p.get("expected_assists"))
+    gi = goals + assists
+    xgi = xg + xa
+    hist = get_player_history(ctx, p["id"])
+    recent_gap = None
+    rows = recent_history_rows(hist, HISTORY_RECENCY_N)
+    if len(rows) >= 2:
+        act = sum(fnum(r.get("total_points")) for r in rows) / len(rows)
+        xgi_m = []
+        for r in rows:
+            rxg = fnum(r.get("expected_goals"))
+            rxa = fnum(r.get("expected_assists"))
+            if rxg + rxa > 0:
+                xgi_m.append(rxg + rxa)
+        if xgi_m:
+            recent_gap = act - (1.8 + sum(xgi_m) / len(xgi_m) * 3.5)
+    return {
+        "player": p,
+        "gi": gi,
+        "xgi": xgi,
+        "delta": gi - xgi,
+        "tilt": residual_tilt(ctx, p),
+        "recent_gap": recent_gap,
+        "ev": gw_expected_points(ctx, p),
+    }
+
+
+def cmd_overunder(ctx: Context, args: argparse.Namespace) -> None:
+    """List players far over/under xGI — regression / 'due' candidates (not auto-transfers)."""
+    top_n = int(getattr(args, "top", 20) or 20)
+    print("=== FPL OVER/UNDER (xGI) ===\n")
+    print(
+        "Basert på goals+assists vs xG+xA (bootstrap) + mild residual tilt.\n"
+        "Part Two: ukentlig støy — bruk som fokusliste, ikke auto-bytte.\n"
+    )
+    rows = []
+    for p in ctx.players:
+        if not available(p):
+            continue
+        if int(p.get("minutes") or 0) < 180 and fnum(p.get("form")) <= 0:
+            # Preseason: still show if xGI or ownership interesting
+            if fnum(p.get("expected_goal_involvements")) < 0.5 and fnum(p.get("selected_by_percent")) < 5:
+                continue
+        rows.append(player_overunder_row(ctx, p))
+
+    over = sorted(rows, key=lambda r: r["delta"], reverse=True)[:top_n]
+    under = sorted(rows, key=lambda r: r["delta"])[:top_n]
+
+    print(f"--- Over xGI (caution / regression) top {top_n} ---")
+    for r in over:
+        p = r["player"]
+        print(
+            f"  {player_label(ctx, p)}  G+A {r['gi']:.1f}  xGI {r['xgi']:.1f}  "
+            f"Δ {r['delta']:+.1f}  tilt {r['tilt']:+.2f}  EV {r['ev']:.1f}"
+        )
+    print(f"\n--- Under xGI ('due' / buy-low focus) top {top_n} ---")
+    for r in under:
+        p = r["player"]
+        print(
+            f"  {player_label(ctx, p)}  G+A {r['gi']:.1f}  xGI {r['xgi']:.1f}  "
+            f"Δ {r['delta']:+.1f}  tilt {r['tilt']:+.2f}  EV {r['ev']:.1f}"
+        )
+    cached = len(ctx.history_cache)
+    print(f"\nHistorikk i cache: {cached} spillere. Kjør `refresh` for mer GW-data.")
+
+
 def cmd_show(ctx: Context, args: argparse.Namespace) -> None:
     cfg = load_config()
     data = load_squad()
@@ -2090,9 +2500,19 @@ def cmd_suggest(ctx: Context, args: argparse.Namespace) -> None:
         print(f"Neste: {nxt['name']}  deadline {nxt.get('deadline_time')}")
     print(f"Differensial-trykk: {competition:.2f} (høyere = mer jakt i ligaen)")
     print(
-        "EV-modell: FPL ep_next + form/PPG/xGI × FDR/hjemme-borte denne GW "
-        "+ minutt-sannsynlighet + prisverdi\n"
+        "EV-modell: recency+xGI · FDR skalert etter pris · residual tilt · "
+        "minutt-sannsynlighet · DEF/MID-verdi"
     )
+    if ctx.history_cache:
+        print(f"Historikk-cache: {len(ctx.history_cache)} spillere (kjør `refresh` for oppdatering)\n")
+    else:
+        print("Ingen lokal historikk ennå — kjør `python3 fpl_cli.py refresh` etter GW1+\n")
+
+    # Light auto-refresh of squad players when cache empty and season underway
+    if not ctx.history_cache and any(e.get("finished") for e in ctx.bootstrap.get("events", [])):
+        print("Auto-refresh: henter historikk for prioriterte spillere …")
+        ok, failed = refresh_histories(ctx, player_ids=priority_player_ids(ctx, limit=40), sleep_s=0.05)
+        print(f"  → {ok} OK, {failed} feilet\n")
 
     data = load_squad()
 
@@ -2284,6 +2704,30 @@ def build_parser() -> argparse.ArgumentParser:
     p_pull = sub.add_parser("pull", help="Synk tropp fra FPL (etter GW-deadline)")
     p_pull.set_defaults(func=cmd_pull, needs_ctx=True)
 
+    p_ref = sub.add_parser(
+        "refresh",
+        help="Hent historikk (element-summary) + GW-snapshot for EV-modellen",
+    )
+    p_ref.add_argument(
+        "--top",
+        type=int,
+        default=HISTORY_REFRESH_TOP_N,
+        help=f"Antall spillere å hente (standard {HISTORY_REFRESH_TOP_N})",
+    )
+    p_ref.add_argument(
+        "--force",
+        action="store_true",
+        help="Hent på nytt selv om cache er fersk",
+    )
+    p_ref.set_defaults(func=cmd_refresh, needs_ctx=True)
+
+    p_ou = sub.add_parser(
+        "overunder",
+        help="Spillere over/under xGI (regresjon / 'due' — ikke auto-bytte)",
+    )
+    p_ou.add_argument("--top", type=int, default=20, help="Antall per liste")
+    p_ou.set_defaults(func=cmd_overunder, needs_ctx=True)
+
     p_show = sub.add_parser("show", help="Vis kobling og lagret tropp")
     p_show.set_defaults(func=cmd_show, needs_ctx=True)
 
@@ -2332,6 +2776,8 @@ def interactive_menu() -> None:
             "5) Vis lagret tropp\n"
             "6) Synk fra FPL (pull)\n"
             "7) Fixtures (neste 6 GW)\n"
+            "8) Refresh historikk (element-summary)\n"
+            "9) Over/under xGI\n"
             "0) Avslutt"
         )
         choice = input("\nVelg: ").strip()
@@ -2365,6 +2811,13 @@ def interactive_menu() -> None:
                 cmd_pull(load_context(), argparse.Namespace())
             elif choice == "7":
                 cmd_fixtures(load_context(), argparse.Namespace(next=6))
+            elif choice == "8":
+                cmd_refresh(
+                    load_context(),
+                    argparse.Namespace(top=40, force=False),
+                )
+            elif choice == "9":
+                cmd_overunder(load_context(), argparse.Namespace(top=15))
             else:
                 print("Ugyldig valg.\n")
                 continue

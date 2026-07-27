@@ -38,3 +38,12 @@ Offisielle regler (API + Premier League):
 4. **FH nesten bare på BGW**
 
 Kjør: `python3 fpl_cli.py chips` og `suggest` (gir ukentlig chip-råd).
+
+## Datagrunnlag (kort)
+
+EV-modellen følger funn fra:
+
+- [Mathematically Safe (2019)](https://mathematicallysafe.wordpress.com/2019/07/01/fpl-analysis-what-five-seasons-of-data-modelling-have-revealed-about-predictive-analysis-fixture-impact-and-optimal-team-structure-in-fantasy-premier-league/) — underlying korrelerer over sesong (ikke uke-for-uke); fixtures hjelper dyre assets mest; penger i DEF+MID; én premium FWD; mid-pris GK
+- Nyere: [arxiv 2505.02170](https://arxiv.org/html/2505.02170v3) (recency/hybrid), [OpenFPL](https://arxiv.org/html/2508.09992), [FPL Feed xG overperformance](https://fplfeed.substack.com/p/fpl-analysis-over-performance-in)
+
+`refresh` henter `/element-summary/` + GW-snapshot; `overunder` viser xGI-residualer som fokusliste (ikke auto-bytte).
