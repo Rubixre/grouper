@@ -149,20 +149,21 @@ export interface SettlementScore {
   expansion?: number;
   /** Soft robber exposure on 6/8 pip */
   robberExposure?: number;
-  /** Utfylling mellom 1. og 2. landsby (kun andre plassering) */
+  /** Byggbarhet: pakker + timing (kun andre plassering; én kanal) */
   portfolio?: number;
   /** Overlapp-straff mellom landsbyene (kun andre plassering) */
   overlap?: number;
-  /** Pip quality above strong-single threshold (~11 pips) */
+  /** @deprecated Always 0 — pip already in production */
   pipBonus?: number;
-  /** Soft 6/8 anchor when resource-diverse */
+  /** @deprecated Always 0 — robber is the only 6/8 corrective */
   redAnchorBonus?: number;
-  /** Flat desert-adjacency penalty */
+  /** @deprecated Always 0 — desert already yields zero production */
   desertPenalty?: number;
   lowHexPenalty?: number;
   monoResourcePenalty?: number;
+  /** Recipe packages (subset of portfolio buildability) */
   buildingSynergy?: number;
-  /** Bonus when opening pair reaches 14+ pips */
+  /** @deprecated Always 0 — pair pip already in production */
   pairPipBonus?: number;
   complementScore?: number;
   coordination?: number;

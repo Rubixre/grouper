@@ -566,7 +566,7 @@ console.log('\nSupply-based scarcity');
   );
 }
 
-console.log('\nMono-resource penalty + robust PSM');
+console.log('\nMono-resource penalty + deduped PSM');
 import {
   scoreFirstPlacement,
   robberExposure,
@@ -628,8 +628,8 @@ import {
     'Mono-resource 6 gets mono penalty'
   );
   assert(
-    (monoScore.components.desertPenalty ?? 0) > 0,
-    'Desert adjacency applies desert penalty'
+    (monoScore.components.desertPenalty ?? 0) === 0,
+    'Desert adjacency has no extra penalty (zero production + lowHex cover it)'
   );
   assert(
     (monoScore.components.lowHexPenalty ?? 0) > 0,
@@ -640,12 +640,10 @@ import {
     'Balanced 3-hex outranks mono 6'
   );
   assert(
-    (balancedScore.components.redAnchorBonus ?? 0) > 0,
-    'Diverse spot with 6/8 gets red anchor bonus'
-  );
-  assert(
-    (balancedScore.components.pipBonus ?? 0) > 0,
-    'High-pip 3-hex gets pip quality bonus'
+    balancedScore.components.pipBonus === 0 &&
+      balancedScore.components.redAnchorBonus === 0 &&
+      balancedScore.components.pairPipBonus === 0,
+    'Pip / red / pair-pip bonuses are disabled (no double-count of NUMBER_PROB)'
   );
 
   const eliteCoast = {
@@ -680,8 +678,8 @@ import {
     '2-hex always pays low-hex penalty (no full waiver)'
   );
   assert(
-    (coastScore.components.redAnchorBonus ?? 0) > 0,
-    'Elite coast with 6+8 and two resources gets red anchor'
+    (coastScore.components.redAnchorBonus ?? 0) === 0,
+    'No red-anchor bonus (production + robber only for 6/8)'
   );
   assert(
     coastScore.components.production > balancedScore.components.production,
@@ -1496,11 +1494,8 @@ if (board) {
       const recomposed =
         o.production +
         o.diversity +
-        (o.pipBonus ?? 0) +
-        (o.redAnchorBonus ?? 0) +
         o.harbor +
         (o.expansion ?? 0) -
-        (o.desertPenalty ?? 0) -
         (o.lowHexPenalty ?? 0) -
         (o.monoResourcePenalty ?? 0) -
         (o.robberExposure ?? 0);
@@ -1509,8 +1504,13 @@ if (board) {
     'First settlement score components sum to total'
   );
   assert(
-    firstLocal.some((o) => (o.pipBonus ?? 0) > 0),
-    'At least one first placement gets pip quality bonus'
+    firstLocal.every(
+      (o) =>
+        (o.pipBonus ?? 0) === 0 &&
+        (o.redAnchorBonus ?? 0) === 0 &&
+        (o.desertPenalty ?? 0) === 0
+    ),
+    'First placement has no pip / red / desert double-count bonuses'
   );
 
   let state = sim;
@@ -1542,20 +1542,32 @@ if (board) {
       const recomposed =
         o.production +
         (o.portfolio ?? 0) +
-        (o.buildingSynergy ?? 0) +
-        (o.coordination ?? 0) +
-        (o.pairPipBonus ?? 0) +
         o.diversity +
         o.harbor +
         (o.expansion ?? 0) -
         (o.overlap ?? 0) -
         (o.robberExposure ?? 0) -
-        (o.desertPenalty ?? 0) -
         (o.lowHexPenalty ?? 0) -
         (o.monoResourcePenalty ?? 0);
       return Math.abs(recomposed - o.total) < 1e-6;
     }),
     'Second settlement score components sum to total'
+  );
+  assert(
+    secondOpts.every((o) => {
+      const buildability = (o.buildingSynergy ?? 0) + (o.coordination ?? 0);
+      return Math.abs(buildability - (o.portfolio ?? 0)) < 1e-9;
+    }),
+    'Portfolio equals single buildability channel (packages + timing)'
+  );
+  assert(
+    secondOpts.every(
+      (o) =>
+        (o.pairPipBonus ?? 0) === 0 &&
+        (o.complementScore ?? 0) === 0 &&
+        (o.desertPenalty ?? 0) === 0
+    ),
+    'Pair scoring has no pip / complement / desert double-count bonuses'
   );
   assert(
     secondOpts.every((o) => (o.buildingSynergy ?? 0) >= 0),
