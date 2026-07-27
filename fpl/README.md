@@ -18,6 +18,14 @@ python3 fpl_cli.py suggest
 
 Gir: bytter · XI · kaptein · **chip-anbefaling (EV)** basert på ditt lag.
 
+**EV-modellen (uke for uke):**
+- FPL `ep_next` (offisiell prognose)
+- Form / PPG / xGI
+- **Denne ukens motstander** (FDR + hjemme/borte; blank = 0)
+- Minutt-sannsynlighet (skadenyheter + spilletid)
+- Prisverdi (EV per £)
+- Bytter måles i **forventede poeng** (hits −4 sammenlignes rettferdig)
+
 ```bash
 python3 fpl_cli.py suggest --apply       # lagre bytter lokalt
 python3 fpl_cli.py chips                 # sesongplan + status
