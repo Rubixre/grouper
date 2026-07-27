@@ -5,7 +5,7 @@ Kjør **ikke** fra `C:\WINDOWS\system32`.
 
 ## Enklest: dobbeltklikk
 
-1. Last ned [INSTALLER-PÅ-PC.bat](https://raw.githubusercontent.com/Rubixre/grouper/cursor/fpl-stats-model-127c/fpl/INSTALLER-P%C3%85-PC.bat) (høyreklikk lenken → Lagre som…)
+1. Last ned [INSTALL-PC.bat](https://raw.githubusercontent.com/Rubixre/grouper/cursor/fpl-stats-model-127c/fpl/INSTALL-PC.bat) (høyreklikk lenken → Lagre som…)
 2. Dobbeltklikk filen → den lager `C:\Users\<deg>\fpl-coach`
 3. Dobbeltklikk **`START-FPL.bat`** i den mappen → menyen åpnes
 
