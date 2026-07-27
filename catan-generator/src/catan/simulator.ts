@@ -11,6 +11,10 @@ import { rankFirstSettlementsWithLookahead } from './strategyAdvisor';
 import { getPlacementOrder } from './draftOrder';
 import { DEFAULT_RESOURCE_WEIGHTS } from './types';
 import { OPPONENT_RESOURCE_WEIGHTS } from './resourceWeights';
+import {
+  computeBoardEconomics,
+  type BoardEconomics,
+} from './placementModel';
 
 export { getPlacementOrder } from './draftOrder';
 
@@ -42,6 +46,8 @@ export interface SimulationState {
   placementOrder: number[];
   currentStep: number;
   finished: boolean;
+  /** Cached board economics for PSM (recomputed if human strategy weights change). */
+  economics: BoardEconomics;
 }
 
 export function createSimulation(
@@ -56,6 +62,7 @@ export function createSimulation(
     placementOrder: getPlacementOrder(config.players.length as PlayerCount),
     currentStep: 0,
     finished: false,
+    economics: computeBoardEconomics(board),
   };
 }
 
@@ -87,6 +94,10 @@ export function getOptionsForCurrentTurn(
     ? (weights ?? DEFAULT_RESOURCE_WEIGHTS)
     : OPPONENT_RESOURCE_WEIGHTS;
   const ownCount = state.placements.filter((p) => p.player === player).length;
+  const econ =
+    isHuman && !weights
+      ? state.economics
+      : computeBoardEconomics(state.board, resolvedWeights);
 
   // Første landsby:
   // - Mennesket (deg): lookahead mot forventet par (#1+#2)
@@ -101,10 +112,10 @@ export function getOptionsForCurrentTurn(
         resolvedWeights
       );
     }
-    return rankVertices(state.board, state.placements, resolvedWeights, player);
+    return rankVertices(state.board, state.placements, resolvedWeights, player, econ);
   }
 
-  return rankVertices(state.board, state.placements, resolvedWeights, player);
+  return rankVertices(state.board, state.placements, resolvedWeights, player, econ);
 }
 
 export function placeSettlement(

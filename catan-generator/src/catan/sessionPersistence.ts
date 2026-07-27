@@ -11,6 +11,7 @@ import {
   type SimulationConfig,
 } from './playerConfig';
 import type { SimulationState } from './simulator';
+import { computeBoardEconomics } from './placementModel';
 import { isStrategyChoice, type StrategyChoice } from './resourceWeights';
 import { createBoardStory, type BoardStory } from './boardStory';
 
@@ -131,6 +132,7 @@ function sanitizeSimulation(
     placementOrder: raw.placementOrder as number[],
     currentStep: Math.max(0, Math.min(raw.currentStep, raw.placementOrder.length)),
     finished: Boolean(raw.finished),
+    economics: computeBoardEconomics(board),
   };
 }
 

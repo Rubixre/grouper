@@ -75,7 +75,9 @@ function optionMeta(
   if (opt.placementKind === 'second') {
     const synergy =
       (opt.buildingSynergy ?? 0) > 0 ? ` · Syn +${(opt.buildingSynergy ?? 0).toFixed(2)}` : '';
-    return `Par ${opt.production.toFixed(2)}${synergy}`;
+    const pairPip =
+      (opt.pairPipBonus ?? 0) > 0 ? ` · Pip +${(opt.pairPipBonus ?? 0).toFixed(2)}` : '';
+    return `Par ${opt.production.toFixed(2)}${synergy}${pairPip}`;
   }
   if (opt.expectedPairScore !== undefined) {
     const local = opt.immediateScore ?? opt.production;
@@ -86,11 +88,13 @@ function optionMeta(
     return `Forventet par ${opt.expectedPairScore.toFixed(2)}${confidence} · Spot ${local.toFixed(2)}`;
   }
   const pair = path ? ` · Par ${path.pairScore.toFixed(2)}` : '';
+  const pip =
+    (opt.pipBonus ?? 0) > 0 ? ` · Pip +${(opt.pipBonus ?? 0).toFixed(2)}` : '';
   const expansion =
     (opt.expansion ?? 0) > 0 ? ` · Eks +${(opt.expansion ?? 0).toFixed(2)}` : '';
   const robber =
     (opt.robberExposure ?? 0) > 0 ? ` · Rob −${(opt.robberExposure ?? 0).toFixed(2)}` : '';
-  return `Prod ${opt.production.toFixed(2)}${expansion}${robber}${pair}`;
+  return `Prod ${opt.production.toFixed(2)}${pip}${expansion}${robber}${pair}`;
 }
 
 export function SettlementSimulator({
