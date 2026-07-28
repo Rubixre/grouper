@@ -518,20 +518,6 @@ function App() {
           {simulation?.finished && (
             <SimulationSummaryPanel state={simulation} />
           )}
-
-          {!mappingMode && board && !simulation?.finished && (
-            <details className="panel legend-collapsible board-legend">
-              <summary>Havner</summary>
-              <div className="legend-list">
-                {board.harbors.map((h) => (
-                  <div key={h.definition.id} className="harbor-legend-row">
-                    <strong>B{h.pieceGroup + 1}</strong>
-                    <span>{h.definition.name}</span>
-                  </div>
-                ))}
-              </div>
-            </details>
-          )}
         </main>
 
         <aside className={`sidebar sidebar-right ${simActive ? 'sim-sidebar-active' : ''}`}>
