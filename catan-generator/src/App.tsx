@@ -473,7 +473,7 @@ function App() {
                 mapping={boardMapping}
                 highlightEdge={highlightEdge}
                 highlightCorner={highlightCorner}
-                coverFrame={Boolean(simPlacing)}
+                coverFrame={false}
               />
               {simPlacing && isYourTurn && (
                 <div className="placement-heatmap-legend" aria-hidden>
