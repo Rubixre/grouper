@@ -395,7 +395,7 @@ function App() {
   };
 
   return (
-    <div className="app">
+    <div className={`app ${simPlacing ? 'app-simulating' : ''}`}>
       <header className="header">
         <div>
           <h1>Catan Brettgenerator</h1>
