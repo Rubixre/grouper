@@ -24,6 +24,7 @@ export * from './strategyAdvisor';
 export * from './vertexLabels';
 export * from './harborStrategy';
 export * from './simulator';
+export * from './roadPlan';
 export * from './playerStats';
 export * from './boardStory';
 export * from './sessionPersistence';

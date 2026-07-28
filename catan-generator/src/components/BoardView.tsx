@@ -21,6 +21,11 @@ interface BoardViewProps {
   highlightedVertices?: SettlementScore[];
   previewSecondVertex?: string | null;
   selectedVertex?: string | null;
+  /** Preview opening road from selected settlement */
+  previewRoadTo?: string | null;
+  /** Clickable road-direction tips when choosing opening road */
+  roadTargets?: string[];
+  onRoadTargetClick?: (toVertexId: string) => void;
   harborPlanHighlight?: {
     firstVertexId: string;
     secondVertexId?: string;
@@ -93,6 +98,9 @@ export function BoardView({
   highlightedVertices = [],
   previewSecondVertex = null,
   selectedVertex,
+  previewRoadTo = null,
+  roadTargets = [],
+  onRoadTargetClick,
   harborPlanHighlight = null,
   onVertexClick,
   interactive = false,
@@ -233,6 +241,95 @@ export function BoardView({
           highlightCorner={highlightCorner}
         />
       )}
+
+      {/* Setup roads — under settlement markers */}
+      {!mappingMode &&
+        placements.map((p, i) => {
+          if (!p.roadToVertexId) return null;
+          const from = getVertexPixel(p.vertexId, HEX_SIZE);
+          const to = getVertexPixel(p.roadToVertexId, HEX_SIZE);
+          if (!from || !to) return null;
+          const color = playerColor(p.player);
+          return (
+            <g key={`road-${p.vertexId}-${i}`} className="setup-road">
+              <line
+                x1={from.x}
+                y1={from.y}
+                x2={to.x}
+                y2={to.y}
+                stroke="#0a2a40"
+                strokeWidth={7}
+                strokeLinecap="round"
+                opacity={0.35}
+              />
+              <line
+                x1={from.x}
+                y1={from.y}
+                x2={to.x}
+                y2={to.y}
+                stroke={color}
+                strokeWidth={4.5}
+                strokeLinecap="round"
+              />
+            </g>
+          );
+        })}
+
+      {/* Preview opening road for selected settlement */}
+      {!mappingMode &&
+        selectedVertex &&
+        previewRoadTo &&
+        (() => {
+          const from = getVertexPixel(selectedVertex, HEX_SIZE);
+          const to = getVertexPixel(previewRoadTo, HEX_SIZE);
+          if (!from || !to) return null;
+          return (
+            <g className="setup-road-preview" aria-hidden>
+              <line
+                x1={from.x}
+                y1={from.y}
+                x2={to.x}
+                y2={to.y}
+                stroke="#fff"
+                strokeWidth={5}
+                strokeLinecap="round"
+                strokeDasharray="6 5"
+                opacity={0.9}
+              />
+            </g>
+          );
+        })()}
+
+      {/* Clickable road direction tips */}
+      {!mappingMode &&
+        interactive &&
+        selectedVertex &&
+        roadTargets.map((toId) => {
+          const pos = getVertexPixel(toId, HEX_SIZE);
+          if (!pos) return null;
+          const isActive = previewRoadTo === toId;
+          return (
+            <g
+              key={`road-target-${toId}`}
+              className={`road-direction-target ${isActive ? 'active' : ''}`}
+              style={{ cursor: 'pointer' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRoadTargetClick?.(toId);
+              }}
+            >
+              <circle
+                cx={pos.x}
+                cy={pos.y}
+                r={isActive ? 8 : 6}
+                fill={isActive ? '#fff' : 'rgba(255,255,255,0.45)'}
+                stroke={isActive ? '#1a5276' : 'rgba(255,255,255,0.85)'}
+                strokeWidth={isActive ? 2.5 : 1.5}
+              />
+              <title>Legg startvei hit</title>
+            </g>
+          );
+        })}
 
       {/* Settlement markers */}
       {!mappingMode &&
