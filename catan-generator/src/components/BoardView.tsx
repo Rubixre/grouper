@@ -32,6 +32,8 @@ interface BoardViewProps {
   mapping?: BoardMapping | null;
   highlightEdge?: string | null;
   highlightCorner?: string | null;
+  /** Fyll rammen (crop) — brukt på mobil under simulering for full bredde */
+  coverFrame?: boolean;
 }
 
 const HEX_SIZE = BOARD_HEX_SIZE;
@@ -97,6 +99,7 @@ export function BoardView({
   mapping = null,
   highlightEdge = null,
   highlightCorner = null,
+  coverFrame = false,
 }: BoardViewProps) {
   const topPlacements = highlightedVertices.slice(0, TOP_PLACEMENT_MARKERS);
   const otherPlacements = highlightedVertices.slice(TOP_PLACEMENT_MARKERS);
@@ -147,6 +150,7 @@ export function BoardView({
   return (
     <svg
       viewBox={`${minX} ${minY} ${width} ${height}`}
+      preserveAspectRatio={coverFrame ? 'xMidYMid slice' : 'xMidYMid meet'}
       className="board-svg"
       role="img"
       aria-label="Catan-brett"
