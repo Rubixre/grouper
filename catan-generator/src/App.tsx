@@ -474,6 +474,7 @@ function App() {
                 mapping={boardMapping}
                 highlightEdge={highlightEdge}
                 highlightCorner={highlightCorner}
+                coverFrame={Boolean(simPlacing)}
               />
               {simPlacing && isYourTurn && (
                 <div className="placement-heatmap-legend" aria-hidden>
@@ -604,6 +605,7 @@ function App() {
                   onSelectHarborPlan={handleSelectHarborPlan}
                   onConfirm={handleConfirm}
                   onUndo={handleUndo}
+                  onCancel={resetSimulation}
                   onStrategyChoiceChange={handleStrategyChoiceChange}
                 />
               )}

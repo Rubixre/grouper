@@ -59,6 +59,7 @@ interface SettlementSimulatorProps {
   onSelectHarborPlan: (opp: HarborStrategyOpportunity) => void;
   onConfirm: () => void;
   onUndo: () => void;
+  onCancel: () => void;
   onStrategyChoiceChange: (choice: StrategyChoice) => void;
 }
 
@@ -109,6 +110,7 @@ export function SettlementSimulator({
   onSelectHarborPlan,
   onConfirm,
   onUndo,
+  onCancel,
   onStrategyChoiceChange,
 }: SettlementSimulatorProps) {
   const [showAllOptions, setShowAllOptions] = useState(false);
@@ -488,6 +490,13 @@ export function SettlementSimulator({
               Logg ({state.placements.length})
             </button>
           )}
+          <button
+            type="button"
+            className="btn sim-info-btn sim-cancel-btn"
+            onClick={onCancel}
+          >
+            Avbryt
+          </button>
         </div>
         <div className="sim-action-row">
           <button
