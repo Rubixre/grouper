@@ -15,6 +15,10 @@ import {
   computeBoardEconomics,
   type BoardEconomics,
 } from './placementModel';
+import {
+  isLegalRoadTarget,
+  pickBestRoadDirection,
+} from './roadPlan';
 
 export { getPlacementOrder } from './draftOrder';
 
@@ -118,9 +122,14 @@ export function getOptionsForCurrentTurn(
   return rankVertices(state.board, state.placements, resolvedWeights, player, econ);
 }
 
+/**
+ * Plasser landsby + startvei i samme trekk.
+ * `roadToVertexId` er valgfri — mangler den, velges beste ekspansjonsretning.
+ */
 export function placeSettlement(
   state: SimulationState,
-  vertexId: string
+  vertexId: string,
+  roadToVertexId?: string
 ): SimulationState {
   const player = currentPlayer(state);
   if (player === null) return state;
@@ -128,9 +137,16 @@ export function placeSettlement(
   const valid = getValidVertices(state.placements);
   if (!valid.includes(vertexId)) return state;
 
+  const resolvedRoad =
+    roadToVertexId && isLegalRoadTarget(vertexId, roadToVertexId)
+      ? roadToVertexId
+      : pickBestRoadDirection(vertexId, state.board, state.placements);
+
+  if (!resolvedRoad) return state;
+
   const placements: PlacedSettlement[] = [
     ...state.placements,
-    { vertexId, player, isCity: false },
+    { vertexId, player, isCity: false, roadToVertexId: resolvedRoad },
   ];
 
   const nextStep = state.currentStep + 1;
@@ -144,7 +160,7 @@ export function placeSettlement(
   };
 }
 
-/** Angre siste plassering (ett steg tilbake). */
+/** Angre siste plassering (ett steg tilbake — landsby + vei). */
 export function undoLastPlacement(state: SimulationState): SimulationState {
   if (state.placements.length === 0 || state.currentStep === 0) return state;
 

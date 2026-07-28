@@ -37,6 +37,10 @@ import {
   type SimulationState,
 } from './catan/simulator';
 import {
+  getRoadTargets,
+  pickBestRoadDirection,
+} from './catan/roadPlan';
+import {
   loadSession,
   saveSession,
   type AppMode,
@@ -79,6 +83,7 @@ function App() {
   const [selectedVertex, setSelectedVertex] = useState<string | null>(
     () => restoredSession?.selectedVertex ?? null
   );
+  const [selectedRoadTo, setSelectedRoadTo] = useState<string | null>(null);
   const [selectedHarborPlanKey, setSelectedHarborPlanKey] = useState<string | null>(null);
   const [boardStory, setBoardStory] = useState<BoardStory | null>(
     () => restoredSession?.boardStory ?? null
@@ -137,6 +142,7 @@ function App() {
     setBoardStory(createBoardStory(result));
     setSimulation(null);
     setSelectedVertex(null);
+    setSelectedRoadTo(null);
     setSelectedHarborPlanKey(null);
     setMode('view');
   }, [settings, boardSize]);
@@ -148,6 +154,7 @@ function App() {
     setBoardStory(createBoardStory(next));
     setSimulation(null);
     setSelectedVertex(null);
+    setSelectedRoadTo(null);
     setMode('view');
     setMappingMode(false);
   }, []);
@@ -190,6 +197,7 @@ function App() {
     setStrategyChoice('general');
     setSimulation(createSimulation(board, simulationConfig));
     setSelectedVertex(null);
+    setSelectedRoadTo(null);
     setSelectedHarborPlanKey(null);
     setMode('simulate');
     // Avoid scrollIntoView — on the mobile sim sheet it can tuck the board
@@ -199,6 +207,7 @@ function App() {
   const resetSimulation = () => {
     setSimulation(null);
     setSelectedVertex(null);
+    setSelectedRoadTo(null);
     setSelectedHarborPlanKey(null);
     setMode('view');
   };
@@ -297,6 +306,11 @@ function App() {
       if (top) {
         setSelectedHarborPlanKey(harborOpportunityKey(top));
         setSelectedVertex(top.firstVertexId);
+        if (board && simulation) {
+          setSelectedRoadTo(
+            pickBestRoadDirection(top.firstVertexId, board, simulation.placements)
+          );
+        }
       }
       return;
     }
@@ -354,6 +368,13 @@ function App() {
 
   const handleSelectVertex = (vertexId: string) => {
     setSelectedVertex(vertexId);
+    if (board && simulation) {
+      setSelectedRoadTo(
+        pickBestRoadDirection(vertexId, board, simulation.placements)
+      );
+    } else {
+      setSelectedRoadTo(null);
+    }
     if (strategyChoice === 'harbor') {
       const match =
         harborOpportunities.find((o) => o.firstVertexId === vertexId) ?? null;
@@ -375,12 +396,20 @@ function App() {
   const handleSelectHarborPlan = (opp: HarborStrategyOpportunity) => {
     setSelectedHarborPlanKey(harborOpportunityKey(opp));
     setSelectedVertex(opp.firstVertexId);
+    if (board && simulation) {
+      setSelectedRoadTo(
+        pickBestRoadDirection(opp.firstVertexId, board, simulation.placements)
+      );
+    }
   };
 
   const handleConfirm = () => {
     if (!simulation || !selectedVertex) return;
-    setSimulation(placeSettlement(simulation, selectedVertex));
+    setSimulation(
+      placeSettlement(simulation, selectedVertex, selectedRoadTo ?? undefined)
+    );
     setSelectedVertex(null);
+    setSelectedRoadTo(null);
     setSelectedHarborPlanKey(null);
   };
 
@@ -388,6 +417,7 @@ function App() {
     if (!simulation || simulation.placements.length === 0) return;
     setSimulation(undoLastPlacement(simulation));
     setSelectedVertex(null);
+    setSelectedRoadTo(null);
     setSelectedHarborPlanKey(null);
   };
 
@@ -465,6 +495,15 @@ function App() {
                   highlightedVertices={simPlacing ? rankedOptions : []}
                   previewSecondVertex={secondPreviewVertex}
                   selectedVertex={selectedVertex}
+                  previewRoadTo={simPlacing ? selectedRoadTo : null}
+                  roadTargets={
+                    simPlacing && selectedVertex
+                      ? getRoadTargets(selectedVertex)
+                      : []
+                  }
+                  onRoadTargetClick={
+                    simPlacing ? (to) => setSelectedRoadTo(to) : undefined
+                  }
                   harborPlanHighlight={harborPlanHighlight}
                   onVertexClick={simPlacing ? handleSelectVertex : undefined}
                   interactive={Boolean(simPlacing)}
@@ -492,8 +531,8 @@ function App() {
                   </div>
                   <span className="placement-legend-hint">
                     {strategyChoice === 'harbor' || activeHarborPlan
-                      ? 'Oransje 1 / turkis 2 = havnplan · blå = havn · gullknapp = anbefalt'
-                      : '#1 = best justert par · % sikker = forutsigbar sti · gullkant = anbefalt strategi'}
+                      ? 'Oransje 1 / turkis 2 = havnplan · blå = havn · hvit stiplet = startvei'
+                      : 'Hvit stiplet = din startvei (trykk nabo for retning) · gullkant = anbefalt strategi'}
                   </span>
                 </div>
               )}

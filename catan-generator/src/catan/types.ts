@@ -189,6 +189,11 @@ export interface PlacedSettlement {
   vertexId: string;
   player: number;
   isCity: boolean;
+  /**
+   * Setup-fase: vei fra landsbyen mot denne nabovertexen.
+   * Indikerer forventet ekspansjonsretning.
+   */
+  roadToVertexId?: string;
 }
 
 export type PlayerCount = 2 | 3 | 4 | 5 | 6;

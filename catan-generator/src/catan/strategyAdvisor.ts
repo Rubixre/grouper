@@ -22,6 +22,7 @@ import {
 } from './settlements';
 import { computeBoardEconomics } from './placementModel';
 import { getPlacementOrder } from './draftOrder';
+import { withSetupRoad } from './roadPlan';
 
 export interface FirstSettlementPath {
   firstVertexId: string;
@@ -177,7 +178,11 @@ export function simulateToHumanSecondTurnDetailed(
   void _weights;
   let simulated: PlacedSettlement[] = [
     ...placed,
-    { vertexId: humanFirstVertex, player: humanPlayer, isCity: false },
+    withSetupRoad(
+      { vertexId: humanFirstVertex, player: humanPlayer, isCity: false },
+      board,
+      placed
+    ),
   ];
 
   const order = getPlacementOrder(playerCount);
@@ -206,7 +211,11 @@ export function simulateToHumanSecondTurnDetailed(
     stepConfidences.push(choice.confidence);
     simulated = [
       ...simulated,
-      { vertexId: choice.vertexId, player, isCity: false },
+      withSetupRoad(
+        { vertexId: choice.vertexId, player, isCity: false },
+        board,
+        simulated
+      ),
     ];
     step += 1;
   }

@@ -28,6 +28,10 @@ import {
   scoreFirstPlacement,
   scorePairPlacement,
 } from './placementModel';
+import {
+  ownRoadContinuationBonus,
+  roadContestPenalty,
+} from './roadPlan';
 
 export { NUMBER_PROB } from './placementModel';
 
@@ -256,11 +260,15 @@ function buildProductionProfile(
  * Soft expansion / port-reach bonus:
  * - open land vertices two roads away (room to grow / place #2)
  * - harbors exactly two roads away (0 is already in harbor bonus; 1 is illegal)
+ * - reduced when opponent opening roads claim nearby corridors
+ * - boosted when continuing your own opening-road direction
  */
 export function expansionPotential(
   vertexId: string,
   board: Board,
-  profile: ProductionProfile
+  profile: ProductionProfile,
+  placed: PlacedSettlement[] = [],
+  selfPlayer?: number
 ): number {
   const vertices = getVertices();
   const origin = vertices.get(vertexId);
@@ -291,15 +299,15 @@ export function expansionPotential(
   const room = (Math.min(roomCount, 8) / 8) * EXPANSION_ROOM_SCALE;
 
   let port = 0;
-  for (const placed of board.harbors) {
+  for (const placedHarbor of board.harbors) {
     let best: number | null = null;
-    for (const node of placed.nodeVertexIds) {
+    for (const node of placedHarbor.nodeVertexIds) {
       const d = vertexRoadDistance(vertexId, node);
       if (d === null) continue;
       if (best === null || d < best) best = d;
     }
     if (best !== 2) continue;
-    const harbor = placed.definition.harbor;
+    const harbor = placedHarbor.definition.harbor;
     let value = PORT_REACH_OTHER;
     if (harbor.kind === 'generic') {
       value = PORT_REACH_GENERIC;
@@ -312,7 +320,16 @@ export function expansionPotential(
     port = Math.max(port, value);
   }
 
-  return Math.min(room + port, EXPANSION_CAP);
+  const contest = roadContestPenalty(vertexId, placed, selfPlayer);
+  const continuation =
+    selfPlayer === undefined
+      ? 0
+      : ownRoadContinuationBonus(vertexId, placed, selfPlayer);
+
+  return Math.min(
+    Math.max(0, room + port + continuation - contest),
+    EXPANSION_CAP + 0.02
+  );
 }
 
 function scoreToResult(
@@ -352,13 +369,21 @@ function scoreToResult(
 export function scoreVertex(
   vertexId: string,
   board: Board,
-  economics?: BoardEconomics
+  economics?: BoardEconomics,
+  placed: PlacedSettlement[] = [],
+  selfPlayer?: number
 ): SettlementScore {
   const econ = economics ?? computeBoardEconomics(board);
   const profile = buildProductionProfile(vertexId, board, econ.dynamicWeights);
   const harbors = getHarborsForVertex(vertexId, board.harbors);
   const harbor = harborBonusForProfile(profile, harbors);
-  const expansion = expansionPotential(vertexId, board, profile);
+  const expansion = expansionPotential(
+    vertexId,
+    board,
+    profile,
+    placed,
+    selfPlayer
+  );
   const scored = scoreFirstPlacement(profile, econ.strategyWeights, harbor, { expansion });
   return scoreToResult(vertexId, 'first', profile, scored);
 }
@@ -368,7 +393,9 @@ export function scoreSecondSettlement(
   secondVertexId: string,
   firstVertexId: string,
   board: Board,
-  economics?: BoardEconomics
+  economics?: BoardEconomics,
+  placed: PlacedSettlement[] = [],
+  selfPlayer?: number
 ): SettlementScore {
   const econ = economics ?? computeBoardEconomics(board);
   const first = buildProductionProfile(firstVertexId, board, econ.dynamicWeights);
@@ -391,8 +418,8 @@ export function scoreSecondSettlement(
     );
 
   const expansion =
-    expansionPotential(firstVertexId, board, first) +
-    expansionPotential(secondVertexId, board, second);
+    expansionPotential(firstVertexId, board, first, placed, selfPlayer) +
+    expansionPotential(secondVertexId, board, second, placed, selfPlayer);
 
   const scored = scorePairPlacement(first, second, econ.strategyWeights, harbor, {
     expansion,
@@ -580,13 +607,15 @@ export function rankVertices(
     if (playerSettlements.length === 1) {
       const firstVertexId = playerSettlements[0].vertexId;
       return getValidVertices(placed)
-        .map((id) => scoreSecondSettlement(id, firstVertexId, board, econ))
+        .map((id) =>
+          scoreSecondSettlement(id, firstVertexId, board, econ, placed, currentPlayer)
+        )
         .sort((a, b) => b.total - a.total);
     }
   }
 
   return getValidVertices(placed)
-    .map((id) => scoreVertex(id, board, econ))
+    .map((id) => scoreVertex(id, board, econ, placed, currentPlayer))
     .sort((a, b) => b.total - a.total);
 }
 

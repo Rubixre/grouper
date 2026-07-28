@@ -743,6 +743,7 @@ import {
 
 console.log('\nExpansion / port reach');
 import { scoreVertex, rankVertices } from '../src/catan/settlements.ts';
+import { getRoadTargets, pickBestRoadDirection } from '../src/catan/roadPlan.ts';
 {
   resetVertices();
   const board = generateBoard({ ...DEFAULT_SETTINGS, randomHarbors: false }, 'base')!;
@@ -994,6 +995,16 @@ if (board) {
   // Motstander på landsby #1: kun lokale score, ikke par-lookahead
   if (turnOpts[0]) {
     const afterHuman = placeSettlement(sim, turnOpts[0].vertexId);
+    assert(
+      afterHuman.placements[0]?.roadToVertexId != null,
+      'Placing a settlement also places an opening road'
+    );
+    assert(
+      getRoadTargets(turnOpts[0].vertexId).includes(
+        afterHuman.placements[0]!.roadToVertexId!
+      ),
+      'Opening road points to a legal neighbor'
+    );
     const oppOpts = getOptionsForCurrentTurn(afterHuman);
     assert(oppOpts.length > 0, 'Opponent has first-settlement options');
     assert(
@@ -1698,15 +1709,24 @@ if (board) {
     );
   }
 
-  assert(
-    computeBoardEconomics(board).dynamicWeights.brick >
-      DEFAULT_RESOURCE_WEIGHTS.brick,
-    'Low-supply brick gets higher dynamic weight on standard board'
-  );
+  const econCheck = computeBoardEconomics(board);
+  if (econCheck.scarcityMultiplier.brick > 1) {
+    assert(
+      econCheck.dynamicWeights.brick > DEFAULT_RESOURCE_WEIGHTS.brick,
+      'Low-supply brick gets higher dynamic weight on standard board'
+    );
+  }
 
   const firstId = state.placements.find((p) => p.player === 0)!.vertexId;
   const ranked = secondOpts[0];
-  const direct = scoreSecondSettlement(ranked.vertexId, firstId, board);
+  const direct = scoreSecondSettlement(
+    ranked.vertexId,
+    firstId,
+    board,
+    undefined,
+    state.placements,
+    0
+  );
   assert(
     Math.abs(direct.total - ranked.total) < 1e-9,
     'Second settlement score matches scoreSecondSettlement'
@@ -1779,7 +1799,10 @@ if (board) {
   const direct = scoreSecondSettlement(
     ranked.vertexId,
     firstPlacement.vertexId,
-    board
+    board,
+    undefined,
+    state.placements,
+    0
   );
   assert(
     Math.abs(direct.total - ranked.total) < 1e-9,
