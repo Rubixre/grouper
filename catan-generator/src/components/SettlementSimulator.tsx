@@ -29,6 +29,7 @@ import type { ProdResource } from '../catan/playerStats';
 import { PlacementScoreBreakdown } from './PlacementScoreBreakdown';
 import { SimulationDraftBar } from './SimulationDraftBar';
 import { StrategyPicker } from './StrategyPicker';
+import { InfoModal } from './InfoModal';
 
 const OPPONENT_BREAKDOWN_PROFILE: StrategyProfile = {
   id: 'general',
@@ -68,6 +69,7 @@ function resourceSummary(score: SettlementScore): string {
   return types.map((r) => RESOURCE_LABELS[r]).join(' · ') || '—';
 }
 
+/** Kort meta for liste — detaljer ligger i poengforklaring-modal */
 function optionMeta(
   opt: SettlementScore,
   path: { pairScore: number } | undefined
@@ -78,19 +80,14 @@ function optionMeta(
     return `Par ${opt.production.toFixed(2)}${build}`;
   }
   if (opt.expectedPairScore !== undefined) {
-    const local = opt.immediateScore ?? opt.production;
     const confidence =
       opt.lookaheadConfidence !== undefined
-        ? ` · ${Math.round(opt.lookaheadConfidence * 100)}% sikker`
+        ? ` · ${Math.round(opt.lookaheadConfidence * 100)}%`
         : '';
-    return `Forventet par ${opt.expectedPairScore.toFixed(2)}${confidence} · Spot ${local.toFixed(2)}`;
+    return `Par ${opt.expectedPairScore.toFixed(2)}${confidence}`;
   }
   const pair = path ? ` · Par ${path.pairScore.toFixed(2)}` : '';
-  const expansion =
-    (opt.expansion ?? 0) > 0 ? ` · Eks +${(opt.expansion ?? 0).toFixed(2)}` : '';
-  const robber =
-    (opt.robberExposure ?? 0) > 0 ? ` · Rob −${(opt.robberExposure ?? 0).toFixed(2)}` : '';
-  return `Prod ${opt.production.toFixed(2)}${expansion}${robber}${pair}`;
+  return `Prod ${opt.production.toFixed(2)}${pair}`;
 }
 
 export function SettlementSimulator({
@@ -115,6 +112,8 @@ export function SettlementSimulator({
   onStrategyChoiceChange,
 }: SettlementSimulatorProps) {
   const [showAllOptions, setShowAllOptions] = useState(false);
+  const [scoreModalOpen, setScoreModalOpen] = useState(false);
+  const [logModalOpen, setLogModalOpen] = useState(false);
 
   const player = currentPlayer(state);
   const human = state.config.humanPlayerIndex;
@@ -160,13 +159,13 @@ export function SettlementSimulator({
 
   const turnHint = isYourTurn
     ? harborMode
-      ? 'Havnmodus — % sikker = forutsigbar sti til #2; stiplet ring = #2'
+      ? 'Havnmodus — velg plan i listen'
       : isSecond
-        ? 'Andre landsby — gul kant = anbefalt strategi (byttes ikke automatisk)'
+        ? 'Andre landsby — gul kant = anbefalt'
         : isFirstHuman
-          ? 'Rangert med konservativ parvekt (usikker sti → spot dominerer)'
+          ? 'Første landsby — med par-outlook'
           : 'Første landsby'
-    : 'Motspillere bruker jevnere ressursvekter · velg hjørne';
+    : 'Motstander · velg hjørne';
 
   const harborRows = useMemo(() => {
     if (!harborMode || !isYourTurn) return [];
@@ -182,11 +181,8 @@ export function SettlementSimulator({
         opp.pathConfidence ?? opp.vsBalanced?.pathConfidence ?? undefined;
       const confidenceHint =
         confidence !== undefined && opp.secondVertexId
-          ? ` · ${Math.round(confidence * 100)}% sikker`
+          ? ` · ${Math.round(confidence * 100)}%`
           : '';
-      const secondHint = opp.secondVertexId
-        ? ` · #2 ${shortVertexLabel(boardSize, opp.secondVertexId)}`
-        : '';
       return {
         key: planKey,
         index,
@@ -195,8 +191,8 @@ export function SettlementSimulator({
         resources: `${ratio} ${RESOURCE_LABELS[opp.resource]}`,
         meta:
           vsPct != null
-            ? `${vsPct}% vs balansert${confidenceHint}${secondHint}`
-            : `${opp.harborReachLabel}${confidenceHint}${secondHint}`,
+            ? `${vsPct}% vs bal.${confidenceHint}`
+            : `${opp.harborReachLabel}${confidenceHint}`,
         selected: selectedHarborPlanKey === planKey,
       };
     });
@@ -491,15 +487,41 @@ export function SettlementSimulator({
       )}
 
       <div className="sim-details-foot">
-        {selectedOption && !state.finished && (
-          <details className="sim-details-block score-breakdown-details">
-            <summary>
-              Poengforklaring · #{selectedRank} (
-              {selectedOption.expectedPairScore !== undefined
-                ? `par ${selectedOption.expectedPairScore.toFixed(2)}`
-                : selectedOption.total.toFixed(2)}
-              )
-            </summary>
+        <div className="sim-info-actions">
+          {selectedOption && !state.finished && (
+            <button
+              type="button"
+              className="btn sim-info-btn"
+              onClick={() => setScoreModalOpen(true)}
+            >
+              Poengforklaring
+              {selectedRank > 0 ? ` · #${selectedRank}` : ''}
+            </button>
+          )}
+          {state.placements.length > 0 && (
+            <button
+              type="button"
+              className="btn sim-info-btn"
+              onClick={() => setLogModalOpen(true)}
+            >
+              Plasseringer ({state.placements.length})
+            </button>
+          )}
+        </div>
+      </div>
+
+      <InfoModal
+        open={scoreModalOpen && !!selectedOption && !state.finished}
+        title={
+          selectedOption
+            ? `Poengforklaring · #${selectedRank}`
+            : 'Poengforklaring'
+        }
+        onClose={() => setScoreModalOpen(false)}
+        wide
+      >
+        {selectedOption && (
+          <>
             {(selectedOption.expectedPairScore !== undefined ||
               (selectedPath && isFirstHuman && isYourTurn) ||
               (harborMode && secondPreviewVertex)) && (
@@ -510,7 +532,7 @@ export function SettlementSimulator({
                     selectedOption.expectedPairScore ?? selectedPath?.pairScore ?? 0
                   ).toFixed(2)}
                 </strong>
-                {secondPreviewVertex && ' — stiplet ring'}
+                {secondPreviewVertex && ' — stiplet ring på brettet'}
               </p>
             )}
             <PlacementScoreBreakdown
@@ -523,32 +545,33 @@ export function SettlementSimulator({
                 selectedOption.placementKind === 'second' ? currentFirstVertex : undefined
               }
             />
-          </details>
+          </>
         )}
+      </InfoModal>
 
-        {state.placements.length > 0 && (
-          <details className="sim-details-block placement-log">
-            <summary>Plasseringer ({state.placements.length})</summary>
-            <div className="placement-log-list">
-              {state.placements.map((p, i) => {
-                const cfg = getPlayerConfig(state.config, p.player);
-                return (
-                  <div key={i} className="log-row">
-                    <span style={{ color: cfg.color }}>●</span>
-                    <span>
-                      {cfg.name}
-                      {p.player === human ? ' (deg)' : ''} · trekk {i + 1}
-                    </span>
-                    <span className="muted small">
-                      {shortVertexLabel(boardSize, p.vertexId)}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </details>
-        )}
-      </div>
+      <InfoModal
+        open={logModalOpen && state.placements.length > 0}
+        title={`Plasseringer (${state.placements.length})`}
+        onClose={() => setLogModalOpen(false)}
+      >
+        <div className="placement-log-list">
+          {state.placements.map((p, i) => {
+            const cfg = getPlayerConfig(state.config, p.player);
+            return (
+              <div key={i} className="log-row">
+                <span style={{ color: cfg.color }}>●</span>
+                <span>
+                  {cfg.name}
+                  {p.player === human ? ' (deg)' : ''} · trekk {i + 1}
+                </span>
+                <span className="muted small">
+                  {shortVertexLabel(boardSize, p.vertexId)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </InfoModal>
     </div>
   );
 }

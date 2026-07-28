@@ -653,9 +653,8 @@ function App() {
                 />
 
                 <p className="muted small scoring-hint">
-                  Strategivalget gjelder bare deg. Motspillere vektlegger ressursene mer
-                  likt. Hver simulering starter på Balansert. Anbefalt strategi får
-                  gullkant — du bytter selv (også ved landsby #2). Havn er en egen strategi.
+                  Strategivalget gjelder bare deg. Anbefalt får gullkant — du bytter selv.
+                  Trykk «Poengforklaring» under plassering for detaljer.
                 </p>
 
                 {!simActive ? (
