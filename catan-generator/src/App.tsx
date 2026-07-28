@@ -81,6 +81,10 @@ function App() {
     () => restoredSession?.selectedVertex ?? null
   );
   const [selectedRoadTo, setSelectedRoadTo] = useState<string | null>(null);
+  /** Landsby bekreftes først, deretter velges startvei. */
+  const [placementStep, setPlacementStep] = useState<'settlement' | 'road'>(
+    'settlement'
+  );
   const [selectedHarborPlanKey, setSelectedHarborPlanKey] = useState<string | null>(null);
   const [boardStory, setBoardStory] = useState<BoardStory | null>(
     () => restoredSession?.boardStory ?? null
@@ -195,6 +199,7 @@ function App() {
     setSimulation(createSimulation(board, simulationConfig));
     setSelectedVertex(null);
     setSelectedRoadTo(null);
+    setPlacementStep('settlement');
     setSelectedHarborPlanKey(null);
     setMode('simulate');
     // Avoid scrollIntoView — on the mobile sim sheet it can tuck the board
@@ -205,6 +210,7 @@ function App() {
     setSimulation(null);
     setSelectedVertex(null);
     setSelectedRoadTo(null);
+    setPlacementStep('settlement');
     setSelectedHarborPlanKey(null);
     setMode('view');
   };
@@ -298,6 +304,7 @@ function App() {
 
   const handleStrategyChoiceChange = (choice: StrategyChoice) => {
     setStrategyChoice(choice);
+    if (placementStep === 'road') return;
     if (choice === 'harbor') {
       const top = harborOpportunities[0];
       if (top) {
@@ -360,6 +367,7 @@ function App() {
       : null;
 
   const handleSelectVertex = (vertexId: string) => {
+    if (placementStep !== 'settlement') return;
     setSelectedVertex(vertexId);
     setSelectedRoadTo(null);
     if (strategyChoice === 'harbor') {
@@ -381,24 +389,39 @@ function App() {
   };
 
   const handleSelectHarborPlan = (opp: HarborStrategyOpportunity) => {
+    if (placementStep !== 'settlement') return;
     setSelectedHarborPlanKey(harborOpportunityKey(opp));
     setSelectedVertex(opp.firstVertexId);
     setSelectedRoadTo(null);
   };
 
   const handleConfirm = () => {
-    if (!simulation || !selectedVertex || !selectedRoadTo) return;
+    if (!simulation || !selectedVertex) return;
+    if (placementStep === 'settlement') {
+      setSelectedRoadTo(null);
+      setPlacementStep('road');
+      return;
+    }
+    if (!selectedRoadTo) return;
     setSimulation(placeSettlement(simulation, selectedVertex, selectedRoadTo));
     setSelectedVertex(null);
     setSelectedRoadTo(null);
+    setPlacementStep('settlement');
     setSelectedHarborPlanKey(null);
   };
 
   const handleUndo = () => {
-    if (!simulation || simulation.placements.length === 0) return;
+    if (!simulation) return;
+    if (placementStep === 'road') {
+      setSelectedRoadTo(null);
+      setPlacementStep('settlement');
+      return;
+    }
+    if (simulation.placements.length === 0) return;
     setSimulation(undoLastPlacement(simulation));
     setSelectedVertex(null);
     setSelectedRoadTo(null);
+    setPlacementStep('settlement');
     setSelectedHarborPlanKey(null);
   };
 
@@ -476,18 +499,27 @@ function App() {
                   highlightedVertices={simPlacing ? rankedOptions : []}
                   previewSecondVertex={secondPreviewVertex}
                   selectedVertex={selectedVertex}
-                  previewRoadTo={simPlacing ? selectedRoadTo : null}
+                  previewRoadTo={
+                    simPlacing && placementStep === 'road' ? selectedRoadTo : null
+                  }
                   roadTargets={
-                    simPlacing && selectedVertex
+                    simPlacing && placementStep === 'road' && selectedVertex
                       ? getRoadTargets(selectedVertex)
                       : []
                   }
                   onRoadTargetClick={
-                    simPlacing ? (to) => setSelectedRoadTo(to) : undefined
+                    simPlacing && placementStep === 'road'
+                      ? (to) => setSelectedRoadTo(to)
+                      : undefined
                   }
                   harborPlanHighlight={harborPlanHighlight}
-                  onVertexClick={simPlacing ? handleSelectVertex : undefined}
+                  onVertexClick={
+                    simPlacing && placementStep === 'settlement'
+                      ? handleSelectVertex
+                      : undefined
+                  }
                   interactive={Boolean(simPlacing)}
+                  settlementInteractive={placementStep === 'settlement'}
                   mappingMode={mappingMode}
                   mapping={boardMapping}
                   highlightEdge={highlightEdge}
@@ -513,7 +545,9 @@ function App() {
                   <span className="placement-legend-hint">
                     {strategyChoice === 'harbor' || activeHarborPlan
                       ? 'Oransje 1 / turkis 2 = havnplan · blå = havn · hvit stiplet = valgt startvei'
-                      : 'Velg landsby, deretter startvei (trykk nabo) · Bekreft · gullkant = anbefalt strategi'}
+                      : placementStep === 'road'
+                        ? 'Steg 2: trykk nabo for startvei, deretter Bekreft vei'
+                        : 'Steg 1: velg landsby og Bekreft landsby · gullkant = anbefalt strategi'}
                   </span>
                 </div>
               )}
@@ -556,6 +590,7 @@ function App() {
                   options={rankedOptions}
                   selectedVertex={selectedVertex}
                   selectedRoadTo={selectedRoadTo}
+                  placementStep={placementStep}
                   selectedHarborPlanKey={selectedHarborPlanKey}
                   strategyChoice={strategyChoice}
                   strategyProfile={activeStrategy}
