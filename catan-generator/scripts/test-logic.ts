@@ -362,6 +362,7 @@ import {
   WEIGHTS_GENERAL,
   WEIGHTS_LONGEST_ROAD_ONLY,
   WEIGHTS_LARGEST_ARMY_ONLY,
+  HARBOR_EVAL_WEIGHTS,
   OPPONENT_RESOURCE_WEIGHTS,
   blendTowardEqualWeights,
   coverageBonus,
@@ -373,6 +374,11 @@ import {
 import { DEFAULT_RESOURCE_WEIGHTS } from '../src/catan/types.ts';
 
 assert(Math.abs(DEFAULT_RESOURCE_WEIGHTS.wheat - WEIGHTS_GENERAL.wheat) < 0.01, 'Default matches general average');
+assert(
+  Math.abs(HARBOR_EVAL_WEIGHTS.wheat - WEIGHTS_GENERAL.wheat) < 1e-12 &&
+    Math.abs(HARBOR_EVAL_WEIGHTS.ore - WEIGHTS_GENERAL.ore) < 1e-12,
+  'Harbor eval weights match balanced general profile'
+);
 assert(isStrategyChoice('harbor') && isStrategyChoice('general'), 'Harbor and profiles are strategy choices');
 assert(!isStrategyChoice('nope'), 'Unknown strategy choice rejected');
 assert(resolveStrategyProfileId('harbor') === 'general', 'Harbor resolves to general weights');
@@ -1263,7 +1269,6 @@ if (board) {
     sim.placements,
     config.humanPlayerIndex,
     4,
-    DEFAULT_RESOURCE_WEIGHTS,
     4
   );
   assert(Array.isArray(opportunities), 'Harbor opportunities returns a list');
@@ -1290,6 +1295,77 @@ if (board) {
     assert(opp.vsBalanced!.bestBalancedScore > 0, 'Balanced reference score is positive');
     assert(opp.vsBalanced!.effectiveRelative > 0, 'Effective relative is positive');
   }
+  const opportunitiesAgain = findHarborStrategyOpportunities(
+    board,
+    sim.placements,
+    config.humanPlayerIndex,
+    4,
+    4
+  );
+  assert(
+    opportunitiesAgain.length === opportunities.length,
+    'Harbor opportunities are stable across recomputation'
+  );
+  assert(
+    opportunities.every((opp, i) => {
+      const other = opportunitiesAgain[i]!;
+      return (
+        opp.firstVertexId === other.firstVertexId &&
+        opp.resource === other.resource &&
+        Math.abs(
+          (opp.vsBalanced?.effectiveRelative ?? 0) - (other.vsBalanced?.effectiveRelative ?? 0)
+        ) < 1e-12 &&
+        Math.abs((opp.vsBalanced?.effectiveScore ?? 0) - (other.vsBalanced?.effectiveScore ?? 0)) <
+          1e-12
+      );
+    }),
+    'Relative harbor scores do not depend on strategy choice (fixed eval weights)'
+  );
+  assert(
+    Math.abs(
+      estimateHarborTradeBonus({
+        resource: 'wood',
+        harborKind: 'resource',
+        resourcePip: 10 / 36,
+        otherPip: 3 / 36,
+      }) -
+        estimateHarborTradeBonus(
+          {
+            resource: 'wood',
+            harborKind: 'resource',
+            resourcePip: 10 / 36,
+            otherPip: 3 / 36,
+          },
+          HARBOR_EVAL_WEIGHTS
+        )
+    ) < 1e-12,
+    'Default trade bonus uses harbor eval weights'
+  );
+  // Passing road vs army weights into the low-level trade helper still differs —
+  // that is why findHarborStrategyOpportunities no longer accepts strategy weights.
+  assert(
+    Math.abs(
+      estimateHarborTradeBonus(
+        {
+          resource: 'wood',
+          harborKind: 'resource',
+          resourcePip: 10 / 36,
+          otherPip: 3 / 36,
+        },
+        WEIGHTS_LONGEST_ROAD_ONLY
+      ) -
+        estimateHarborTradeBonus(
+          {
+            resource: 'wood',
+            harborKind: 'resource',
+            resourcePip: 10 / 36,
+            otherPip: 3 / 36,
+          },
+          WEIGHTS_LARGEST_ARMY_ONLY
+        )
+    ) > 1e-6,
+    'Trade bonus would shift under road vs army weights if eval were not fixed'
+  );
   const harborPlacementScores = harborOpportunitiesAsPlacementScores(opportunities);
   assert(
     harborPlacementScores.length <= opportunities.length,

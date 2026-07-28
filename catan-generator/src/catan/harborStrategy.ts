@@ -7,7 +7,7 @@ import type {
   ResourceWeights,
   SettlementScore,
 } from './types';
-import { DEFAULT_RESOURCE_WEIGHTS } from './types';
+import { HARBOR_EVAL_WEIGHTS } from './resourceWeights';
 import {
   getValidVertices,
   getVertices,
@@ -448,19 +448,22 @@ function considerPlan(
  * Finn havnstrategier som alternativ til vanlig scoring.
  * Maksimerer fokusproduksjon først, deretter øvrige ressurser / hex-dekning.
  * Dominerte planer (f.eks. 2-hex vs. samme 2 + én til) fjernes.
- * Hver plan får vsBalanced-sammneligning mot beste balanserte alternativ.
+ * Hver plan får vsBalanced-sammenligning mot beste balanserte alternativ.
+ *
+ * Evaluering bruker alltid {@link HARBOR_EVAL_WEIGHTS} — ikke spillerens
+ * valgte road/army-strategi — så relative havn-score er strategiuavhengig.
  */
 export function findHarborStrategyOpportunities(
   board: Board,
   placed: PlacedSettlement[],
   humanPlayer: number,
   playerCount: PlayerCount,
-  weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS,
   limit = 4
 ): HarborStrategyOpportunity[] {
   const bag = new Map<string, HarborStrategyOpportunity>();
   const own = placed.filter((p) => p.player === humanPlayer);
   const valid = getValidVertices(placed);
+  const evalWeights = HARBOR_EVAL_WEIGHTS;
 
   if (own.length === 0) {
     for (const vertexId of valid) {
@@ -503,7 +506,7 @@ export function findHarborStrategyOpportunities(
         humanPlayer,
         playerCount,
         candidate.vertexId,
-        weights
+        evalWeights
       );
       if (!simulated) continue;
 
@@ -544,7 +547,7 @@ export function findHarborStrategyOpportunities(
     placed,
     humanPlayer,
     playerCount,
-    weights
+    evalWeights
   );
 }
 
@@ -555,7 +558,7 @@ function clamp(value: number, min: number, max: number): number {
 /** Gjennomsnittlig strategivekt for ressursene du typisk kjøper inn (ikke fokus). */
 export function meanReceiveWeight(
   focus: ProdResource,
-  weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS
+  weights: ResourceWeights = HARBOR_EVAL_WEIGHTS
 ): number {
   let sum = 0;
   let count = 0;
@@ -568,7 +571,7 @@ export function meanReceiveWeight(
 }
 
 export function meanStrategyWeight(
-  weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS
+  weights: ResourceWeights = HARBOR_EVAL_WEIGHTS
 ): number {
   let sum = 0;
   for (const resource of PROD_RESOURCES) sum += weights[resource];
@@ -586,7 +589,7 @@ export function meanStrategyWeight(
  */
 export function harborTradedFraction(
   opportunity: Pick<HarborStrategyOpportunity, 'resource' | 'resourcePip' | 'otherPip'>,
-  weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS
+  weights: ResourceWeights = HARBOR_EVAL_WEIGHTS
 ): number {
   const totalPip = opportunity.resourcePip + opportunity.otherPip;
   const surplusRatio = opportunity.resourcePip / Math.max(totalPip, 1 / 36);
@@ -616,7 +619,7 @@ export function estimateHarborTradeBonus(
     HarborStrategyOpportunity,
     'resource' | 'harborKind' | 'resourcePip' | 'otherPip'
   >,
-  weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS
+  weights: ResourceWeights = HARBOR_EVAL_WEIGHTS
 ): number {
   const conversion =
     opportunity.harborKind === 'resource'
@@ -773,7 +776,7 @@ export function buildHarborVsBalanced(
   opportunity: HarborStrategyOpportunity,
   bestBalancedScore: number,
   planScore: number,
-  weights: ResourceWeights = DEFAULT_RESOURCE_WEIGHTS,
+  weights: ResourceWeights = HARBOR_EVAL_WEIGHTS,
   pathConfidence = 1,
   rawPlanScore = planScore
 ): HarborVsBalanced {

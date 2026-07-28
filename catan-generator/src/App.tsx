@@ -237,10 +237,9 @@ function App() {
       board,
       simulation.placements,
       simulation.config.humanPlayerIndex,
-      simulation.playerCount,
-      strategyWeights
+      simulation.playerCount
     );
-  }, [board, simulation, isYourTurn, strategyWeights]);
+  }, [board, simulation, isYourTurn]);
 
   const rankedOptions = useMemo(() => {
     if (!simPlacing || !simulation) return [];
