@@ -8,7 +8,6 @@ import {
   getStrategyProfile,
   getStrategyWeights,
   resolveStrategyProfileId,
-  strategyChoiceLabel,
   type StrategyChoice,
 } from './catan/resourceWeights';
 import {
