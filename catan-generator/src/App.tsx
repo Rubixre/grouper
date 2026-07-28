@@ -36,10 +36,7 @@ import {
   undoLastPlacement,
   type SimulationState,
 } from './catan/simulator';
-import {
-  getRoadTargets,
-  pickBestRoadDirection,
-} from './catan/roadPlan';
+import { getRoadTargets } from './catan/roadPlan';
 import {
   loadSession,
   saveSession,
@@ -306,11 +303,7 @@ function App() {
       if (top) {
         setSelectedHarborPlanKey(harborOpportunityKey(top));
         setSelectedVertex(top.firstVertexId);
-        if (board && simulation) {
-          setSelectedRoadTo(
-            pickBestRoadDirection(top.firstVertexId, board, simulation.placements)
-          );
-        }
+        setSelectedRoadTo(null);
       }
       return;
     }
@@ -368,13 +361,7 @@ function App() {
 
   const handleSelectVertex = (vertexId: string) => {
     setSelectedVertex(vertexId);
-    if (board && simulation) {
-      setSelectedRoadTo(
-        pickBestRoadDirection(vertexId, board, simulation.placements)
-      );
-    } else {
-      setSelectedRoadTo(null);
-    }
+    setSelectedRoadTo(null);
     if (strategyChoice === 'harbor') {
       const match =
         harborOpportunities.find((o) => o.firstVertexId === vertexId) ?? null;
@@ -396,18 +383,12 @@ function App() {
   const handleSelectHarborPlan = (opp: HarborStrategyOpportunity) => {
     setSelectedHarborPlanKey(harborOpportunityKey(opp));
     setSelectedVertex(opp.firstVertexId);
-    if (board && simulation) {
-      setSelectedRoadTo(
-        pickBestRoadDirection(opp.firstVertexId, board, simulation.placements)
-      );
-    }
+    setSelectedRoadTo(null);
   };
 
   const handleConfirm = () => {
-    if (!simulation || !selectedVertex) return;
-    setSimulation(
-      placeSettlement(simulation, selectedVertex, selectedRoadTo ?? undefined)
-    );
+    if (!simulation || !selectedVertex || !selectedRoadTo) return;
+    setSimulation(placeSettlement(simulation, selectedVertex, selectedRoadTo));
     setSelectedVertex(null);
     setSelectedRoadTo(null);
     setSelectedHarborPlanKey(null);
@@ -531,8 +512,8 @@ function App() {
                   </div>
                   <span className="placement-legend-hint">
                     {strategyChoice === 'harbor' || activeHarborPlan
-                      ? 'Oransje 1 / turkis 2 = havnplan · blå = havn · hvit stiplet = startvei'
-                      : 'Hvit stiplet = din startvei (trykk nabo for retning) · gullkant = anbefalt strategi'}
+                      ? 'Oransje 1 / turkis 2 = havnplan · blå = havn · hvit stiplet = valgt startvei'
+                      : 'Velg landsby, deretter startvei (trykk nabo) · Bekreft · gullkant = anbefalt strategi'}
                   </span>
                 </div>
               )}
@@ -574,6 +555,7 @@ function App() {
                   boardSize={boardSize}
                   options={rankedOptions}
                   selectedVertex={selectedVertex}
+                  selectedRoadTo={selectedRoadTo}
                   selectedHarborPlanKey={selectedHarborPlanKey}
                   strategyChoice={strategyChoice}
                   strategyProfile={activeStrategy}
@@ -667,8 +649,9 @@ function App() {
                 <div className="panel sim-placeholder">
                   <p className="muted small">
                     Velg hvem du er, gi spillere navn og farger. Alle plasseres manuelt i
-                    draft-rekkefølge. Velg strategi med knappene — gullkant markerer
-                    anbefaling under din tur. Havn ligger i samme velger.
+                    draft-rekkefølge: landsby først, deretter startvei i samme trekk.
+                    Velg strategi med knappene — gullkant markerer anbefaling under din tur.
+                    Havn ligger i samme velger.
                   </p>
                 </div>
               )}

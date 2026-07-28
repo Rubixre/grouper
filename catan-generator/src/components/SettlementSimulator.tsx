@@ -47,6 +47,7 @@ interface SettlementSimulatorProps {
   boardSize: BoardSize;
   options: SettlementScore[];
   selectedVertex: string | null;
+  selectedRoadTo: string | null;
   selectedHarborPlanKey: string | null;
   strategyChoice: StrategyChoice;
   strategyProfile: StrategyProfile;
@@ -98,6 +99,7 @@ export function SettlementSimulator({
   boardSize,
   options,
   selectedVertex,
+  selectedRoadTo,
   selectedHarborPlanKey,
   strategyChoice,
   strategyProfile,
@@ -454,6 +456,11 @@ export function SettlementSimulator({
             )}
           </div>
 
+          {selectedVertex && !selectedRoadTo && !state.finished && (
+            <p className="road-pick-hint muted small">
+              Velg startvei på brettet (trykk en nabo til landsbyen), deretter Bekreft.
+            </p>
+          )}
           {harborMode && activeHarborPlan?.vsBalanced && (
             <p className="harbor-active-hint muted small">
               {shortVertexLabel(boardSize, activeHarborPlan.firstVertexId)}
@@ -520,7 +527,7 @@ export function SettlementSimulator({
             <button
               type="button"
               className="btn primary btn-block sim-confirm-btn"
-              disabled={!selectedVertex}
+              disabled={!selectedVertex || !selectedRoadTo}
               onClick={onConfirm}
               style={{ '--player-color': activeConfig.color } as CSSProperties}
             >
