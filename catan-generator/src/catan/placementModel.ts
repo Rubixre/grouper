@@ -62,47 +62,42 @@ export interface PlacementComponents {
   expansion: number;
   /** Soft penalty for pip on 6/8 (robber magnets). */
   robberExposure: number;
-  /** Pip quality above strong-single threshold. */
+  /** @deprecated Always 0 — pip already in production */
   pipBonus: number;
-  /** Soft 6/8 anchor when resource-diverse. */
+  /** @deprecated Always 0 — robber is the only 6/8 corrective */
   redAnchorBonus: number;
-  /** Flat desert-adjacency penalty (plan). */
+  /** @deprecated Always 0 — desert already yields zero production */
   desertPenalty: number;
   lowHexPenalty: number;
   monoResourcePenalty: number;
+  /** Recipe packages only (subset of portfolio / buildability) */
   buildingSynergy: number;
-  /** Bonus when pair reaches 14+ pips. */
+  /** @deprecated Always 0 — pair pip already in production */
   pairPipBonus: number;
+  /** @deprecated Always 0 — covered by building recipes */
   complementScore: number;
+  /** Same-number wood+brick timing (subset of portfolio / buildability) */
   coordination: number;
-  /** Gap-fill + complement (pair portfolio layer). */
+  /** Single buildability channel: buildingSynergy + coordination (pair only) */
   portfolio: number;
   overlap: number;
 }
 
 /**
- * PSM shape (plan + later correctives):
- *   primary   = production (P(number) × strategy/scarcity weights)
- *   quality   = pip / red-anchor / pair-pip (settlersboard targets)
- *   portfolio = gap-fill / complement / building / coordination
- *   correctives = diversity, harbor, expansion − desert/lowHex/mono/robber
+ * PSM shape (deduped — no overlapping rewards for the same signal):
+ *   primary     = production (P(number) × strategy/scarcity weights) — sole pip channel
+ *   buildability = building recipes + same-number wood/brick timing (pair only, one channel)
+ *   correctives  = diversity, harbor, expansion − lowHex/mono/robber
+ *
+ * Intentionally NOT scored (already in production / lowHex / robber):
+ *   pip quality, red-anchor, pair-pip, flat desert penalty, gap-fill, complement pairs
  */
-/** Sterk enkeltplassering ≈ 11 pips (f.eks. 6+5) */
-const PIP_STRONG_SINGLE = 11 / 36;
-/** Åpningsmål for paret (settlersboard.com): 14+ pips */
-const PIP_PAIR_TARGET = 14 / 36;
-const PIP_PAIR_STRONG = 16 / 36;
-const PIP_QUALITY_SCALE = 0.12;
-const PAIR_PIP_BONUS_SCALE = 0.2;
-/** Soft anker-bonus for 6/8 med ressursmangfold */
-const RED_ANCHOR_BONUS = 0.03;
 const MONO_RESOURCE_PENALTY = 0.12;
 const MONO_SINGLE_HEX_EXTRA = 0.06;
-/** Ørken reduserer effektivt antall produserende naboer */
-const DESERT_PENALTY_PER_HEX = 0.04;
 /**
  * 1–2 produktive hex er nesten alltid svake åpningsplasseringer.
  * Elite 2-hex (høy pip + ≥2 ressurser) får redusert straff — aldri fritak.
+ * Ørken håndteres via tapt produksjon + lowHex (ingen separat desertPenalty).
  */
 const LOW_HEX_ELITE_PIP = 10 / 36;
 const LOW_HEX_PENALTY_1 = 0.22;
@@ -114,9 +109,8 @@ const ROAD_SYNERGY_SCALE = 0.35;
 const CITY_SYNERGY_SCALE = 0.3;
 const SETTLEMENT_SYNERGY_SCALE = 0.25;
 const DEV_SYNERGY_SCALE = 0.2;
+/** Unique timing signal: wood+brick on the same number (not covered by recipe mins alone) */
 const COORDINATION_SCALE = 0.15;
-const COMPLEMENT_SCALE = 0.45;
-const GAP_FILL_SCALE = 0.5;
 const RESOURCE_OVERLAP_SCALE = 0.35;
 const NUMBER_OVERLAP_SCALE = 0.2;
 const HARBOR_MAX_SHARE = 0.03;
@@ -202,11 +196,6 @@ function computePlacementOpportunityByResource(
 
   return placementOpportunity;
 }
-
-const COMPLEMENT_PAIRS: [ProdResource, ProdResource][] = [
-  ['wood', 'brick'],
-  ['ore', 'wheat'],
-];
 
 function emptyResourceRecord(): Record<ProdResource, number> {
   return { wood: 0, brick: 0, sheep: 0, wheat: 0, ore: 0 };
@@ -320,16 +309,14 @@ export function harborBonusForProfile(
   return best;
 }
 
-function pipQualityBonus(pipTotal: number): number {
-  if (pipTotal <= PIP_STRONG_SINGLE) return 0;
-  return Math.min((pipTotal - PIP_STRONG_SINGLE) * PIP_QUALITY_SCALE * 36, 0.08);
+/** @deprecated Always 0 — pip already in production */
+function pipQualityBonus(_pipTotal: number): number {
+  return 0;
 }
 
-function redAnchorBonus(profile: ProductionProfile): number {
-  if (!profile.hasRedNumber) return 0;
-  // Ensidig 6/8 på én ressurs er for volatilt uten mangfold
-  if (profile.resources.size < 2) return 0;
-  return RED_ANCHOR_BONUS;
+/** @deprecated Always 0 — 6/8 already in production; robber is the only red corrective */
+function redAnchorBonus(_profile: ProductionProfile): number {
+  return 0;
 }
 
 /** Soft expected loss when the robber parks on your 6/8 hexes. */
@@ -348,13 +335,14 @@ function monoResourcePenalty(profile: ProductionProfile): number {
   return penalty;
 }
 
-function desertPenalty(profile: ProductionProfile): number {
-  return profile.desertNeighbors * DESERT_PENALTY_PER_HEX;
+/** @deprecated Always 0 — desert already yields zero production; lowHex covers hex count */
+function desertPenalty(_profile: ProductionProfile): number {
+  return 0;
 }
 
 /**
  * Straff for færre enn 3 produktive hex.
- * Elite 2-hex (pip ≥ 12/36 og ≥2 ressurser) får redusert straff — aldri fritak.
+ * Elite 2-hex (pip ≥ 10/36 og ≥2 ressurser) får redusert straff — aldri fritak.
  */
 export function lowHexPenalty(profile: ProductionProfile): number {
   const n = profile.producingHexCount;
@@ -400,6 +388,7 @@ function buildingSynergy(
   return road + city + settlement + dev;
 }
 
+/** Timing-only: wood and brick produced on the same number (not just both present). */
 function woodBrickCoordination(first: ProductionProfile, second: ProductionProfile): number {
   let bonus = 0;
   for (const number of Object.keys(NUMBER_PROB).map(Number)) {
@@ -416,45 +405,30 @@ function woodBrickCoordination(first: ProductionProfile, second: ProductionProfi
   return bonus;
 }
 
-function complementScore(
+/**
+ * Single pair buildability channel: recipe packages + same-number road timing.
+ * No gap-fill / complement — those double-count wood↔brick and ore↔wheat already in recipes.
+ */
+function computeBuildability(
+  first: ProductionProfile,
+  second: ProductionProfile,
+  weights: ResourceWeights
+): { buildability: number; building: number; coordination: number } {
+  const building = buildingSynergy(first, second, weights);
+  const coordination = woodBrickCoordination(first, second);
+  return { buildability: building + coordination, building, coordination };
+}
+
+function resourceNumberOverlap(
   first: ProductionProfile,
   second: ProductionProfile,
   weights: ResourceWeights
 ): number {
-  let score = 0;
-  for (const [a, b] of COMPLEMENT_PAIRS) {
-    const v1a = pairRaw(first, a);
-    const v1b = pairRaw(first, b);
-    const v2a = pairRaw(second, a);
-    const v2b = pairRaw(second, b);
-
-    if (v1a > 0 && v1b === 0 && v2b > 0) {
-      score += v2b * weights[b] * COMPLEMENT_SCALE;
-    }
-    if (v1b > 0 && v1a === 0 && v2a > 0) {
-      score += v2a * weights[a] * COMPLEMENT_SCALE;
-    }
-    if (v1a === 0 && v1b === 0 && v2a > 0 && v2b > 0) {
-      score += Math.min(v2a, v2b) * ((weights[a] + weights[b]) / 2) * COMPLEMENT_SCALE;
-    }
-  }
-  return score;
-}
-
-function portfolioSynergy(
-  first: ProductionProfile,
-  second: ProductionProfile,
-  weights: ResourceWeights
-): { portfolio: number; overlap: number } {
-  let gapFill = 0;
   let resourceOverlap = 0;
-
   for (const resource of PROD_RESOURCES) {
     const v1 = pairRaw(first, resource);
     const v2 = pairRaw(second, resource);
-    if (v1 === 0 && v2 > 0) {
-      gapFill += v2 * weights[resource] * GAP_FILL_SCALE;
-    } else if (v1 > 0 && v2 > 0) {
+    if (v1 > 0 && v2 > 0) {
       resourceOverlap += Math.min(v1, v2) * weights[resource] * RESOURCE_OVERLAP_SCALE;
     }
   }
@@ -468,7 +442,7 @@ function portfolioSynergy(
     }
   }
 
-  return { portfolio: gapFill, overlap: resourceOverlap + numberOverlap };
+  return resourceOverlap + numberOverlap;
 }
 
 export interface PlacementContext {
@@ -476,11 +450,9 @@ export interface PlacementContext {
   expansion?: number;
 }
 
-function pairPipBonus(first: ProductionProfile, second: ProductionProfile): number {
-  const pairPip = first.pipTotal + second.pipTotal;
-  if (pairPip < PIP_PAIR_TARGET) return 0;
-  const headroom = Math.min(pairPip - PIP_PAIR_TARGET, PIP_PAIR_STRONG - PIP_PAIR_TARGET);
-  return headroom * PAIR_PIP_BONUS_SCALE * 36;
+/** @deprecated Always 0 — pair pip already in combined production */
+function pairPipBonus(_first: ProductionProfile, _second: ProductionProfile): number {
+  return 0;
 }
 
 export function scoreFirstPlacement(
@@ -517,15 +489,12 @@ export function scoreFirstPlacement(
     overlap: 0,
   };
 
-  // Plan formula + expansion/robber correctives
+  // Sole pip channel = production; robber is the only 6/8 corrective
   const total =
     profile.total +
     diversity +
-    pipBonus +
-    redAnchor +
     harbor +
     expansion -
-    desertPen -
     lowHexPen -
     monoPen -
     robber;
@@ -540,13 +509,10 @@ export function scorePairPlacement(
   harbor: number,
   context: PlacementContext = {}
 ): { total: number; components: PlacementComponents } {
-  const { portfolio: gapFill, overlap } = portfolioSynergy(first, second, weights);
+  const { buildability, building, coordination } = computeBuildability(first, second, weights);
+  const overlap = resourceNumberOverlap(first, second, weights);
   const combinedResources = new Set([...first.resources, ...second.resources]);
   const diversity = coverageBonus(combinedResources, weights, PAIR_DIVERSITY_SCALE);
-  const building = buildingSynergy(first, second, weights);
-  const coordination = woodBrickCoordination(first, second);
-  const complement = complementScore(first, second, weights);
-  const portfolio = gapFill + complement;
   const pairPip = pairPipBonus(first, second);
   const expansion = context.expansion ?? 0;
   const robber = robberExposure(first) + robberExposure(second);
@@ -568,24 +534,20 @@ export function scorePairPlacement(
     monoResourcePenalty: monoPen,
     buildingSynergy: building,
     pairPipBonus: pairPip,
-    complementScore: complement,
+    complementScore: 0,
     coordination,
-    portfolio,
+    /** Single buildability channel (packages + timing) — enters total once */
+    portfolio: buildability,
     overlap,
   };
 
   const total =
     pairProduction +
     diversity +
-    building +
-    coordination +
-    pairPip +
-    gapFill +
-    complement +
+    buildability +
     harbor +
     expansion -
     overlap -
-    desertPen -
     lowHexPen -
     monoPen -
     robber;

@@ -152,19 +152,16 @@ export function PlacementScoreBreakdown({
           <span>Dekning (strategivektet, myk)</span>
           <strong>+{fmt(explanation.diversity)}</strong>
         </li>
-        <BonusLine label="Pip-kvalitet" value={explanation.pipBonus} />
-        <BonusLine label="Rødt tall (6/8)" value={explanation.redAnchorBonus} />
         <BonusLine label="Ekspansjon / havn-rekkevidde" value={explanation.expansion} />
-        <BonusLine label="Ørken-straff" value={explanation.desertPenalty} negative />
         <BonusLine label="Få prod. hex" value={explanation.lowHexPenalty} negative />
         <BonusLine label="Ensidig ressurs" value={explanation.monoResourcePenalty} negative />
         <BonusLine label="Robber-eksponering (6/8)" value={explanation.robberExposure} negative />
         {explanation.kind === 'second' && (
           <>
-            <BonusLine label="Byggepakker (vei/by/landsby)" value={explanation.buildingSynergy} />
-            <BonusLine label="Tømmer+tegl koordinering" value={explanation.coordination} />
-            <BonusLine label="Par-pip bonus (14+)" value={explanation.pairPipBonus} />
-            <BonusLine label="Utfylling mot 1. landsby" value={explanation.portfolio} />
+            <BonusLine
+              label="Byggbarhet (pakker + tømmer/tegl-timing)"
+              value={explanation.portfolio}
+            />
             <BonusLine label="Overlapp-straff" value={explanation.overlap} negative />
           </>
         )}
