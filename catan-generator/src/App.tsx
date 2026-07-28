@@ -472,7 +472,7 @@ function App() {
                   mapping={boardMapping}
                   highlightEdge={highlightEdge}
                   highlightCorner={highlightCorner}
-                  coverFrame={false}
+                  coverFrame={Boolean(simPlacing)}
                 />
               </div>
               {simPlacing && isYourTurn && (

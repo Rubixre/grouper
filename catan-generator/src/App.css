@@ -2440,23 +2440,22 @@ body {
     z-index: 1;
     flex: 0 0 auto;
     gap: 0.25rem;
-    padding: 0.25rem 0 0.35rem;
+    padding: 0 0 0.35rem;
     width: 100%;
-    align-items: center;
-    /* Match the light-blue frame so letterbox strips (if any) blend in */
+    align-items: stretch;
     background: #5dade2;
     box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
     overflow: visible;
   }
 
   .layout-simulating .board-wrap {
-    /* Aspect ≈ light-blue edge frame (~1.1). Fill the wrap so outer edges
-       are the board frame, not dark ocean padding. */
-    --sim-board-h: max(120px, min(34dvh, 260px, calc(100dvh - 22rem)));
-    height: var(--sim-board-h);
-    width: min(100%, calc(var(--sim-board-h) * 1.1));
-    max-width: 100%;
-    margin-inline: auto;
+    /* Full screen width. Prefer natural frame aspect (≈1.1); if the viewport
+       is short, height caps and cover/slice still fills the width. */
+    width: 100%;
+    max-width: none;
+    height: min(calc(100vw / 1.1), calc(100dvh - 20rem));
+    min-height: 160px;
+    margin: 0;
     overflow: hidden;
     background: #5dade2;
   }
@@ -2478,12 +2477,12 @@ body {
   }
 
   .layout-simulating .placement-heatmap-legend-inline {
-    width: min(100%, calc(var(--sim-board-h, 220px) * 1.1));
-    max-width: calc(100% - 1rem);
-    margin: 0 auto;
-    padding: 0.25rem 0.5rem;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0.25rem 0.65rem;
+    border-radius: 0;
     background: rgba(255, 255, 255, 0.94);
-    border-radius: 6px;
     font-size: 0.72rem;
   }
 
