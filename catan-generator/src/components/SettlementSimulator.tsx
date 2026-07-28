@@ -450,7 +450,8 @@ export function SettlementSimulator({
               })
             )}
 
-            {selectedOption &&
+            {placementStep === 'settlement' &&
+              selectedOption &&
               selectedRank > 0 &&
               ((harborMode &&
                 !harborVertexIds.has(selectedOption.vertexId) &&

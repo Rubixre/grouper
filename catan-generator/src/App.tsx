@@ -684,7 +684,7 @@ function App() {
                 <div className="panel sim-placeholder">
                   <p className="muted small">
                     Velg hvem du er, gi spillere navn og farger. Alle plasseres manuelt i
-                    draft-rekkefølge: landsby først, deretter startvei i samme trekk.
+                    draft-rekkefølge: bekreft landsby, deretter bekreft startvei.
                     Velg strategi med knappene — gullkant markerer anbefaling under din tur.
                     Havn ligger i samme velger.
                   </p>
