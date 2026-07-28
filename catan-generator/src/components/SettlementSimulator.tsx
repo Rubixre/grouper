@@ -30,6 +30,7 @@ import { PlacementScoreBreakdown } from './PlacementScoreBreakdown';
 import { SimulationDraftBar } from './SimulationDraftBar';
 import { StrategyPicker } from './StrategyPicker';
 import { InfoModal } from './InfoModal';
+import { PlayerSetupPanel } from './PlayerSetupPanel';
 
 const OPPONENT_BREAKDOWN_PROFILE: StrategyProfile = {
   id: 'general',
@@ -117,6 +118,7 @@ export function SettlementSimulator({
   const [scoreModalOpen, setScoreModalOpen] = useState(false);
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [strategyModalOpen, setStrategyModalOpen] = useState(false);
+  const [setupModalOpen, setSetupModalOpen] = useState(false);
 
   const player = currentPlayer(state);
   const human = state.config.humanPlayerIndex;
@@ -471,6 +473,13 @@ export function SettlementSimulator({
 
       <div className="sim-sticky-controls">
         <div className="sim-info-actions">
+          <button
+            type="button"
+            className="btn sim-info-btn"
+            onClick={() => setSetupModalOpen(true)}
+          >
+            Oppsett
+          </button>
           {selectedOption && !state.finished && (
             <button
               type="button"
@@ -521,6 +530,50 @@ export function SettlementSimulator({
         </div>
       </div>
 
+
+      <InfoModal
+        open={setupModalOpen}
+        title={`Oppsett · ${state.playerCount} spillere`}
+        onClose={() => setSetupModalOpen(false)}
+      >
+        <label className="field">
+          Antall spillere
+          <select value={state.playerCount} disabled>
+            <option value={2}>2 spillere</option>
+            <option value={3}>3 spillere</option>
+            <option value={4}>4 spillere</option>
+            {boardSize === 'extension56' && (
+              <>
+                <option value={5}>5 spillere</option>
+                <option value={6}>6 spillere</option>
+              </>
+            )}
+          </select>
+        </label>
+
+        <p className="muted small">
+          Strategi: {strategyChoiceLabel(strategyChoice)}
+        </p>
+
+        <PlayerSetupPanel
+          playerCount={state.playerCount}
+          config={state.config}
+          disabled
+          compact
+          onConfigChange={() => undefined}
+        />
+
+        <button
+          type="button"
+          className="btn btn-block sim-cancel-btn"
+          onClick={() => {
+            setSetupModalOpen(false);
+            onCancel();
+          }}
+        >
+          Avbryt simulering
+        </button>
+      </InfoModal>
 
       <InfoModal
         open={strategyModalOpen && isYourTurn && !state.finished}
