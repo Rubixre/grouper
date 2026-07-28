@@ -2443,22 +2443,22 @@ body {
     padding: 0.25rem 0 0.35rem;
     width: 100%;
     align-items: center;
-    background: #1a5276;
+    /* Match the light-blue frame so letterbox strips (if any) blend in */
+    background: #5dade2;
     box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
-    /* Board must never be covered by the sheet below */
     overflow: visible;
   }
 
   .layout-simulating .board-wrap {
-    /* Full board visible (meet). Cap height for list space; keep aspect so
-       top/bottom harbors are not cropped or covered by chrome. */
-    --sim-board-h: max(120px, min(32dvh, 240px, calc(100dvh - 22rem)));
+    /* Aspect ≈ light-blue edge frame (~1.1). Fill the wrap so outer edges
+       are the board frame, not dark ocean padding. */
+    --sim-board-h: max(120px, min(34dvh, 260px, calc(100dvh - 22rem)));
     height: var(--sim-board-h);
-    width: min(100%, calc(var(--sim-board-h) * 1.111));
+    width: min(100%, calc(var(--sim-board-h) * 1.1));
     max-width: 100%;
     margin-inline: auto;
-    overflow: visible;
-    background: #1a5276;
+    overflow: hidden;
+    background: #5dade2;
   }
 
   .layout-simulating .board-svg {
@@ -2478,7 +2478,7 @@ body {
   }
 
   .layout-simulating .placement-heatmap-legend-inline {
-    width: min(100%, calc(var(--sim-board-h, 220px) * 1.111));
+    width: min(100%, calc(var(--sim-board-h, 220px) * 1.1));
     max-width: calc(100% - 1rem);
     margin: 0 auto;
     padding: 0.25rem 0.5rem;
