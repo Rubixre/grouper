@@ -57,6 +57,13 @@ export const WEIGHTS_GENERAL: ResourceWeights = averageWeights([
 ]);
 
 /**
+ * Fast profil for havnstrategi-evaluering (vs balansert, trade-bonus, planScore).
+ * Skal IKKE arve valgt road/army-strategi — ellers hopper relative havn-score
+ * når spilleren bytter strategiknapp.
+ */
+export const HARBOR_EVAL_WEIGHTS: ResourceWeights = WEIGHTS_GENERAL;
+
+/**
  * Bland strategiske vekter mot like vekter (1.0 på alle).
  * `towardEqual` = 0 beholder `weights`, 1 = helt like.
  */
@@ -156,7 +163,7 @@ export function isStrategyChoice(value: string): value is StrategyChoice {
   return value === 'harbor' || isStrategyProfileId(value);
 }
 
-/** Havnmodus bruker balanserte vekter under panseret for PSM-sammenligning */
+/** Havnmodus bruker balanserte vekter under panseret for vanlig PSM-fallback */
 export function resolveStrategyProfileId(choice: StrategyChoice): StrategyProfileId {
   return choice === 'harbor' ? 'general' : choice;
 }
