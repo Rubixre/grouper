@@ -8,7 +8,6 @@ import {
   getStrategyProfile,
   getStrategyWeights,
   resolveStrategyProfileId,
-  strategyChoiceLabel,
   type StrategyChoice,
 } from './catan/resourceWeights';
 import {
@@ -529,48 +528,6 @@ function App() {
             />
           ) : simActive && simulation ? (
             <>
-              <details className="panel sim-setup-details">
-                <summary>
-                  Oppsett · {playerCount} spillere · {strategyChoiceLabel(strategyChoice)}
-                </summary>
-                <label className="field">
-                  Antall spillere
-                  <select
-                    value={playerCount}
-                    disabled
-                    onChange={(e) =>
-                      handlePlayerCountChange(Number(e.target.value) as PlayerCount)
-                    }
-                  >
-                    <option value={2}>2 spillere</option>
-                    <option value={3}>3 spillere</option>
-                    <option value={4}>4 spillere</option>
-                    {boardSize === 'extension56' && (
-                      <>
-                        <option value={5}>5 spillere</option>
-                        <option value={6}>6 spillere</option>
-                      </>
-                    )}
-                  </select>
-                </label>
-
-                <PlayerSetupPanel
-                  playerCount={playerCount}
-                  config={simulation.config}
-                  disabled
-                  compact
-                  onConfigChange={setSimulationConfig}
-                />
-
-                <button
-                  type="button"
-                  className="btn btn-block"
-                  onClick={resetSimulation}
-                >
-                  Avbryt simulering
-                </button>
-              </details>
-
               {board && (
                 <SettlementSimulator
                   state={simulation}
