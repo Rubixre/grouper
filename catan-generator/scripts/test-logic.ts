@@ -901,7 +901,7 @@ if (board) {
     const levels = buildStrategyRelativeLevels(
       [
         {
-          profile: STRATEGY_PROFILES[0]!,
+          profile: STRATEGY_PROFILES[0]!, // general Σ ≈ 4.856
           bestPath: {
             firstVertexId: 'a',
             firstScore: 1,
@@ -912,7 +912,7 @@ if (board) {
           },
         },
         {
-          profile: STRATEGY_PROFILES[1]!,
+          profile: STRATEGY_PROFILES[1]!, // longestRoad Σ ≈ 4.79
           bestPath: {
             firstVertexId: 'a',
             firstScore: 1,
@@ -923,11 +923,49 @@ if (board) {
           },
         },
       ],
-      2.5
+      2.5 // harbor uses HARBOR_EVAL_WEIGHTS (= general)
     );
+    // Normalized: harbor 2.5/Σg, general 2/Σg, road 1/Σr → harbor 100, general ~80, road ~41
     assert(levels.harbor === 100, 'Best strategy level is 100');
     assert(levels.general === 80, 'Weaker strategy is relative percent of best');
-    assert(levels.longestRoad === 40, 'Lowest strategy scales correctly');
+    assert(
+      levels.longestRoad !== undefined &&
+        levels.longestRoad >= 39 &&
+        levels.longestRoad <= 42,
+      'Lowest strategy scales correctly after weight normalization'
+    );
+  }
+  {
+    // Army has higher raw score but same per-weight score as neither → both ~100
+    // if neither slightly higher per-weight, neither wins (not automatic army).
+    const army = STRATEGY_PROFILES.find((p) => p.id === 'largestArmy')!;
+    const neither = STRATEGY_PROFILES.find((p) => p.id === 'neither')!;
+    const levels = buildStrategyRelativeLevels([
+      {
+        profile: army,
+        bestPath: {
+          firstVertexId: 'a',
+          firstScore: 1,
+          bestSecondVertexId: 'b',
+          pairScore: 5.05,
+          pathConfidence: 1,
+          adjustedPairScore: 5.05, // = Σ army → norm 1.0
+        },
+      },
+      {
+        profile: neither,
+        bestPath: {
+          firstVertexId: 'a',
+          firstScore: 1,
+          bestSecondVertexId: 'c',
+          pairScore: 4.63,
+          pathConfidence: 1,
+          adjustedPairScore: 4.63, // = Σ neither → norm 1.0
+        },
+      },
+    ]);
+    assert(levels.largestArmy === 100, 'Equal per-weight army is 100');
+    assert(levels.neither === 100, 'Equal per-weight neither is also 100');
   }
   const topPath = evaluateFirstSettlementPath(
     board,

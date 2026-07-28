@@ -6,8 +6,10 @@ import type {
   SettlementScore,
 } from './types';
 import {
+  HARBOR_EVAL_WEIGHTS,
   OPPONENT_RESOURCE_WEIGHTS,
   STRATEGY_PROFILES,
+  totalResourceWeightSum,
   type StrategyChoice,
   type StrategyProfile,
   type StrategyProfileId,
@@ -94,7 +96,32 @@ export interface StrategyRecommendation {
 export type StrategyRelativeLevels = Partial<Record<StrategyChoice, number>>;
 
 /**
- * Sammenlign strategier på samme skala (justert par / effektiv havnscore).
+ * Del rå PSM-score på Σ ressursvekter slik at profiler med høyere wheat/ore-skala
+ * (f.eks. største hær) ikke «vinner» bare fordi tallene er større.
+ */
+export function normalizeStrategyScore(
+  rawScore: number,
+  weights: ResourceWeights
+): number {
+  const sum = totalResourceWeightSum(weights);
+  if (sum <= 1e-9) return rawScore;
+  return rawScore / sum;
+}
+
+function pathComparableScore(
+  path: FirstSettlementPath | null | undefined,
+  weights: ResourceWeights,
+  useAdjusted: boolean
+): number {
+  if (!path) return 0;
+  const raw = useAdjusted
+    ? (path.adjustedPairScore ?? path.pairScore)
+    : path.pairScore;
+  return normalizeStrategyScore(raw, weights);
+}
+
+/**
+ * Sammenlign strategier på samme skala (normalisert justert par / effektiv havnscore).
  * Beste = 100; øvrige = avrundet prosent av beste.
  */
 export function buildStrategyRelativeLevels(
@@ -108,12 +135,15 @@ export function buildStrategyRelativeLevels(
     if (!path) continue;
     scores.push({
       choice: evaluation.profile.id,
-      score: path.adjustedPairScore ?? path.pairScore,
+      score: pathComparableScore(path, evaluation.profile.weights, true),
     });
   }
 
   if (harborEffectiveScore != null && Number.isFinite(harborEffectiveScore)) {
-    scores.push({ choice: 'harbor', score: harborEffectiveScore });
+    scores.push({
+      choice: 'harbor',
+      score: normalizeStrategyScore(harborEffectiveScore, HARBOR_EVAL_WEIGHTS),
+    });
   }
 
   if (scores.length === 0) return {};
@@ -355,10 +385,12 @@ export function recommendStrategy(
   }
 
   const ranked = [...evaluations].sort(
-    (a, b) => (b.bestPath?.pairScore ?? 0) - (a.bestPath?.pairScore ?? 0)
+    (a, b) =>
+      pathComparableScore(b.bestPath, b.profile.weights, false) -
+      pathComparableScore(a.bestPath, a.profile.weights, false)
   );
   const winner = ranked[0];
-  const recommendedProfile = winner?.profile ?? STRATEGY_PROFILES[0];
+  const recommendedProfile = winner?.profile ?? STRATEGY_PROFILES[0]!;
   const winnerPath = winner?.bestPath;
 
   let reason = 'Ingen gyldige parplasseringer funnet – bruker balansert profil.';
@@ -502,7 +534,9 @@ export function recommendStrategyForSecondSettlement(
   }
 
   const ranked = [...evaluations].sort(
-    (a, b) => (b.bestPath?.pairScore ?? 0) - (a.bestPath?.pairScore ?? 0)
+    (a, b) =>
+      pathComparableScore(b.bestPath, b.profile.weights, true) -
+      pathComparableScore(a.bestPath, a.profile.weights, true)
   );
   const winner = ranked[0];
   const recommendedProfile = winner?.profile ?? STRATEGY_PROFILES[0]!;
