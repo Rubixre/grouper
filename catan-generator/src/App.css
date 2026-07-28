@@ -12,6 +12,11 @@
   background: #f0f2f5;
 }
 
+html {
+  /* Unngå sideveis hopp når scrollbar/modal toggles overflow */
+  scrollbar-gutter: stable;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -2345,11 +2350,27 @@ body {
   .layout,
   .layout-two-col {
     grid-template-columns: 1fr;
+    padding: 0.65rem 0.65rem;
+  }
+
+  .board-area {
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .board-wrap,
+  .board-svg {
+    max-width: none;
+    width: 100%;
+  }
+
+  .board-svg {
+    border-radius: 8px;
   }
 
   /*
-   * Simulation on phones: fill the viewport. Board on top, controls sheet
-   * below with sticky Angre/Bekreft always visible at the bottom.
+   * Simulation on phones: edge-to-edge board + sheet. Width is driven by
+   * the screen — do not cap SVG height (that letterboxes to ~75% width).
    */
   .app-simulating {
     height: 100dvh;
@@ -2393,29 +2414,36 @@ body {
     min-height: 0;
     height: auto;
     overflow: hidden;
+    padding: 0;
+    width: 100%;
   }
 
   .layout-simulating .board-area {
     position: relative;
     z-index: 6;
     flex: 0 0 auto;
-    gap: 0.2rem;
-    padding: 0.25rem 0 0.3rem;
-    background: #f0f2f5;
+    gap: 0;
+    padding: 0;
+    width: 100%;
+    align-items: stretch;
+    background: #1a5276;
     box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
   }
 
   .layout-simulating .board-wrap {
-    max-width: 100%;
+    width: 100%;
+    max-width: none;
   }
 
   .layout-simulating .board-svg {
     display: block;
     width: 100%;
-    max-width: 100%;
-    max-height: 30dvh;
-    margin: 0 auto;
-    object-fit: contain;
+    max-width: none;
+    height: auto;
+    max-height: none;
+    margin: 0;
+    border-radius: 0;
+    box-shadow: none;
   }
 
   .layout-simulating .placement-heatmap-legend {
@@ -2447,6 +2475,7 @@ body {
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    width: 100%;
   }
 
   .layout-simulating .simulator-panel {
@@ -2454,7 +2483,9 @@ body {
     min-height: 0;
     max-height: none;
     overflow: hidden;
-    padding-bottom: calc(0.55rem + env(safe-area-inset-bottom, 0px));
+    width: 100%;
+    border-radius: 0;
+    padding: 0.5rem 0.65rem calc(0.5rem + env(safe-area-inset-bottom, 0px));
   }
 
   .layout-simulating .sim-main-scroll {
@@ -2462,6 +2493,7 @@ body {
     min-height: 0;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    scrollbar-gutter: stable;
   }
 
   .layout-simulating .sim-sticky-controls {
@@ -2521,13 +2553,14 @@ body {
   }
 
   .modal-backdrop {
-    padding: 0.5rem;
+    padding: 0;
     align-items: flex-end;
   }
 
   .modal-dialog,
   .modal-dialog-wide {
     max-width: 100%;
+    width: 100%;
     max-height: min(88dvh, 720px);
     border-radius: 14px 14px 0 0;
   }
@@ -2580,7 +2613,12 @@ body {
   .photo-board-modal {
     max-height: min(94vh, 900px);
   }
+
+  .panel {
+    width: 100%;
+  }
 }
+
 
 /* —— Brett fra bilde —— */
 .photo-board-modal {
