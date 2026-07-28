@@ -2433,8 +2433,9 @@ body {
   .layout-simulating .board-wrap {
     width: 100%;
     max-width: none;
-    /* Begrens høyde så listen under kan scrolle — full bredde beholdes */
-    height: min(34dvh, 260px);
+    /* Mindre brett → plass til ~5 landsbyrader under */
+    height: min(26dvh, 200px);
+    min-height: 140px;
     overflow: hidden;
   }
 
@@ -2493,12 +2494,13 @@ body {
     overflow: hidden;
     width: 100%;
     border-radius: 0;
-    padding: 0.5rem 0.65rem calc(0.5rem + env(safe-area-inset-bottom, 0px));
+    padding: 0.35rem 0.65rem calc(0.35rem + env(safe-area-inset-bottom, 0px));
   }
 
   .layout-simulating .sim-main-scroll {
     flex: 1 1 auto;
-    min-height: 7rem;
+    /* ~5 option rows (~2.6rem) + header synlige uten å scrolle */
+    min-height: min(42dvh, 17.5rem);
     overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
@@ -2511,7 +2513,9 @@ body {
     flex-shrink: 0;
     position: relative;
     z-index: 8;
-    padding-bottom: 0.15rem;
+    gap: 0.3rem;
+    padding-top: 0.35rem;
+    padding-bottom: 0.1rem;
     box-shadow: 0 -4px 12px rgba(15, 25, 35, 0.08);
   }
 
@@ -2520,9 +2524,20 @@ body {
     color: #922b21;
   }
 
+  /* Fremdrift vises i banneret — skjul draft-baren for mer listplass */
+  .layout-simulating .sim-draft-bar {
+    display: none;
+  }
+
   .layout-simulating .sim-sticky-head {
-    gap: 0.35rem;
-    padding-bottom: 0.35rem;
+    gap: 0.25rem;
+    padding-bottom: 0.25rem;
+  }
+
+  .layout-simulating .sim-strategy-open {
+    min-height: 2.4rem;
+    font-size: 0.85rem;
+    padding: 0.4rem 0.65rem;
   }
 
   .layout-simulating .sim-you-banner-text p {
@@ -2553,18 +2568,31 @@ body {
   }
 
   .layout-simulating .sim-action-row .btn {
-    min-height: 3rem;
-    font-size: 0.95rem;
+    min-height: 2.75rem;
+    font-size: 0.9rem;
+  }
+
+  .layout-simulating .options-list-header {
+    margin-bottom: 0.2rem;
+  }
+
+  .layout-simulating .options-list-header h3 {
+    font-size: 0.8rem;
+    margin: 0;
+  }
+
+  .layout-simulating .options-list-compact {
+    gap: 0.28rem;
   }
 
   .layout-simulating .option-row-compact {
-    min-height: 2.85rem;
-    padding: 0.5rem 0.55rem;
-    font-size: 0.85rem;
+    min-height: 2.55rem;
+    padding: 0.4rem 0.5rem;
+    font-size: 0.8rem;
   }
 
   .layout-simulating .sim-info-btn {
-    min-height: 2.6rem;
+    min-height: 2.4rem;
   }
 
   .modal-backdrop {
