@@ -192,10 +192,8 @@ function App() {
     setSelectedVertex(null);
     setSelectedHarborPlanKey(null);
     setMode('simulate');
-    // Keep the map in view on phones (controls sit below the board).
-    requestAnimationFrame(() => {
-      boardWrapRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
+    // Avoid scrollIntoView — on the mobile sim sheet it can tuck the board
+    // under the header / behind the sticky panel.
   };
 
   const resetSimulation = () => {
@@ -458,25 +456,27 @@ function App() {
       <div className={`layout layout-two-col ${simPlacing ? 'layout-simulating' : ''}`}>
         <main className="board-area">
           {board ? (
-            <div className="board-wrap" ref={boardWrapRef}>
-              <BoardView
-                board={board}
-                placements={simulation?.placements ?? []}
-                playerConfig={simulation?.config ?? simulationConfig}
-                highlightedVertices={simPlacing ? rankedOptions : []}
-                previewSecondVertex={secondPreviewVertex}
-                selectedVertex={selectedVertex}
-                harborPlanHighlight={harborPlanHighlight}
-                onVertexClick={simPlacing ? handleSelectVertex : undefined}
-                interactive={Boolean(simPlacing)}
-                mappingMode={mappingMode}
-                mapping={boardMapping}
-                highlightEdge={highlightEdge}
-                highlightCorner={highlightCorner}
-                coverFrame={false}
-              />
+            <>
+              <div className="board-wrap" ref={boardWrapRef}>
+                <BoardView
+                  board={board}
+                  placements={simulation?.placements ?? []}
+                  playerConfig={simulation?.config ?? simulationConfig}
+                  highlightedVertices={simPlacing ? rankedOptions : []}
+                  previewSecondVertex={secondPreviewVertex}
+                  selectedVertex={selectedVertex}
+                  harborPlanHighlight={harborPlanHighlight}
+                  onVertexClick={simPlacing ? handleSelectVertex : undefined}
+                  interactive={Boolean(simPlacing)}
+                  mappingMode={mappingMode}
+                  mapping={boardMapping}
+                  highlightEdge={highlightEdge}
+                  highlightCorner={highlightCorner}
+                  coverFrame={false}
+                />
+              </div>
               {simPlacing && isYourTurn && (
-                <div className="placement-heatmap-legend" aria-hidden>
+                <div className="placement-heatmap-legend placement-heatmap-legend-inline" aria-hidden>
                   <strong>Dine beste plasseringer</strong>
                   <div className="placement-legend-scale">
                     {['#f1c40f', '#2ecc71', '#58d68d', '#a9dfbf', '#d5f5e3'].map(
@@ -498,14 +498,14 @@ function App() {
                 </div>
               )}
               {simPlacing && !isYourTurn && (
-                <div className="placement-heatmap-legend" aria-hidden>
+                <div className="placement-heatmap-legend placement-heatmap-legend-inline" aria-hidden>
                   <strong>Plasser manuelt for motspiller</strong>
                   <span className="placement-legend-hint">
                     Markører viser modellens toppforslag for spilleren som har tur
                   </span>
                 </div>
               )}
-            </div>
+            </>
           ) : (
             <div className="empty-board">Genererer brett…</div>
           )}

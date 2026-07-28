@@ -531,6 +531,23 @@ body {
   pointer-events: none;
 }
 
+/* Below the board — never covers harbors / edge tiles */
+.placement-heatmap-legend-inline {
+  position: static;
+  top: auto;
+  left: auto;
+  z-index: auto;
+  width: 100%;
+  max-width: min(960px, 100%);
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.75rem;
+  margin: 0.35rem 0 0;
+  box-shadow: none;
+  pointer-events: none;
+}
+
 .placement-heatmap-legend strong {
   font-size: 0.82rem;
 }
@@ -2420,26 +2437,28 @@ body {
 
   .layout-simulating .board-area {
     position: relative;
-    z-index: 6;
+    z-index: 1;
     flex: 0 0 auto;
-    gap: 0;
-    padding: 0;
+    gap: 0.25rem;
+    padding: 0.25rem 0 0.35rem;
     width: 100%;
-    align-items: stretch;
-    background: #1a5276;
+    align-items: center;
+    /* Match the light-blue frame so letterbox strips (if any) blend in */
+    background: #5dade2;
     box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
+    overflow: visible;
   }
 
   .layout-simulating .board-wrap {
-    /* Match board aspect (~1.11) so the SVG is not cropped top/bottom.
-       Cap height for list space; width shrinks and centers in the ocean strip. */
-    --sim-board-h: max(140px, min(30dvh, 220px));
+    /* Aspect ≈ light-blue edge frame (~1.1). Fill the wrap so outer edges
+       are the board frame, not dark ocean padding. */
+    --sim-board-h: max(120px, min(34dvh, 260px, calc(100dvh - 22rem)));
     height: var(--sim-board-h);
-    width: min(100%, calc(var(--sim-board-h) * 1.111));
+    width: min(100%, calc(var(--sim-board-h) * 1.1));
     max-width: 100%;
     margin-inline: auto;
     overflow: hidden;
-    background: #1a5276;
+    background: #5dade2;
   }
 
   .layout-simulating .board-svg {
@@ -2458,16 +2477,17 @@ body {
     display: none;
   }
 
-  .layout-simulating .placement-heatmap-legend {
-    top: 0.3rem;
-    left: 0.3rem;
-    right: auto;
-    padding: 0.3rem 0.4rem;
-    max-width: min(10.5rem, 46vw);
-    gap: 0.2rem;
+  .layout-simulating .placement-heatmap-legend-inline {
+    width: min(100%, calc(var(--sim-board-h, 220px) * 1.1));
+    max-width: calc(100% - 1rem);
+    margin: 0 auto;
+    padding: 0.25rem 0.5rem;
+    background: rgba(255, 255, 255, 0.94);
+    border-radius: 6px;
+    font-size: 0.72rem;
   }
 
-  .layout-simulating .placement-heatmap-legend strong {
+  .layout-simulating .placement-heatmap-legend-inline strong {
     font-size: 0.72rem;
   }
 
@@ -2481,6 +2501,7 @@ body {
 
   .layout-simulating .sidebar-right.sim-sidebar-active {
     position: relative;
+    z-index: 2;
     flex: 1 1 auto;
     min-height: 0;
     max-height: none;
@@ -2502,8 +2523,8 @@ body {
 
   .layout-simulating .sim-main-scroll {
     flex: 1 1 auto;
-    /* ~5 option rows (~2.6rem) + header synlige uten å scrolle */
-    min-height: min(42dvh, 17.5rem);
+    /* Flex fills leftover space — do not force a min-height that clips the board */
+    min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;

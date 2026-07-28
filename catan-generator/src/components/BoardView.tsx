@@ -3,7 +3,7 @@ import type { BoardMapping } from '../catan/mapping';
 import type { SimulationConfig } from '../catan/playerConfig';
 import { getPlayerConfig } from '../catan/playerConfig';
 import { getEdgePieces, getSingleEdgePieces } from '../catan/edgePieces';
-import { hexCorner, hexToPixel } from '../catan/hex';
+import { hexCorner } from '../catan/hex';
 import { getVertices } from '../catan/settlements';
 import { BoardHex } from './BoardHex';
 import { EdgePieceShape } from './EdgePieceShape';
@@ -32,7 +32,8 @@ interface BoardViewProps {
   mapping?: BoardMapping | null;
   highlightEdge?: string | null;
   highlightCorner?: string | null;
-  /** Fyll rammen (crop) — brukt på mobil under simulering for full bredde */
+  /** Fyll rammen (crop) — brukt på mobil under simulering for full bredde.
+   * Med viewBox strammet til den lyseblå kantrammen blir ytterkantene selve rammen. */
   coverFrame?: boolean;
 }
 
@@ -114,13 +115,17 @@ export function BoardView({
     board.extensionEdgeOrder
   );
   const landHexes = board.hexes.filter((h) => h.kind === 'land');
+  const edgeHexes = board.hexes.filter((h) => h.kind === 'edge');
 
-  const bounds = board.hexes.map((h) => hexToPixel(h.coord, HEX_SIZE));
-  const pad = HEX_SIZE * 1.8;
-  const minX = Math.min(...bounds.map((b) => b.x)) - pad;
-  const maxX = Math.max(...bounds.map((b) => b.x)) + pad;
-  const minY = Math.min(...bounds.map((b) => b.y)) - pad;
-  const maxY = Math.max(...bounds.map((b) => b.y)) + pad;
+  // Crop the viewBox to the light-blue edge-piece frame (not the dark ocean pad).
+  const frameCorners = (edgeHexes.length > 0 ? edgeHexes : board.hexes).flatMap((h) =>
+    Array.from({ length: 6 }, (_, i) => hexCorner(h.coord, i, HEX_SIZE))
+  );
+  const rimPad = HEX_SIZE * 0.18; // room for piece rim stroke / soft shadow
+  const minX = Math.min(...frameCorners.map((p) => p.x)) - rimPad;
+  const maxX = Math.max(...frameCorners.map((p) => p.x)) + rimPad;
+  const minY = Math.min(...frameCorners.map((p) => p.y)) - rimPad;
+  const maxY = Math.max(...frameCorners.map((p) => p.y)) + rimPad;
 
   const width = maxX - minX;
   const height = maxY - minY;
