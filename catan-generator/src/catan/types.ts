@@ -153,16 +153,16 @@ export interface SettlementScore {
   portfolio?: number;
   /** Overlapp-straff mellom landsbyene (kun andre plassering) */
   overlap?: number;
-  /** @deprecated Always 0 */
+  /** Pip quality above strong-single threshold (~11 pips) */
   pipBonus?: number;
-  /** @deprecated Always 0 */
+  /** Soft 6/8 anchor when resource-diverse */
   redAnchorBonus?: number;
-  /** @deprecated Always 0 — desert already yields zero production */
+  /** Flat desert-adjacency penalty */
   desertPenalty?: number;
   lowHexPenalty?: number;
   monoResourcePenalty?: number;
   buildingSynergy?: number;
-  /** @deprecated Always 0 */
+  /** Bonus when opening pair reaches 14+ pips */
   pairPipBonus?: number;
   complementScore?: number;
   coordination?: number;

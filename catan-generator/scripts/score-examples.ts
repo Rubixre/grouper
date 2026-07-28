@@ -18,11 +18,10 @@ function printExplanation(label: string, score: ReturnType<typeof explainPlaceme
   console.log(
     `Formel: ${
       score.kind === 'first'
-        ? 'prod + korrektiver − straff/robber'
-        : 'par prod. + portefølje/synergi + korrektiver − overlapp/straff/robber'
+        ? 'prod + pip/rødt + dekning + havn − ørken/få-hex − robber'
+        : 'par prod. + byggepakker + par-pip + komplement + dekning − overlapp − ørken'
     }`
   );
-  if (score.buildingSynergy) console.log(`Byggepakker: +${score.buildingSynergy.toFixed(3)}`);
   console.log('Hex-bidrag (sannsynlighet × ressursvekt):');
   for (const row of score.hexContributions) {
     const res = RESOURCE_LABELS[row.resource as ProdResource];
@@ -32,7 +31,14 @@ function printExplanation(label: string, score: ReturnType<typeof explainPlaceme
   }
   console.log(`Produksjon: ${score.production.toFixed(3)}`);
   console.log(`Dekning (${score.coveredResources.join(', ')}): +${score.diversity.toFixed(3)}`);
+  if (score.pipBonus) console.log(`Pip-kvalitet: +${score.pipBonus.toFixed(3)}`);
+  if (score.redAnchorBonus) console.log(`Rødt tall (6/8): +${score.redAnchorBonus.toFixed(3)}`);
+  if (score.pairPipBonus) console.log(`Par-pip bonus (14+): +${score.pairPipBonus.toFixed(3)}`);
+  if (score.buildingSynergy) console.log(`Byggepakker: +${score.buildingSynergy.toFixed(3)}`);
+  if (score.coordination) console.log(`Tømmer+tegl koordinering: +${score.coordination.toFixed(3)}`);
   if (score.expansion) console.log(`Ekspansjon: +${score.expansion.toFixed(3)}`);
+  if (score.desertPenalty) console.log(`Ørken-straff: −${score.desertPenalty.toFixed(3)}`);
+  if (score.lowHexPenalty) console.log(`Få prod. hex: −${score.lowHexPenalty.toFixed(3)}`);
   if (score.robberExposure) console.log(`Robber: −${score.robberExposure.toFixed(3)}`);
   if (score.kind === 'second') {
     console.log(`Utfylling: +${(score.portfolio ?? 0).toFixed(3)}`);

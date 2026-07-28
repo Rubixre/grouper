@@ -62,9 +62,14 @@ function placementScoreTitle(score: SettlementScore, rank: number): string {
     if (score.buildingSynergy && score.buildingSynergy > 0) {
       lines.push(`Synergi +${score.buildingSynergy.toFixed(2)}`);
     }
+    if (score.pairPipBonus && score.pairPipBonus > 0) {
+      lines.push(`Par-pip +${score.pairPipBonus.toFixed(2)}`);
+    }
     lines.push(
       `Utfylling ${((score.portfolio ?? 0) - (score.overlap ?? 0)).toFixed(2)}`
     );
+  } else if (score.pipBonus && score.pipBonus > 0) {
+    lines.push(`Pip +${score.pipBonus.toFixed(2)}`);
   }
   if (score.expansion && score.expansion > 0) {
     lines.push(`Ekspansjon +${score.expansion.toFixed(3)}`);

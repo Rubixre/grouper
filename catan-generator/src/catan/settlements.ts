@@ -197,6 +197,7 @@ function buildProductionProfile(
   let producingHexCount = 0;
   let desertNeighbors = 0;
   let hasRedNumber = false;
+  let redPipTotal = 0;
 
   for (const hex of vertex.hexes) {
     const tile = board.hexes.find((h) => h.coord.q === hex.q && h.coord.r === hex.r);
@@ -216,7 +217,10 @@ function buildProductionProfile(
     resources.add(resource);
     producingHexCount++;
     pipTotal += probability;
-    if (tile.number === 6 || tile.number === 8) hasRedNumber = true;
+    if (tile.number === 6 || tile.number === 8) {
+      hasRedNumber = true;
+      redPipTotal += probability;
+    }
 
     byResource[resource] = (byResource[resource] ?? 0) + value;
     byNumber[tile.number] = (byNumber[tile.number] ?? 0) + value;
@@ -242,6 +246,7 @@ function buildProductionProfile(
     producingHexCount,
     desertNeighbors,
     hasRedNumber,
+    redPipTotal,
     resources,
     breakdown,
   };
@@ -375,7 +380,14 @@ export function scoreSecondSettlement(
     harborBonusForProfile(
       second,
       getHarborsForVertex(secondVertexId, board.harbors),
-      combinedResources.size
+      combinedResources.size,
+      {
+        wood: (first.rawByResource.wood ?? 0) + (second.rawByResource.wood ?? 0),
+        brick: (first.rawByResource.brick ?? 0) + (second.rawByResource.brick ?? 0),
+        sheep: (first.rawByResource.sheep ?? 0) + (second.rawByResource.sheep ?? 0),
+        wheat: (first.rawByResource.wheat ?? 0) + (second.rawByResource.wheat ?? 0),
+        ore: (first.rawByResource.ore ?? 0) + (second.rawByResource.ore ?? 0),
+      }
     );
 
   const expansion =
@@ -558,9 +570,10 @@ export function rankVertices(
   board: Board,
   placed: PlacedSettlement[],
   weights?: ResourceWeights,
-  currentPlayer?: number
+  currentPlayer?: number,
+  economics?: BoardEconomics
 ): SettlementScore[] {
-  const econ = computeBoardEconomics(board, weights ?? DEFAULT_RESOURCE_WEIGHTS);
+  const econ = economics ?? computeBoardEconomics(board, weights ?? DEFAULT_RESOURCE_WEIGHTS);
 
   if (currentPlayer !== undefined) {
     const playerSettlements = placed.filter((p) => p.player === currentPlayer);

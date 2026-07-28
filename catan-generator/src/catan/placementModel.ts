@@ -32,6 +32,8 @@ export interface ProductionProfile {
   producingHexCount: number;
   desertNeighbors: number;
   hasRedNumber: boolean;
+  /** Pip kun fra 6/8 (røde tall) — settlersboard anker-metrikk */
+  redPipTotal: number;
   resources: Set<ProdResource>;
   breakdown: { resource: ResourceType; value: number }[];
 }
@@ -60,16 +62,16 @@ export interface PlacementComponents {
   expansion: number;
   /** Soft penalty for pip on 6/8 (robber magnets). */
   robberExposure: number;
-  /** @deprecated Always 0 — probability already in production. */
+  /** Pip quality above strong-single threshold. */
   pipBonus: number;
-  /** @deprecated Always 0 — removed double-count of 6/8. */
+  /** Soft 6/8 anchor when resource-diverse. */
   redAnchorBonus: number;
-  /** @deprecated Always 0 — desert already contributes zero production. */
+  /** Flat desert-adjacency penalty (plan). */
   desertPenalty: number;
   lowHexPenalty: number;
   monoResourcePenalty: number;
   buildingSynergy: number;
-  /** @deprecated Always 0 — pair pip already in production. */
+  /** Bonus when pair reaches 14+ pips. */
   pairPipBonus: number;
   complementScore: number;
   coordination: number;
@@ -79,19 +81,28 @@ export interface PlacementComponents {
 }
 
 /**
- * PSM shape (keep thin):
+ * PSM shape (plan + later correctives):
  *   primary   = production (P(number) × strategy/scarcity weights)
- *   portfolio = pair gap-fill / complement / building / coordination
- *   correctives = diversity, harbor, expansion, −desert/lowHex/mono/robber
- *
- * No separate pip / red / pair-pip bonuses — those double-count production.
+ *   quality   = pip / red-anchor / pair-pip (settlersboard targets)
+ *   portfolio = gap-fill / complement / building / coordination
+ *   correctives = diversity, harbor, expansion − desert/lowHex/mono/robber
  */
+/** Sterk enkeltplassering ≈ 11 pips (f.eks. 6+5) */
+const PIP_STRONG_SINGLE = 11 / 36;
+/** Åpningsmål for paret (settlersboard.com): 14+ pips */
+const PIP_PAIR_TARGET = 14 / 36;
+const PIP_PAIR_STRONG = 16 / 36;
+const PIP_QUALITY_SCALE = 0.12;
+const PAIR_PIP_BONUS_SCALE = 0.2;
+/** Soft anker-bonus for 6/8 med ressursmangfold */
+const RED_ANCHOR_BONUS = 0.03;
 const MONO_RESOURCE_PENALTY = 0.12;
 const MONO_SINGLE_HEX_EXTRA = 0.06;
+/** Ørken reduserer effektivt antall produserende naboer */
+const DESERT_PENALTY_PER_HEX = 0.04;
 /**
  * 1–2 produktive hex er nesten alltid svake åpningsplasseringer.
  * Elite 2-hex (høy pip + ≥2 ressurser) får redusert straff — aldri fritak.
- * Produksjon får styre når 2-hex faktisk er objektivt sterkere.
  */
 const LOW_HEX_ELITE_PIP = 10 / 36;
 const LOW_HEX_PENALTY_1 = 0.22;
@@ -112,8 +123,10 @@ const HARBOR_MAX_SHARE = 0.03;
 const HARBOR_RATE_GENERIC = 0.024;
 const HARBOR_RATE_RESOURCE_MATCH = 0.04;
 const HARBOR_RATE_RESOURCE_OTHER = 0.028;
+/** Ekstra rate når 2:1 matcher par-produksjon (ikke bare dette hjørnet) */
+const HARBOR_PAIR_MATCH_EXTRA = 0.008;
 const GENERIC_HARBOR_DIVERSITY_BONUS = 0.015;
-/** Soft robber tax on raw pip sitting on 6/8. */
+/** Soft robber tax on raw pip sitting on 6/8 (plan fase 2). */
 export const ROBBER_EXPOSURE_SCALE = 0.18;
 /** Expansion / port-reach correctives (computed in settlements.ts). */
 export const EXPANSION_ROOM_SCALE = 0.04;
@@ -268,25 +281,33 @@ function capHarborBonus(harbor: number, production: number): number {
   return Math.min(harbor, cap);
 }
 
-function harborRate(harbor: HarborType, profile: ProductionProfile): number {
+function harborRate(
+  harbor: HarborType,
+  profile: ProductionProfile,
+  pairRawByResource?: Partial<Record<ProdResource, number>>
+): number {
   if (harbor.kind === 'generic') return HARBOR_RATE_GENERIC;
-  const produces =
+  const localProduces =
     profile.resources.has(harbor.resource) &&
     (profile.rawByResource[harbor.resource] ?? 0) > 0;
-  return produces ? HARBOR_RATE_RESOURCE_MATCH : HARBOR_RATE_RESOURCE_OTHER;
+  if (localProduces) return HARBOR_RATE_RESOURCE_MATCH;
+  const pairProduces = (pairRawByResource?.[harbor.resource] ?? 0) > 0;
+  if (pairProduces) return HARBOR_RATE_RESOURCE_MATCH + HARBOR_PAIR_MATCH_EXTRA;
+  return HARBOR_RATE_RESOURCE_OTHER;
 }
 
 export function harborBonusForProfile(
   profile: ProductionProfile,
   harbors: { definition: { harbor: HarborType } }[],
-  combinedResourceCount?: number
+  combinedResourceCount?: number,
+  pairRawByResource?: Partial<Record<ProdResource, number>>
 ): number {
   if (harbors.length === 0) return 0;
 
   let best = 0;
   for (const placed of harbors) {
     const harbor = placed.definition.harbor;
-    let rate = harborRate(harbor, profile);
+    let rate = harborRate(harbor, profile, pairRawByResource);
     if (
       harbor.kind === 'generic' &&
       combinedResourceCount !== undefined &&
@@ -299,9 +320,24 @@ export function harborBonusForProfile(
   return best;
 }
 
+function pipQualityBonus(pipTotal: number): number {
+  if (pipTotal <= PIP_STRONG_SINGLE) return 0;
+  return Math.min((pipTotal - PIP_STRONG_SINGLE) * PIP_QUALITY_SCALE * 36, 0.08);
+}
+
+function redAnchorBonus(profile: ProductionProfile): number {
+  if (!profile.hasRedNumber) return 0;
+  // Ensidig 6/8 på én ressurs er for volatilt uten mangfold
+  if (profile.resources.size < 2) return 0;
+  return RED_ANCHOR_BONUS;
+}
+
 /** Soft expected loss when the robber parks on your 6/8 hexes. */
 export function robberExposure(profile: ProductionProfile): number {
-  const redPip = (profile.rawByNumber[6] ?? 0) + (profile.rawByNumber[8] ?? 0);
+  const redPip =
+    profile.redPipTotal > 0
+      ? profile.redPipTotal
+      : (profile.rawByNumber[6] ?? 0) + (profile.rawByNumber[8] ?? 0);
   return redPip * ROBBER_EXPOSURE_SCALE;
 }
 
@@ -310,6 +346,10 @@ function monoResourcePenalty(profile: ProductionProfile): number {
   let penalty = MONO_RESOURCE_PENALTY;
   if (profile.producingHexCount === 1) penalty += MONO_SINGLE_HEX_EXTRA;
   return penalty;
+}
+
+function desertPenalty(profile: ProductionProfile): number {
+  return profile.desertNeighbors * DESERT_PENALTY_PER_HEX;
 }
 
 /**
@@ -436,6 +476,13 @@ export interface PlacementContext {
   expansion?: number;
 }
 
+function pairPipBonus(first: ProductionProfile, second: ProductionProfile): number {
+  const pairPip = first.pipTotal + second.pipTotal;
+  if (pairPip < PIP_PAIR_TARGET) return 0;
+  const headroom = Math.min(pairPip - PIP_PAIR_TARGET, PIP_PAIR_STRONG - PIP_PAIR_TARGET);
+  return headroom * PAIR_PIP_BONUS_SCALE * 36;
+}
+
 export function scoreFirstPlacement(
   profile: ProductionProfile,
   weights: ResourceWeights,
@@ -444,6 +491,9 @@ export function scoreFirstPlacement(
 ): { total: number; components: PlacementComponents } {
   const diversity = coverageBonus(profile.resources, weights);
   const expansion = context.expansion ?? 0;
+  const pipBonus = pipQualityBonus(profile.pipTotal);
+  const redAnchor = redAnchorBonus(profile);
+  const desertPen = desertPenalty(profile);
   const robber = robberExposure(profile);
   const lowHexPen = lowHexPenalty(profile);
   const monoPen = monoResourcePenalty(profile);
@@ -454,10 +504,9 @@ export function scoreFirstPlacement(
     harbor,
     expansion,
     robberExposure: robber,
-    pipBonus: 0,
-    redAnchorBonus: 0,
-    // Desert already yields 0 production — no extra penalty.
-    desertPenalty: 0,
+    pipBonus,
+    redAnchorBonus: redAnchor,
+    desertPenalty: desertPen,
     lowHexPenalty: lowHexPen,
     monoResourcePenalty: monoPen,
     buildingSynergy: 0,
@@ -468,15 +517,18 @@ export function scoreFirstPlacement(
     overlap: 0,
   };
 
-  // primary + small correctives — no pip/red/desert layers
+  // Plan formula + expansion/robber correctives
   const total =
     profile.total +
     diversity +
+    pipBonus +
+    redAnchor +
     harbor +
     expansion -
-    robber -
+    desertPen -
     lowHexPen -
-    monoPen;
+    monoPen -
+    robber;
 
   return { total, components };
 }
@@ -495,8 +547,10 @@ export function scorePairPlacement(
   const coordination = woodBrickCoordination(first, second);
   const complement = complementScore(first, second, weights);
   const portfolio = gapFill + complement;
+  const pairPip = pairPipBonus(first, second);
   const expansion = context.expansion ?? 0;
   const robber = robberExposure(first) + robberExposure(second);
+  const desertPen = desertPenalty(first) + desertPenalty(second);
   const lowHexPen = lowHexPenalty(first) + lowHexPenalty(second);
   const monoPen = monoResourcePenalty(first) + monoResourcePenalty(second);
   const pairProduction = first.total + second.total;
@@ -509,30 +563,32 @@ export function scorePairPlacement(
     robberExposure: robber,
     pipBonus: 0,
     redAnchorBonus: 0,
-    desertPenalty: 0,
+    desertPenalty: desertPen,
     lowHexPenalty: lowHexPen,
     monoResourcePenalty: monoPen,
     buildingSynergy: building,
-    pairPipBonus: 0,
+    pairPipBonus: pairPip,
     complementScore: complement,
     coordination,
     portfolio,
     overlap,
   };
 
-  // primary production → portfolio/synergy → small correctives
   const total =
     pairProduction +
-    portfolio +
+    diversity +
     building +
     coordination +
-    diversity +
+    pairPip +
+    gapFill +
+    complement +
     harbor +
     expansion -
     overlap -
-    robber -
+    desertPen -
     lowHexPen -
-    monoPen;
+    monoPen -
+    robber;
 
   return { total, components };
 }
