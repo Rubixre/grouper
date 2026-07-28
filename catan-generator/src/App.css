@@ -2431,12 +2431,16 @@ body {
   }
 
   .layout-simulating .board-wrap {
-    width: 100%;
-    max-width: none;
-    /* Mindre brett → plass til ~5 landsbyrader under */
-    height: min(26dvh, 200px);
+    /* Match board aspect (~1.11) so meet/slice does not crop top/bottom.
+       Cap height for list space; width shrinks and centers in the ocean strip. */
+    --sim-board-h: min(30dvh, 220px);
+    height: var(--sim-board-h);
+    width: min(100%, calc(var(--sim-board-h) * 1.111));
+    max-width: 100%;
     min-height: 140px;
+    margin-inline: auto;
     overflow: hidden;
+    background: #1a5276;
   }
 
   .layout-simulating .board-svg {
