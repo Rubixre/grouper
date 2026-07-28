@@ -114,6 +114,7 @@ export function SettlementSimulator({
   const [showAllOptions, setShowAllOptions] = useState(false);
   const [scoreModalOpen, setScoreModalOpen] = useState(false);
   const [logModalOpen, setLogModalOpen] = useState(false);
+  const [strategyModalOpen, setStrategyModalOpen] = useState(false);
 
   const player = currentPlayer(state);
   const human = state.config.humanPlayerIndex;
@@ -304,38 +305,18 @@ export function SettlementSimulator({
         </div>
 
         {isYourTurn && !state.finished && (
-          <StrategyPicker
-            value={strategyChoice}
-            recommended={recommendedStrategyChoice}
-            harborEnabled={harborOpportunities.length > 0}
-            harborCount={harborOpportunities.length}
-            levels={strategyLevels}
-            onChange={onStrategyChoiceChange}
-            hint={strategyHint}
-          />
-        )}
-
-        <div className="sim-action-row">
           <button
             type="button"
-            className="btn btn-block sim-undo-btn"
-            disabled={state.placements.length === 0}
-            onClick={onUndo}
+            className="btn sim-strategy-open"
+            onClick={() => setStrategyModalOpen(true)}
           >
-            Angre
+            Strategi · {strategyChoiceLabel(strategyChoice)}
+            {recommendedStrategyChoice &&
+            recommendedStrategyChoice !== strategyChoice
+              ? ' · tip'
+              : ''}
           </button>
-          {!state.finished && (
-            <button
-              type="button"
-              className="btn primary btn-block sim-confirm-btn"
-              disabled={!selectedVertex}
-              onClick={onConfirm}
-              style={{ '--player-color': activeConfig.color } as CSSProperties}
-            >
-              Bekreft for {activeConfig.name}
-            </button>
-          )}
-        </div>
+        )}
       </div>
 
       {state.finished ? (
@@ -486,7 +467,7 @@ export function SettlementSimulator({
         </div>
       )}
 
-      <div className="sim-details-foot">
+      <div className="sim-sticky-controls">
         <div className="sim-info-actions">
           {selectedOption && !state.finished && (
             <button
@@ -494,8 +475,8 @@ export function SettlementSimulator({
               className="btn sim-info-btn"
               onClick={() => setScoreModalOpen(true)}
             >
-              Poengforklaring
-              {selectedRank > 0 ? ` · #${selectedRank}` : ''}
+              Poeng
+              {selectedRank > 0 ? ` #${selectedRank}` : ''}
             </button>
           )}
           {state.placements.length > 0 && (
@@ -504,11 +485,52 @@ export function SettlementSimulator({
               className="btn sim-info-btn"
               onClick={() => setLogModalOpen(true)}
             >
-              Plasseringer ({state.placements.length})
+              Logg ({state.placements.length})
+            </button>
+          )}
+        </div>
+        <div className="sim-action-row">
+          <button
+            type="button"
+            className="btn btn-block sim-undo-btn"
+            disabled={state.placements.length === 0}
+            onClick={onUndo}
+          >
+            Angre
+          </button>
+          {!state.finished && (
+            <button
+              type="button"
+              className="btn primary btn-block sim-confirm-btn"
+              disabled={!selectedVertex}
+              onClick={onConfirm}
+              style={{ '--player-color': activeConfig.color } as CSSProperties}
+            >
+              Bekreft
             </button>
           )}
         </div>
       </div>
+
+
+      <InfoModal
+        open={strategyModalOpen && isYourTurn && !state.finished}
+        title="Din strategi"
+        onClose={() => setStrategyModalOpen(false)}
+        footerNote={strategyHint ?? undefined}
+      >
+        <StrategyPicker
+          value={strategyChoice}
+          recommended={recommendedStrategyChoice}
+          harborEnabled={harborOpportunities.length > 0}
+          harborCount={harborOpportunities.length}
+          levels={strategyLevels}
+          onChange={(choice) => {
+            onStrategyChoiceChange(choice);
+            setStrategyModalOpen(false);
+          }}
+        />
+      </InfoModal>
 
       <InfoModal
         open={scoreModalOpen && !!selectedOption && !state.finished}
