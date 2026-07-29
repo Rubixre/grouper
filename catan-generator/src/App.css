@@ -978,6 +978,28 @@ body {
   background: #f0f7fb;
 }
 
+.option-row-compact.recommended {
+  border-color: #b8860b;
+  background: #fef9e7;
+}
+
+.option-row-compact.recommended.selected {
+  border-color: #1a5276;
+  background: #eaf6fd;
+}
+
+.road-pick-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.road-ranked-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
 .option-row-rank {
   font-weight: 800;
   color: #1a5276;

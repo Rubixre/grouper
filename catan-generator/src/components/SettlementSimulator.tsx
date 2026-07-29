@@ -57,9 +57,10 @@ interface SettlementSimulatorProps {
   recommendedStrategyChoice: StrategyChoice | null;
   strategyLevels: StrategyRelativeLevels | null;
   harborOpportunities: HarborStrategyOpportunity[];
-  rankedRoads: { toVertexId: string; score: number }[];
+  rankedRoads: { toVertexId: string; score: number; room?: number; harbor?: number; connect?: number; cutoff?: number; contest?: number }[];
   secondPreviewVertex: string | null;
   onSelectVertex: (vertexId: string) => void;
+  onSelectRoad: (toVertexId: string) => void;
   onSelectHarborPlan: (opp: HarborStrategyOpportunity) => void;
   onConfirm: () => void;
   onUndo: () => void;
@@ -114,6 +115,7 @@ export function SettlementSimulator({
   rankedRoads,
   secondPreviewVertex,
   onSelectVertex,
+  onSelectRoad,
   onSelectHarborPlan,
   onConfirm,
   onUndo,
@@ -352,24 +354,50 @@ export function SettlementSimulator({
             </div>
 
             {placementStep === 'road' ? (
-              <div className="road-pick-hint muted small">
-                <p>
-                  Landsby er valgt
+              <div className="road-pick-section">
+                <p className="muted small">
+                  Landsby valgt
                   {selectedVertex
                     ? ` (${shortVertexLabel(boardSize, selectedVertex)})`
                     : ''}
-                  . Trykk en nabo på brettet for startvei, deretter Bekreft vei.
-                  Angre går tilbake til landsbyvalg.
+                  . Velg startvei:
                 </p>
                 {rankedRoads.length > 0 && (
-                  <p>
-                    <strong>★</strong> Anbefalt retning
-                    {rankedRoads[0]
-                      ? ` (${shortVertexLabel(boardSize, rankedRoads[0].toVertexId)})`
-                      : ''}
-                    {strategyChoice === 'longestRoad' || strategyChoice === 'both'
-                      ? ' — vektet for lengste vei'
-                      : ''}
+                  <div className="road-ranked-list">
+                    {rankedRoads.map((rd, i) => {
+                      const isBest = i === 0;
+                      const isSelected = selectedRoadTo === rd.toVertexId;
+                      const tags: string[] = [];
+                      if (rd.room && rd.room > 0.8) tags.push('god plass');
+                      if (rd.harbor && rd.harbor > 0.1) tags.push('havn nær');
+                      if (rd.connect && rd.connect > 0.2) tags.push('kobler veier');
+                      if (rd.cutoff && rd.cutoff > 0.1) tags.push('kutter motstander');
+                      if (rd.contest && rd.contest > 0.3) tags.push('bestridt');
+                      return (
+                        <button
+                          key={rd.toVertexId}
+                          type="button"
+                          className={`option-row-compact road-option ${isSelected ? 'selected' : ''} ${isBest ? 'recommended' : ''}`}
+                          onClick={() => onSelectRoad(rd.toVertexId)}
+                        >
+                          <span className="option-row-rank">{isBest ? '★' : `#${i + 1}`}</span>
+                          <span className="option-row-score">{rd.score.toFixed(2)}</span>
+                          <span className="option-row-detail">
+                            <span className="option-row-resources">
+                              {shortVertexLabel(boardSize, rd.toVertexId)}
+                            </span>
+                            {tags.length > 0 && (
+                              <span className="option-row-meta">{tags.join(' · ')}</span>
+                            )}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {(strategyChoice === 'longestRoad' || strategyChoice === 'both') && (
+                  <p className="muted small" style={{ marginTop: '0.3rem' }}>
+                    Vektet for lengste vei
                   </p>
                 )}
               </div>
