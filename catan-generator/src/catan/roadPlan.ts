@@ -197,24 +197,7 @@ export function scoreRoadDirection(
     cutoffBonus *= 0.5 + 0.5 * positionalAggression;
   }
 
-  let connect = 0;
-  const own = placed.filter(
-    (p) => p.roadToVertexId && (ctx.selfPlayer === undefined || p.player === ctx.selfPlayer)
-  );
-  for (const p of own) {
-    if (!p.roadToVertexId) continue;
-    if (p.roadToVertexId === fromVertexId || p.roadToVertexId === toVertexId) {
-      connect += 0.5;
-    }
-    const d = vertexRoadDistance(p.roadToVertexId, toVertexId);
-    if (d !== null && d <= 2) connect += 0.2 * (1 - d * 0.25);
-  }
-
-  if (isLongestRoadStrategy) {
-    connect *= 1.8;
-  }
-
-  return room + harbor + connect + cutoffBonus - contest;
+  return room + harbor + cutoffBonus - contest;
 }
 
 export interface RoadDirectionBreakdown {
@@ -224,7 +207,6 @@ export interface RoadDirectionBreakdown {
   harbor: number;
   /** Which harbor resource matched, or 'generisk' */
   harborMatch: string;
-  connect: number;
   cutoff: number;
   contest: number;
 }
@@ -328,22 +310,8 @@ export function scoreRoadDirectionDetailed(
     cutoff *= 0.5 + 0.5 * positionalAggression;
   }
 
-  let connect = 0;
-  const own = placed.filter(
-    (p) => p.roadToVertexId && (ctx.selfPlayer === undefined || p.player === ctx.selfPlayer)
-  );
-  for (const p of own) {
-    if (!p.roadToVertexId) continue;
-    if (p.roadToVertexId === fromVertexId || p.roadToVertexId === toVertexId) {
-      connect += 0.5;
-    }
-    const d = vertexRoadDistance(p.roadToVertexId, toVertexId);
-    if (d !== null && d <= 2) connect += 0.2 * (1 - d * 0.25);
-  }
-  if (isLongestRoadStrategy) connect *= 1.8;
-
-  const score = room + harbor + connect + cutoff - contest;
-  return { toVertexId, score, room, harbor, harborMatch, connect, cutoff, contest };
+  const score = room + harbor + cutoff - contest;
+  return { toVertexId, score, room, harbor, harborMatch, cutoff, contest };
 }
 
 export function rankRoadDirections(
