@@ -136,15 +136,15 @@ export function scoreRoadDirection(
   // Bonus for the best reachable expansion spot
   room += bestExpansion * 0.3;
 
-  // Harbor nodes near the tip / along the branch
+  // Harbor nodes near the tip (max 1 hop from tip = 2 roads from settlement)
   let harbor = 0;
   for (const h of board.harbors) {
     for (const node of h.nodeVertexIds) {
       const dFromTip = vertexRoadDistance(toVertexId, node);
       if (dFromTip === null) continue;
-      if (dFromTip <= 2) {
+      if (dFromTip <= 1) {
         const kindBonus = h.definition.harbor.kind === 'generic' ? 0.25 : 0.4;
-        harbor = Math.max(harbor, kindBonus * (1 - dFromTip * 0.25));
+        harbor = Math.max(harbor, kindBonus * (dFromTip === 0 ? 1.0 : 0.5));
       }
     }
   }
@@ -264,9 +264,9 @@ export function scoreRoadDirectionDetailed(
     for (const node of h.nodeVertexIds) {
       const dFromTip = vertexRoadDistance(toVertexId, node);
       if (dFromTip === null) continue;
-      if (dFromTip <= 2) {
+      if (dFromTip <= 1) {
         const kindBonus = h.definition.harbor.kind === 'generic' ? 0.25 : 0.4;
-        harbor = Math.max(harbor, kindBonus * (1 - dFromTip * 0.25));
+        harbor = Math.max(harbor, kindBonus * (dFromTip === 0 ? 1.0 : 0.5));
       }
     }
   }
