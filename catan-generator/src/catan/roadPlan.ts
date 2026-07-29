@@ -76,13 +76,25 @@ function expansionVertexQuality(
   const v = vertices.get(vertexId);
   if (!v) return 0;
 
-  const landHexes = v.hexes.filter((h) => landSet.has(coordKey(h)));
-  const hexCount = landHexes.length;
+  const producingHexes = v.hexes.filter((hex) => {
+    if (!landSet.has(coordKey(hex))) return false;
+    const tile = board.hexes.find(
+      (h) => h.coord.q === hex.q && h.coord.r === hex.r
+    );
+    return Boolean(
+      tile &&
+        tile.kind === 'land' &&
+        tile.resource &&
+        tile.resource !== 'desert' &&
+        tile.number != null
+    );
+  });
+  const hexCount = producingHexes.length;
   if (hexCount === 0) return 0;
 
   let pipSum = 0;
   let missingResourceBonus = 0;
-  for (const hex of landHexes) {
+  for (const hex of producingHexes) {
     const tile = board.hexes.find(
       (h) => h.coord.q === hex.q && h.coord.r === hex.r
     );
