@@ -375,11 +375,13 @@ export function SettlementSimulator({
                           ? RESOURCE_LABELS[rd.harborMatch as ProdResource] ?? rd.harborMatch
                           : null;
                         tags.push(
-                          rd.harbor >= 0.35 && matchLabel
-                            ? `${matchLabel}-havn (sterk match)`
-                            : matchLabel
-                              ? `${matchLabel}-havn nær`
-                              : 'havn nær'
+                          rd.harbor >= 1.0 && matchLabel
+                            ? `${matchLabel}-havn (sterk match!)`
+                            : rd.harbor >= 0.5 && matchLabel
+                              ? `${matchLabel}-havn (god match)`
+                              : matchLabel
+                                ? `${matchLabel}-havn nær`
+                                : 'havn nær'
                         );
                       }
                       if (rd.connect && rd.connect > 0.2) tags.push('kobler veier');
