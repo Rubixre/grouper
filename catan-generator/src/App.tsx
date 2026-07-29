@@ -41,6 +41,7 @@ import {
   getExpansionTargets,
   getRoadTargets,
   rankRoadDirections,
+  type RoadDirectionBreakdown,
   type RoadScoringContext,
 } from './catan/roadPlan';
 import {
@@ -634,6 +635,7 @@ function App() {
                   rankedRoads={rankedRoads}
                   secondPreviewVertex={secondPreviewVertex}
                   onSelectVertex={handleSelectVertex}
+                  onSelectRoad={(to) => setSelectedRoadTo(to)}
                   onSelectHarborPlan={handleSelectHarborPlan}
                   onConfirm={handleConfirm}
                   onUndo={handleUndo}

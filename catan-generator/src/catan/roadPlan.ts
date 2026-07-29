@@ -141,17 +141,121 @@ export function scoreRoadDirection(
   return room + harbor + connect + cutoffBonus - contest;
 }
 
+export interface RoadDirectionBreakdown {
+  toVertexId: string;
+  score: number;
+  room: number;
+  harbor: number;
+  connect: number;
+  cutoff: number;
+  contest: number;
+}
+
+/**
+ * Detailed breakdown per road direction — used for UI explanation.
+ */
+export function scoreRoadDirectionDetailed(
+  fromVertexId: string,
+  toVertexId: string,
+  board: Board,
+  placed: PlacedSettlement[],
+  ctx: RoadScoringContext = {}
+): RoadDirectionBreakdown | null {
+  if (!isLegalRoadTarget(fromVertexId, toVertexId)) return null;
+
+  const vertices = getVertices();
+  const landSet = getLandSet();
+  const tip = vertices.get(toVertexId);
+  if (!tip) return null;
+
+  const isLongestRoadStrategy =
+    ctx.strategy === 'longestRoad' || ctx.strategy === 'both';
+
+  let room = 0;
+  const seen = new Set<string>([fromVertexId, toVertexId]);
+  const frontier = [toVertexId];
+  const depth = new Map<string, number>([[toVertexId, 0]]);
+  while (frontier.length > 0) {
+    const cur = frontier.shift()!;
+    const d = depth.get(cur)!;
+    if (d >= 2) continue;
+    const v = vertices.get(cur);
+    if (!v) continue;
+    for (const n of v.neighbors) {
+      if (seen.has(n)) continue;
+      seen.add(n);
+      depth.set(n, d + 1);
+      frontier.push(n);
+      const nv = vertices.get(n);
+      if (nv && nv.hexes.some((h) => landSet.has(coordKey(h)))) {
+        const blocked = placed.some(
+          (p) => p.vertexId === n || getVertices().get(p.vertexId)?.neighbors.includes(n)
+        );
+        if (!blocked) room += d === 0 ? 0.35 : 0.55;
+      }
+    }
+  }
+
+  let harbor = 0;
+  for (const h of board.harbors) {
+    for (const node of h.nodeVertexIds) {
+      const dFromTip = vertexRoadDistance(toVertexId, node);
+      if (dFromTip === null) continue;
+      if (dFromTip <= 2) {
+        const kindBonus = h.definition.harbor.kind === 'generic' ? 0.25 : 0.4;
+        harbor = Math.max(harbor, kindBonus * (1 - dFromTip * 0.25));
+      }
+    }
+  }
+
+  let contest = 0;
+  let cutoff = 0;
+  for (const p of placed) {
+    if (ctx.selfPlayer !== undefined && p.player === ctx.selfPlayer) continue;
+    if (!p.roadToVertexId) continue;
+    const dTip = vertexRoadDistance(p.roadToVertexId, toVertexId);
+    if (dTip !== null && dTip <= 2) {
+      contest += 0.35 * (1 - dTip * 0.3);
+      if (isLongestRoadStrategy && dTip <= 1) {
+        cutoff += 0.3 * (1 - dTip * 0.4);
+      }
+    }
+    const dSet = vertexRoadDistance(p.vertexId, toVertexId);
+    if (dSet !== null && dSet <= 1) contest += 0.45;
+  }
+
+  if (ctx.selfPlayer !== undefined && ctx.playerCount !== undefined && ctx.playerCount > 2) {
+    const positionalAggression = ctx.selfPlayer / (ctx.playerCount - 1);
+    cutoff *= 0.5 + 0.5 * positionalAggression;
+  }
+
+  let connect = 0;
+  const own = placed.filter(
+    (p) => p.roadToVertexId && (ctx.selfPlayer === undefined || p.player === ctx.selfPlayer)
+  );
+  for (const p of own) {
+    if (!p.roadToVertexId) continue;
+    if (p.roadToVertexId === fromVertexId || p.roadToVertexId === toVertexId) {
+      connect += 0.5;
+    }
+    const d = vertexRoadDistance(p.roadToVertexId, toVertexId);
+    if (d !== null && d <= 2) connect += 0.2 * (1 - d * 0.25);
+  }
+  if (isLongestRoadStrategy) connect *= 1.8;
+
+  const score = room + harbor + connect + cutoff - contest;
+  return { toVertexId, score, room, harbor, connect, cutoff, contest };
+}
+
 export function rankRoadDirections(
   fromVertexId: string,
   board: Board,
   placed: PlacedSettlement[],
   ctx: RoadScoringContext = {}
-): { toVertexId: string; score: number }[] {
+): RoadDirectionBreakdown[] {
   return getRoadTargets(fromVertexId)
-    .map((toVertexId) => ({
-      toVertexId,
-      score: scoreRoadDirection(fromVertexId, toVertexId, board, placed, ctx),
-    }))
+    .map((toVertexId) => scoreRoadDirectionDetailed(fromVertexId, toVertexId, board, placed, ctx))
+    .filter((r): r is RoadDirectionBreakdown => r !== null)
     .sort((a, b) => b.score - a.score || a.toVertexId.localeCompare(b.toVertexId));
 }
 
