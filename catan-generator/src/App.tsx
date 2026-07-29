@@ -58,7 +58,18 @@ import { PhotoBoardModal } from './components/PhotoBoardModal';
 import { SettlementSimulator } from './components/SettlementSimulator';
 import { SimulationSummaryPanel } from './components/SimulationSummary';
 import { StrategyPicker } from './components/StrategyPicker';
+import { PremiumPaywallModal } from './components/PremiumPaywallModal';
 import { createBoardStory, type BoardStory } from './catan/boardStory';
+import {
+  activateDevPremium,
+  canUseBonanza,
+  canUseSimulation,
+  clearPremiumAccess,
+  getEntitlementState,
+  startLocalTrial,
+  type EntitlementState,
+  type PremiumFeature,
+} from './catan/entitlements';
 import './App.css';
 
 const restoredSession = typeof window !== 'undefined' ? loadSession() : null;
@@ -104,6 +115,28 @@ function App() {
   const [highlightCorner, setHighlightCorner] = useState<string | null>(null);
   const [hydrated] = useState(() => restoredSession !== null);
   const boardWrapRef = useRef<HTMLDivElement>(null);
+  const [entitlement, setEntitlement] = useState<EntitlementState>(() =>
+    getEntitlementState()
+  );
+  const [paywallOpen, setPaywallOpen] = useState(false);
+  const [paywallFeature, setPaywallFeature] = useState<PremiumFeature | null>(
+    null
+  );
+
+  const premiumBonanza = canUseBonanza(entitlement);
+  const premiumSimulation = canUseSimulation(entitlement);
+
+  const openPaywall = (feature: PremiumFeature) => {
+    setPaywallFeature(feature);
+    setPaywallOpen(true);
+  };
+
+  const refreshEntitlement = (next: EntitlementState) => {
+    setEntitlement(next);
+    if (!canUseBonanza(next) && settings.bonanzaBoard) {
+      setSettings((prev) => ({ ...prev, bonanzaBoard: false }));
+    }
+  };
 
   const boardMapping = useMemo(() => getBoardMapping(boardSize), [boardSize]);
   const strategyProfileId = resolveStrategyProfileId(strategyChoice);
@@ -135,7 +168,14 @@ function App() {
   };
 
   const handleGenerate = useCallback(() => {
-    const result = generateBoard(settings, boardSize);
+    const effectiveSettings =
+      canUseBonanza(getEntitlementState()) || !settings.bonanzaBoard
+        ? settings
+        : { ...settings, bonanzaBoard: false };
+    if (effectiveSettings !== settings) {
+      setSettings(effectiveSettings);
+    }
+    const result = generateBoard(effectiveSettings, boardSize);
     if (!result) {
       setError(
         'Kunne ikke generere gyldig brett med valgte regler. Prøv igjen eller slakk på begrensningene.'
@@ -173,6 +213,21 @@ function App() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Drop premium-only session bits when access is missing
+  useEffect(() => {
+    if (!premiumBonanza && settings.bonanzaBoard) {
+      setSettings((prev) => ({ ...prev, bonanzaBoard: false }));
+    }
+    if (!premiumSimulation && mode === 'simulate') {
+      setSimulation(null);
+      setSelectedVertex(null);
+      setSelectedRoadTo(null);
+      setPlacementStep('settlement');
+      setSelectedHarborPlanKey(null);
+      setMode('view');
+    }
+  }, [premiumBonanza, premiumSimulation, settings.bonanzaBoard, mode]);
+
   // Persist session so refresh keeps board + simulation
   useEffect(() => {
     if (!board) return;
@@ -202,6 +257,10 @@ function App() {
 
   const startSimulation = () => {
     if (!board) return;
+    if (!premiumSimulation) {
+      openPaywall('simulation');
+      return;
+    }
     setStrategyChoice('general');
     setSimulation(createSimulation(board, simulationConfig));
     setSelectedVertex(null);
@@ -500,6 +559,29 @@ function App() {
           </p>
         </div>
         <div className="header-actions">
+          {entitlement.isPremium ? (
+            <button
+              type="button"
+              className="btn header-btn premium-status-chip"
+              title={
+                entitlement.expiresAt
+                  ? `Utløper ${new Date(entitlement.expiresAt).toLocaleDateString('nb-NO')}`
+                  : 'Premium aktiv'
+              }
+              onClick={() => refreshEntitlement(clearPremiumAccess())}
+            >
+              Premium
+              {entitlement.source === 'trial' ? ' · prøve' : ''}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn header-btn"
+              onClick={() => openPaywall('simulation')}
+            >
+              Prøv Premium
+            </button>
+          )}
           <button
             type="button"
             className="btn header-btn"
@@ -527,6 +609,22 @@ function App() {
         onSettingsChange={setSettings}
         boardSize={boardSize}
         onBoardSizeChange={handleBoardSizeChange}
+        canUseBonanza={premiumBonanza}
+        onPremiumRequired={() => openPaywall('bonanza')}
+      />
+
+      <PremiumPaywallModal
+        open={paywallOpen}
+        feature={paywallFeature}
+        onClose={() => setPaywallOpen(false)}
+        onStartTrial={() => {
+          refreshEntitlement(startLocalTrial(14));
+          setPaywallOpen(false);
+        }}
+        onActivateDev={() => {
+          refreshEntitlement(activateDevPremium(14));
+          setPaywallOpen(false);
+        }}
       />
 
       <PhotoBoardModal
@@ -672,7 +770,17 @@ function App() {
           ) : (
             <>
               <div className="panel simulation-setup">
-                <h2>Startposisjon</h2>
+                <h2>
+                  Startposisjon
+                  <span className="premium-badge">Premium</span>
+                </h2>
+
+                {!premiumSimulation && (
+                  <p className="premium-gate-banner muted small">
+                    Simulering med rangering av landsby og vei krever Premium.
+                    Du kan starte 14 dagers gratis prøve.
+                  </p>
+                )}
 
                 <label className="field">
                   Antall spillere
@@ -721,11 +829,11 @@ function App() {
                 {!simActive ? (
                   <button
                     type="button"
-                    className="btn primary btn-block"
+                    className={`btn primary btn-block ${!premiumSimulation ? 'btn-premium-locked' : ''}`}
                     disabled={!board}
                     onClick={startSimulation}
                   >
-                    Start plassering
+                    {premiumSimulation ? 'Start plassering' : 'Lås opp plassering · Premium'}
                   </button>
                 ) : (
                   <div className="sim-actions">
