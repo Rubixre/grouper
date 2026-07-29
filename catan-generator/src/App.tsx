@@ -366,15 +366,22 @@ function App() {
   const roadScoringCtx: RoadScoringContext = useMemo(() => {
     if (!simulation || !board) return {};
     const player = currentPlayer(simulation);
+    const productionPlaced =
+      player !== null && placementStep === 'road' && selectedVertex
+        ? [
+            ...simulation.placements,
+            { vertexId: selectedVertex, player, isCity: false } as const,
+          ]
+        : simulation.placements;
     return {
       selfPlayer: player ?? undefined,
       strategy: strategyProfileId,
       playerCount: simulation.playerCount,
       production: player !== null
-        ? computePlayerProduction(board, simulation.placements, player)
+        ? computePlayerProduction(board, productionPlaced, player)
         : undefined,
     };
-  }, [simulation, board, strategyProfileId]);
+  }, [simulation, board, strategyProfileId, placementStep, selectedVertex]);
 
   // Predict where opponents will place after human's confirmed settlement
   const predictedPlacements = useMemo(() => {
