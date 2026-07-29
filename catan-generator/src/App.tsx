@@ -41,7 +41,6 @@ import {
   getExpansionTargets,
   getRoadTargets,
   rankRoadDirections,
-  type RoadDirectionBreakdown,
   type RoadScoringContext,
 } from './catan/roadPlan';
 import {
@@ -380,8 +379,8 @@ function App() {
 
   const expansionTargets = useMemo(() => {
     if (placementStep !== 'road' || !selectedVertex || !simulation || !board) return [];
-    // Simulate remaining opponent placements to predict which spots will be taken
-    let predicted = simulation;
+    // Place the human's confirmed settlement first, then simulate opponents
+    let predicted = placeSettlement(simulation, selectedVertex);
     let safety = 0;
     while (!predicted.finished && safety < 20) {
       const opts = getOptionsForCurrentTurn(predicted);
