@@ -372,14 +372,9 @@ function App() {
     };
   }, [simulation, strategyProfileId]);
 
-  const rankedRoads = useMemo(() => {
-    if (placementStep !== 'road' || !selectedVertex || !board || !simulation) return [];
-    return rankRoadDirections(selectedVertex, board, simulation.placements, roadScoringCtx);
-  }, [placementStep, selectedVertex, board, simulation, roadScoringCtx]);
-
-  const expansionTargets = useMemo(() => {
-    if (placementStep !== 'road' || !selectedVertex || !simulation || !board) return [];
-    // Place the human's confirmed settlement first, then simulate opponents
+  // Predict where opponents will place after human's confirmed settlement
+  const predictedPlacements = useMemo(() => {
+    if (placementStep !== 'road' || !selectedVertex || !simulation || !board) return null;
     let predicted = placeSettlement(simulation, selectedVertex);
     let safety = 0;
     while (!predicted.finished && safety < 20) {
@@ -388,8 +383,19 @@ function App() {
       predicted = placeSettlement(predicted, opts[0].vertexId);
       safety++;
     }
-    return getExpansionTargets(selectedVertex, predicted.placements);
+    return predicted.placements;
   }, [placementStep, selectedVertex, simulation, board]);
+
+  // Score road directions using predicted placements so scoring matches highlight
+  const rankedRoads = useMemo(() => {
+    if (!selectedVertex || !board || !predictedPlacements) return [];
+    return rankRoadDirections(selectedVertex, board, predictedPlacements, roadScoringCtx);
+  }, [selectedVertex, board, predictedPlacements, roadScoringCtx]);
+
+  const expansionTargets = useMemo(() => {
+    if (!selectedVertex || !predictedPlacements) return [];
+    return getExpansionTargets(selectedVertex, predictedPlacements);
+  }, [selectedVertex, predictedPlacements]);
 
   // Havnmarkering bare på din tur — skal ikke låse motstanderens plassering.
   const harborPlanHighlight =
