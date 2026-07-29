@@ -149,7 +149,9 @@ export function scoreRoadDirection(
   // Bonus for the best reachable expansion spot
   room += bestExpansion * 0.3;
 
-  // Harbor nodes near the tip (max 1 hop from tip = 2 roads from settlement)
+  // Harbor nodes near the tip (max 1 hop from tip = 2 roads from settlement).
+  // Resource harbors scale with player's production: a 2:1 harbor for a
+  // resource you produce heavily is one of the strongest advantages in Catan.
   let harbor = 0;
   for (const h of board.harbors) {
     for (const node of h.nodeVertexIds) {
@@ -162,9 +164,11 @@ export function scoreRoadDirection(
           bonus = 0.25;
         } else {
           const prod = ctx.production?.[hDef.resource] ?? 0;
-          bonus = prod >= 0.2 ? 0.7 : prod >= 0.1 ? 0.5 : 0.3;
+          // Scale continuously with production — a 2:1 harbor with high
+          // production is game-changing (effectively doubles trade value)
+          bonus = 0.3 + Math.min(prod, 0.4) * 4.0;
         }
-        const distFactor = dFromTip === 0 ? 1.0 : 0.5;
+        const distFactor = dFromTip === 0 ? 1.0 : 0.6;
         harbor = Math.max(harbor, bonus * distFactor);
       }
     }
@@ -290,9 +294,9 @@ export function scoreRoadDirectionDetailed(
           bonus = 0.25;
         } else {
           const prod = ctx.production?.[hDef.resource] ?? 0;
-          bonus = prod >= 0.2 ? 0.7 : prod >= 0.1 ? 0.5 : 0.3;
+          bonus = 0.3 + Math.min(prod, 0.4) * 4.0;
         }
-        const distFactor = dFromTip === 0 ? 1.0 : 0.5;
+        const distFactor = dFromTip === 0 ? 1.0 : 0.6;
         const value = bonus * distFactor;
         if (value > harbor) {
           harbor = value;
