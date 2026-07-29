@@ -48,6 +48,7 @@ interface SettlementSimulatorProps {
   options: SettlementScore[];
   selectedVertex: string | null;
   selectedRoadTo: string | null;
+  placementStep: 'settlement' | 'road';
   selectedHarborPlanKey: string | null;
   strategyChoice: StrategyChoice;
   strategyProfile: StrategyProfile;
@@ -100,6 +101,7 @@ export function SettlementSimulator({
   options,
   selectedVertex,
   selectedRoadTo,
+  placementStep,
   selectedHarborPlanKey,
   strategyChoice,
   strategyProfile,
@@ -310,7 +312,7 @@ export function SettlementSimulator({
           </span>
         </div>
 
-        {isYourTurn && !state.finished && (
+        {isYourTurn && !state.finished && placementStep === 'settlement' && (
           <button
             type="button"
             className="btn sim-strategy-open"
@@ -332,10 +334,11 @@ export function SettlementSimulator({
           <div className="options-list options-list-compact">
             <div className="options-list-header">
               <h3>
-                Topp {Math.min(visibleCount, listCount)} for {activeConfig.name}
-                {harborMode ? ' · havn' : ''}
+                {placementStep === 'road'
+                  ? `Startvei for ${activeConfig.name}`
+                  : `Topp ${Math.min(visibleCount, listCount)} for ${activeConfig.name}${harborMode ? ' · havn' : ''}`}
               </h3>
-              {listCount > DEFAULT_VISIBLE_OPTIONS && (
+              {placementStep === 'settlement' && listCount > DEFAULT_VISIBLE_OPTIONS && (
                 <button
                   type="button"
                   className="btn-link options-toggle"
@@ -346,7 +349,16 @@ export function SettlementSimulator({
               )}
             </div>
 
-            {harborMode && isYourTurn ? (
+            {placementStep === 'road' ? (
+              <p className="road-pick-hint muted small">
+                Landsby er valgt
+                {selectedVertex
+                  ? ` (${shortVertexLabel(boardSize, selectedVertex)})`
+                  : ''}
+                . Trykk en nabo på brettet for startvei, deretter Bekreft vei.
+                Angre går tilbake til landsbyvalg.
+              </p>
+            ) : harborMode && isYourTurn ? (
               <>
                 {harborRows.length === 0 ? (
                   <p className="muted small">
@@ -438,7 +450,8 @@ export function SettlementSimulator({
               })
             )}
 
-            {selectedOption &&
+            {placementStep === 'settlement' &&
+              selectedOption &&
               selectedRank > 0 &&
               ((harborMode &&
                 !harborVertexIds.has(selectedOption.vertexId) &&
@@ -456,12 +469,19 @@ export function SettlementSimulator({
             )}
           </div>
 
-          {selectedVertex && !selectedRoadTo && !state.finished && (
+          {placementStep === 'settlement' &&
+            selectedVertex &&
+            !state.finished && (
             <p className="road-pick-hint muted small">
-              Velg startvei på brettet (trykk en nabo til landsbyen), deretter Bekreft.
+              Bekreft landsbyen først. Deretter velger du startvei.
             </p>
           )}
-          {harborMode && activeHarborPlan?.vsBalanced && (
+          {placementStep === 'road' && selectedRoadTo && !state.finished && (
+            <p className="road-pick-hint muted small">
+              Startvei valgt — trykk Bekreft vei.
+            </p>
+          )}
+          {harborMode && placementStep === 'settlement' && activeHarborPlan?.vsBalanced && (
             <p className="harbor-active-hint muted small">
               {shortVertexLabel(boardSize, activeHarborPlan.firstVertexId)}
               {activeHarborPlan.secondVertexId
@@ -518,7 +538,9 @@ export function SettlementSimulator({
           <button
             type="button"
             className="btn btn-block sim-undo-btn"
-            disabled={state.placements.length === 0}
+            disabled={
+              placementStep !== 'road' && state.placements.length === 0
+            }
             onClick={onUndo}
           >
             Angre
@@ -527,11 +549,15 @@ export function SettlementSimulator({
             <button
               type="button"
               className="btn primary btn-block sim-confirm-btn"
-              disabled={!selectedVertex || !selectedRoadTo}
+              disabled={
+                placementStep === 'settlement'
+                  ? !selectedVertex
+                  : !selectedRoadTo
+              }
               onClick={onConfirm}
               style={{ '--player-color': activeConfig.color } as CSSProperties}
             >
-              Bekreft
+              {placementStep === 'settlement' ? 'Bekreft landsby' : 'Bekreft vei'}
             </button>
           )}
         </div>

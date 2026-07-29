@@ -33,6 +33,8 @@ interface BoardViewProps {
   } | null;
   onVertexClick?: (vertexId: string) => void;
   interactive?: boolean;
+  /** When false, settlement rank markers are not clickable (road-pick step). */
+  settlementInteractive?: boolean;
   mappingMode?: boolean;
   mapping?: BoardMapping | null;
   highlightEdge?: string | null;
@@ -104,6 +106,7 @@ export function BoardView({
   harborPlanHighlight = null,
   onVertexClick,
   interactive = false,
+  settlementInteractive = true,
   mappingMode = false,
   mapping = null,
   highlightEdge = null,
@@ -300,37 +303,6 @@ export function BoardView({
           );
         })()}
 
-      {/* Clickable road direction tips */}
-      {!mappingMode &&
-        interactive &&
-        selectedVertex &&
-        roadTargets.map((toId) => {
-          const pos = getVertexPixel(toId, HEX_SIZE);
-          if (!pos) return null;
-          const isActive = previewRoadTo === toId;
-          return (
-            <g
-              key={`road-target-${toId}`}
-              className={`road-direction-target ${isActive ? 'active' : ''}`}
-              style={{ cursor: 'pointer' }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onRoadTargetClick?.(toId);
-              }}
-            >
-              <circle
-                cx={pos.x}
-                cy={pos.y}
-                r={isActive ? 8 : 6}
-                fill={isActive ? '#fff' : 'rgba(255,255,255,0.45)'}
-                stroke={isActive ? '#1a5276' : 'rgba(255,255,255,0.85)'}
-                strokeWidth={isActive ? 2.5 : 1.5}
-              />
-              <title>Legg startvei hit</title>
-            </g>
-          );
-        })}
-
       {/* Settlement markers */}
       {!mappingMode &&
         placements.map((p, i) => {
@@ -360,9 +332,32 @@ export function BoardView({
         );
       })}
 
+      {/* Locked pending settlement while picking opening road */}
+      {!mappingMode &&
+        interactive &&
+        !settlementInteractive &&
+        selectedVertex &&
+        (() => {
+          const pos = getVertexPixel(selectedVertex, HEX_SIZE);
+          if (!pos) return null;
+          return (
+            <g className="placement-marker selected pending-settlement" aria-hidden>
+              <circle
+                cx={pos.x}
+                cy={pos.y}
+                r={12}
+                fill="rgba(255,255,255,0.35)"
+                stroke="#fff"
+                strokeWidth={3}
+              />
+            </g>
+          );
+        })()}
+
       {/* Øvrige gyldige plasseringer – klikkbare, uten rang */}
       {!mappingMode &&
         interactive &&
+        settlementInteractive &&
         otherPlacements.map((score) => {
           const pos = getVertexPixel(score.vertexId, HEX_SIZE);
           if (!pos) return null;
@@ -396,6 +391,7 @@ export function BoardView({
       {/* Anbefalte plasseringer under simulering */}
       {!mappingMode &&
         interactive &&
+        settlementInteractive &&
         topPlacements.map((score, index) => {
           const pos = getVertexPixel(score.vertexId, HEX_SIZE);
           if (!pos) return null;
@@ -449,6 +445,38 @@ export function BoardView({
                 {rank}
               </text>
               <title>{placementScoreTitle(score, rank)}</title>
+            </g>
+          );
+        })}
+
+      {/* Clickable road direction tips — above placement markers so they receive clicks */}
+      {!mappingMode &&
+        interactive &&
+        !settlementInteractive &&
+        selectedVertex &&
+        roadTargets.map((toId) => {
+          const pos = getVertexPixel(toId, HEX_SIZE);
+          if (!pos) return null;
+          const isActive = previewRoadTo === toId;
+          return (
+            <g
+              key={`road-target-${toId}`}
+              className={`road-direction-target ${isActive ? 'active' : ''}`}
+              style={{ cursor: 'pointer' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRoadTargetClick?.(toId);
+              }}
+            >
+              <circle
+                cx={pos.x}
+                cy={pos.y}
+                r={isActive ? 14 : 12}
+                fill={isActive ? '#fff' : 'rgba(255,255,255,0.55)'}
+                stroke={isActive ? '#1a5276' : 'rgba(255,255,255,0.95)'}
+                strokeWidth={isActive ? 3 : 2}
+              />
+              <title>Legg startvei hit</title>
             </g>
           );
         })}
