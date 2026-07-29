@@ -380,7 +380,7 @@ export function SettlementSimulator({
                           className={`option-row-compact road-option ${isSelected ? 'selected' : ''} ${isBest ? 'recommended' : ''}`}
                           onClick={() => onSelectRoad(rd.toVertexId)}
                         >
-                          <span className="option-row-rank">{isBest ? '★' : `#${i + 1}`}</span>
+                          <span className="option-row-rank" data-rank={i + 1}>#{i + 1}</span>
                           <span className="option-row-score">{rd.score.toFixed(2)}</span>
                           <span className="option-row-detail">
                             <span className="option-row-resources">

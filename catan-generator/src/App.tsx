@@ -379,9 +379,18 @@ function App() {
   }, [placementStep, selectedVertex, board, simulation, roadScoringCtx]);
 
   const expansionTargets = useMemo(() => {
-    if (placementStep !== 'road' || !selectedVertex || !simulation) return [];
-    return getExpansionTargets(selectedVertex, simulation.placements);
-  }, [placementStep, selectedVertex, simulation]);
+    if (placementStep !== 'road' || !selectedVertex || !simulation || !board) return [];
+    // Simulate remaining opponent placements to predict which spots will be taken
+    let predicted = simulation;
+    let safety = 0;
+    while (!predicted.finished && safety < 20) {
+      const opts = getOptionsForCurrentTurn(predicted);
+      if (opts.length === 0) break;
+      predicted = placeSettlement(predicted, opts[0].vertexId);
+      safety++;
+    }
+    return getExpansionTargets(selectedVertex, predicted.placements);
+  }, [placementStep, selectedVertex, simulation, board]);
 
   // Havnmarkering bare på din tur — skal ikke låse motstanderens plassering.
   const harborPlanHighlight =
