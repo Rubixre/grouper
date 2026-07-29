@@ -26,7 +26,7 @@ interface BoardViewProps {
   /** Clickable road-direction tips when choosing opening road */
   roadTargets?: string[];
   /** Ranked road directions (highest score first) for hint coloring */
-  rankedRoads?: { toVertexId: string; score: number; room?: number; harbor?: number; connect?: number; cutoff?: number; contest?: number }[];
+  rankedRoads?: { toVertexId: string; score: number; room?: number; harbor?: number; harborMatch?: string; connect?: number; cutoff?: number; contest?: number }[];
   /** Expansion corridor highlights (reachable legal settlements 2–4 roads away) */
   expansionTargets?: { vertexId: string; distance: number }[];
   onRoadTargetClick?: (toVertexId: string) => void;

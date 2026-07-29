@@ -57,7 +57,7 @@ interface SettlementSimulatorProps {
   recommendedStrategyChoice: StrategyChoice | null;
   strategyLevels: StrategyRelativeLevels | null;
   harborOpportunities: HarborStrategyOpportunity[];
-  rankedRoads: { toVertexId: string; score: number; room?: number; harbor?: number; connect?: number; cutoff?: number; contest?: number }[];
+  rankedRoads: { toVertexId: string; score: number; room?: number; harbor?: number; harborMatch?: string; connect?: number; cutoff?: number; contest?: number }[];
   secondPreviewVertex: string | null;
   onSelectVertex: (vertexId: string) => void;
   onSelectRoad: (toVertexId: string) => void;
@@ -370,7 +370,18 @@ export function SettlementSimulator({
                       const tags: string[] = [];
                       if (rd.room && rd.room > 1.2) tags.push('sterk ekspansjon');
                       else if (rd.room && rd.room > 0.6) tags.push('god plass');
-                      if (rd.harbor && rd.harbor > 0.1) tags.push('havn nær');
+                      if (rd.harbor && rd.harbor > 0.1) {
+                        const matchLabel = rd.harborMatch && rd.harborMatch !== 'generisk'
+                          ? RESOURCE_LABELS[rd.harborMatch as ProdResource] ?? rd.harborMatch
+                          : null;
+                        tags.push(
+                          rd.harbor >= 0.35 && matchLabel
+                            ? `${matchLabel}-havn (sterk match)`
+                            : matchLabel
+                              ? `${matchLabel}-havn nær`
+                              : 'havn nær'
+                        );
+                      }
                       if (rd.connect && rd.connect > 0.2) tags.push('kobler veier');
                       if (rd.cutoff && rd.cutoff > 0.1) tags.push('kutter motstander');
                       if (rd.contest && rd.contest > 0.3) tags.push('bestridt');
