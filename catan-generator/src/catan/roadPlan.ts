@@ -1,4 +1,5 @@
 import type { Board, PlacedSettlement } from './types';
+import type { StrategyProfileId } from './resourceWeights';
 import { coordKey } from './hex';
 import { getLandSet } from './boardLayout';
 import {
@@ -21,15 +22,26 @@ export function isLegalRoadTarget(fromVertexId: string, toVertexId: string): boo
   return getRoadTargets(fromVertexId).includes(toVertexId);
 }
 
+export interface RoadScoringContext {
+  selfPlayer?: number;
+  strategy?: StrategyProfileId;
+  playerCount?: number;
+}
+
 /**
  * Score how good it is to point the opening road from `from` toward `to`.
  * Higher = more expansion room / harbor reach / less contested.
+ *
+ * Context-aware: strategy (longest-road amplifies connect/cutoff),
+ * player number (later players benefit more from cutting off early players
+ * who have fewer remaining picks).
  */
 export function scoreRoadDirection(
   fromVertexId: string,
   toVertexId: string,
   board: Board,
-  placed: PlacedSettlement[]
+  placed: PlacedSettlement[],
+  ctx: RoadScoringContext = {}
 ): number {
   if (!isLegalRoadTarget(fromVertexId, toVertexId)) return -Infinity;
 
@@ -38,8 +50,10 @@ export function scoreRoadDirection(
   const tip = vertices.get(toVertexId);
   if (!tip) return -Infinity;
 
+  const isLongestRoadStrategy =
+    ctx.strategy === 'longestRoad' || ctx.strategy === 'both';
+
   // Open land vertices reachable in 1–2 hops beyond the first road step
-  // (not going back to `from`).
   let room = 0;
   const seen = new Set<string>([fromVertexId, toVertexId]);
   const frontier = [toVertexId];
@@ -57,7 +71,6 @@ export function scoreRoadDirection(
       frontier.push(n);
       const nv = vertices.get(n);
       if (nv && nv.hexes.some((h) => landSet.has(coordKey(h)))) {
-        // Prefer spots that are still legal for a future settlement
         const blocked = placed.some(
           (p) => p.vertexId === n || getVertices().get(p.vertexId)?.neighbors.includes(n)
         );
@@ -79,23 +92,38 @@ export function scoreRoadDirection(
     }
   }
 
-  // Contested: opponent road already points into this corridor
+  // Contested: opponent road already points into this corridor.
+  // For longest-road strategy: contesting (cutting off) an opponent who already
+  // built into this corridor can be *positive* if we can block their path.
   let contest = 0;
+  let cutoffBonus = 0;
   for (const p of placed) {
+    if (ctx.selfPlayer !== undefined && p.player === ctx.selfPlayer) continue;
     if (!p.roadToVertexId) continue;
-    // Opponent road tip close to our tip / target
     const dTip = vertexRoadDistance(p.roadToVertexId, toVertexId);
-    if (dTip !== null && dTip <= 2) contest += 0.35 * (1 - dTip * 0.3);
-    // Opponent settlement sits on / next to our tip
+    if (dTip !== null && dTip <= 2) {
+      contest += 0.35 * (1 - dTip * 0.3);
+      // Cutting off: pointing directly at their road tip is aggressive
+      if (isLongestRoadStrategy && dTip <= 1) {
+        cutoffBonus += 0.3 * (1 - dTip * 0.4);
+      }
+    }
     const dSet = vertexRoadDistance(p.vertexId, toVertexId);
     if (dSet !== null && dSet <= 1) contest += 0.45;
   }
 
+  // Later players (higher index) benefit more from aggressive cutoff:
+  // they place after opponents have committed direction.
+  if (ctx.selfPlayer !== undefined && ctx.playerCount !== undefined && ctx.playerCount > 2) {
+    const positionalAggression = ctx.selfPlayer / (ctx.playerCount - 1);
+    cutoffBonus *= 0.5 + 0.5 * positionalAggression;
+  }
+
   // Connect with own earlier opening road when placing #2
   let connect = 0;
-  const own = placed.filter((p) => p.roadToVertexId);
-  // Caller may pass only prior placements; if any prior settlement's road
-  // points toward `from` or `to`, reward chaining.
+  const own = placed.filter(
+    (p) => p.roadToVertexId && (ctx.selfPlayer === undefined || p.player === ctx.selfPlayer)
+  );
   for (const p of own) {
     if (!p.roadToVertexId) continue;
     if (p.roadToVertexId === fromVertexId || p.roadToVertexId === toVertexId) {
@@ -105,18 +133,24 @@ export function scoreRoadDirection(
     if (d !== null && d <= 2) connect += 0.2 * (1 - d * 0.25);
   }
 
-  return room + harbor + connect - contest;
+  // Longest-road strategy strongly amplifies connect (chain both roads)
+  if (isLongestRoadStrategy) {
+    connect *= 1.8;
+  }
+
+  return room + harbor + connect + cutoffBonus - contest;
 }
 
 export function rankRoadDirections(
   fromVertexId: string,
   board: Board,
-  placed: PlacedSettlement[]
+  placed: PlacedSettlement[],
+  ctx: RoadScoringContext = {}
 ): { toVertexId: string; score: number }[] {
   return getRoadTargets(fromVertexId)
     .map((toVertexId) => ({
       toVertexId,
-      score: scoreRoadDirection(fromVertexId, toVertexId, board, placed),
+      score: scoreRoadDirection(fromVertexId, toVertexId, board, placed, ctx),
     }))
     .sort((a, b) => b.score - a.score || a.toVertexId.localeCompare(b.toVertexId));
 }
@@ -124,9 +158,10 @@ export function rankRoadDirections(
 export function pickBestRoadDirection(
   fromVertexId: string,
   board: Board,
-  placed: PlacedSettlement[]
+  placed: PlacedSettlement[],
+  ctx: RoadScoringContext = {}
 ): string | null {
-  return rankRoadDirections(fromVertexId, board, placed)[0]?.toVertexId ?? null;
+  return rankRoadDirections(fromVertexId, board, placed, ctx)[0]?.toVertexId ?? null;
 }
 
 /** Attach a setup road if missing (lookahead / legacy placements). */
@@ -147,6 +182,50 @@ export function withSetupRoad(
     priorPlaced
   );
   return roadToVertexId ? { ...placement, roadToVertexId } : placement;
+}
+
+/**
+ * Find potential expansion vertices reachable from `fromVertexId` (2–4 road hops)
+ * that are still legal for a future settlement.
+ * Returns vertex IDs with their distance — useful for highlighting expansion corridors.
+ */
+export function getExpansionTargets(
+  fromVertexId: string,
+  placed: PlacedSettlement[],
+  maxDist = 4
+): { vertexId: string; distance: number }[] {
+  const vertices = getVertices();
+  const landSet = getLandSet();
+  const dist = new Map<string, number>([[fromVertexId, 0]]);
+  const queue = [fromVertexId];
+
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    const d = dist.get(cur)!;
+    if (d >= maxDist) continue;
+    const v = vertices.get(cur);
+    if (!v) continue;
+    for (const n of v.neighbors) {
+      if (dist.has(n)) continue;
+      dist.set(n, d + 1);
+      queue.push(n);
+    }
+  }
+
+  const results: { vertexId: string; distance: number }[] = [];
+  for (const [id, d] of dist) {
+    if (d < 2) continue;
+    const v = vertices.get(id);
+    if (!v) continue;
+    if (!v.hexes.some((h) => landSet.has(coordKey(h)))) continue;
+    const blocked = placed.some(
+      (p) =>
+        p.vertexId === id ||
+        vertices.get(p.vertexId)?.neighbors.includes(id)
+    );
+    if (!blocked) results.push({ vertexId: id, distance: d });
+  }
+  return results.sort((a, b) => a.distance - b.distance);
 }
 
 /**

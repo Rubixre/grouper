@@ -57,6 +57,7 @@ interface SettlementSimulatorProps {
   recommendedStrategyChoice: StrategyChoice | null;
   strategyLevels: StrategyRelativeLevels | null;
   harborOpportunities: HarborStrategyOpportunity[];
+  rankedRoads: { toVertexId: string; score: number }[];
   secondPreviewVertex: string | null;
   onSelectVertex: (vertexId: string) => void;
   onSelectHarborPlan: (opp: HarborStrategyOpportunity) => void;
@@ -110,6 +111,7 @@ export function SettlementSimulator({
   recommendedStrategyChoice,
   strategyLevels,
   harborOpportunities,
+  rankedRoads,
   secondPreviewVertex,
   onSelectVertex,
   onSelectHarborPlan,
@@ -350,14 +352,27 @@ export function SettlementSimulator({
             </div>
 
             {placementStep === 'road' ? (
-              <p className="road-pick-hint muted small">
-                Landsby er valgt
-                {selectedVertex
-                  ? ` (${shortVertexLabel(boardSize, selectedVertex)})`
-                  : ''}
-                . Trykk en nabo på brettet for startvei, deretter Bekreft vei.
-                Angre går tilbake til landsbyvalg.
-              </p>
+              <div className="road-pick-hint muted small">
+                <p>
+                  Landsby er valgt
+                  {selectedVertex
+                    ? ` (${shortVertexLabel(boardSize, selectedVertex)})`
+                    : ''}
+                  . Trykk en nabo på brettet for startvei, deretter Bekreft vei.
+                  Angre går tilbake til landsbyvalg.
+                </p>
+                {rankedRoads.length > 0 && (
+                  <p>
+                    <strong>★</strong> Anbefalt retning
+                    {rankedRoads[0]
+                      ? ` (${shortVertexLabel(boardSize, rankedRoads[0].toVertexId)})`
+                      : ''}
+                    {strategyChoice === 'longestRoad' || strategyChoice === 'both'
+                      ? ' — vektet for lengste vei'
+                      : ''}
+                  </p>
+                )}
+              </div>
             ) : harborMode && isYourTurn ? (
               <>
                 {harborRows.length === 0 ? (

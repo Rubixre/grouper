@@ -25,6 +25,10 @@ interface BoardViewProps {
   previewRoadTo?: string | null;
   /** Clickable road-direction tips when choosing opening road */
   roadTargets?: string[];
+  /** Ranked road directions (highest score first) for hint coloring */
+  rankedRoads?: { toVertexId: string; score: number }[];
+  /** Expansion corridor highlights (reachable legal settlements 2–4 roads away) */
+  expansionTargets?: { vertexId: string; distance: number }[];
   onRoadTargetClick?: (toVertexId: string) => void;
   harborPlanHighlight?: {
     firstVertexId: string;
@@ -102,6 +106,8 @@ export function BoardView({
   selectedVertex,
   previewRoadTo = null,
   roadTargets = [],
+  rankedRoads = [],
+  expansionTargets = [],
   onRoadTargetClick,
   harborPlanHighlight = null,
   onVertexClick,
@@ -449,6 +455,32 @@ export function BoardView({
           );
         })}
 
+      {/* Expansion corridor highlights */}
+      {!mappingMode &&
+        interactive &&
+        !settlementInteractive &&
+        expansionTargets.length > 0 &&
+        expansionTargets.map(({ vertexId: eId, distance }) => {
+          const pos = getVertexPixel(eId, HEX_SIZE);
+          if (!pos) return null;
+          const opacity = distance <= 2 ? 0.45 : distance <= 3 ? 0.3 : 0.18;
+          const r = distance <= 2 ? 9 : distance <= 3 ? 7 : 5;
+          return (
+            <circle
+              key={`expansion-${eId}`}
+              cx={pos.x}
+              cy={pos.y}
+              r={r}
+              fill="#2ecc71"
+              fillOpacity={opacity}
+              stroke="#27ae60"
+              strokeWidth={1}
+              strokeOpacity={opacity}
+              className="expansion-target"
+            />
+          );
+        })}
+
       {/* Clickable road direction tips — above placement markers so they receive clicks */}
       {!mappingMode &&
         interactive &&
@@ -458,6 +490,18 @@ export function BoardView({
           const pos = getVertexPixel(toId, HEX_SIZE);
           if (!pos) return null;
           const isActive = previewRoadTo === toId;
+          const rank = rankedRoads.findIndex((r) => r.toVertexId === toId);
+          const isBest = rank === 0;
+          const fillColor = isActive
+            ? '#fff'
+            : isBest
+              ? '#f1c40f'
+              : 'rgba(255,255,255,0.55)';
+          const strokeColor = isActive
+            ? '#1a5276'
+            : isBest
+              ? '#b7950b'
+              : 'rgba(255,255,255,0.95)';
           return (
             <g
               key={`road-target-${toId}`}
@@ -471,12 +515,28 @@ export function BoardView({
               <circle
                 cx={pos.x}
                 cy={pos.y}
-                r={isActive ? 14 : 12}
-                fill={isActive ? '#fff' : 'rgba(255,255,255,0.55)'}
-                stroke={isActive ? '#1a5276' : 'rgba(255,255,255,0.95)'}
-                strokeWidth={isActive ? 3 : 2}
+                r={isActive ? 14 : isBest ? 13 : 12}
+                fill={fillColor}
+                stroke={strokeColor}
+                strokeWidth={isActive ? 3 : isBest ? 2.5 : 2}
               />
-              <title>Legg startvei hit</title>
+              {isBest && !isActive && (
+                <text
+                  x={pos.x}
+                  y={pos.y + 1}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fill="#1a252f"
+                  fontSize={9}
+                  fontWeight={800}
+                >
+                  ★
+                </text>
+              )}
+              <title>
+                {isBest ? 'Anbefalt startvei' : 'Legg startvei hit'}
+                {rank >= 0 ? ` (#${rank + 1})` : ''}
+              </title>
             </g>
           );
         })}

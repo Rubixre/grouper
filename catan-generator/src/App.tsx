@@ -30,13 +30,19 @@ import {
 } from './catan/harborStrategy';
 import {
   createSimulation,
+  currentPlayer,
   getOptionsForCurrentTurn,
   isHumanTurn,
   placeSettlement,
   undoLastPlacement,
   type SimulationState,
 } from './catan/simulator';
-import { getRoadTargets } from './catan/roadPlan';
+import {
+  getExpansionTargets,
+  getRoadTargets,
+  rankRoadDirections,
+  type RoadScoringContext,
+} from './catan/roadPlan';
 import {
   loadSession,
   saveSession,
@@ -356,6 +362,26 @@ function App() {
     activeHarborPlan,
   ]);
 
+  const roadScoringCtx: RoadScoringContext = useMemo(() => {
+    if (!simulation) return {};
+    const player = currentPlayer(simulation);
+    return {
+      selfPlayer: player ?? undefined,
+      strategy: strategyProfileId,
+      playerCount: simulation.playerCount,
+    };
+  }, [simulation, strategyProfileId]);
+
+  const rankedRoads = useMemo(() => {
+    if (placementStep !== 'road' || !selectedVertex || !board || !simulation) return [];
+    return rankRoadDirections(selectedVertex, board, simulation.placements, roadScoringCtx);
+  }, [placementStep, selectedVertex, board, simulation, roadScoringCtx]);
+
+  const expansionTargets = useMemo(() => {
+    if (placementStep !== 'road' || !selectedVertex || !simulation) return [];
+    return getExpansionTargets(selectedVertex, simulation.placements);
+  }, [placementStep, selectedVertex, simulation]);
+
   // Havnmarkering bare på din tur — skal ikke låse motstanderens plassering.
   const harborPlanHighlight =
     isYourTurn && activeHarborPlan
@@ -507,6 +533,12 @@ function App() {
                       ? getRoadTargets(selectedVertex)
                       : []
                   }
+                  rankedRoads={
+                    simPlacing && placementStep === 'road' ? rankedRoads : []
+                  }
+                  expansionTargets={
+                    simPlacing && placementStep === 'road' ? expansionTargets : []
+                  }
                   onRoadTargetClick={
                     simPlacing && placementStep === 'road'
                       ? (to) => setSelectedRoadTo(to)
@@ -599,6 +631,7 @@ function App() {
                   recommendedStrategyChoice={recommendedStrategyChoice}
                   strategyLevels={strategyLevels}
                   harborOpportunities={harborOpportunities}
+                  rankedRoads={rankedRoads}
                   secondPreviewVertex={secondPreviewVertex}
                   onSelectVertex={handleSelectVertex}
                   onSelectHarborPlan={handleSelectHarborPlan}
