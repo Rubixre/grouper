@@ -1,4 +1,4 @@
-import type { Board, PlacedSettlement } from './types';
+import type { Board, PlacedSettlement, ResourceType } from './types';
 import type { StrategyProfileId } from './resourceWeights';
 import { NUMBER_PROB } from './placementModel';
 import { coordKey } from './hex';
@@ -27,6 +27,35 @@ export interface RoadScoringContext {
   selfPlayer?: number;
   strategy?: StrategyProfileId;
   playerCount?: number;
+  /** Player's raw pip production by resource (from placed settlements). */
+  production?: Partial<Record<ResourceType, number>>;
+}
+
+/**
+ * Compute raw pip production per resource for a player's placed settlements.
+ */
+export function computePlayerProduction(
+  board: Board,
+  placed: PlacedSettlement[],
+  player: number
+): Partial<Record<ResourceType, number>> {
+  const vertices = getVertices();
+  const result: Partial<Record<ResourceType, number>> = {};
+  for (const p of placed) {
+    if (p.player !== player) continue;
+    const v = vertices.get(p.vertexId);
+    if (!v) continue;
+    for (const hex of v.hexes) {
+      const tile = board.hexes.find(
+        (h) => h.coord.q === hex.q && h.coord.r === hex.r
+      );
+      if (!tile || tile.kind !== 'land' || !tile.resource || tile.resource === 'desert') continue;
+      if (tile.number != null) {
+        result[tile.resource] = (result[tile.resource] ?? 0) + (NUMBER_PROB[tile.number] ?? 0);
+      }
+    }
+  }
+  return result;
 }
 
 /**
@@ -127,8 +156,16 @@ export function scoreRoadDirection(
       const dFromTip = vertexRoadDistance(toVertexId, node);
       if (dFromTip === null) continue;
       if (dFromTip <= 1) {
-        const kindBonus = h.definition.harbor.kind === 'generic' ? 0.25 : 0.4;
-        harbor = Math.max(harbor, kindBonus * (dFromTip === 0 ? 1.0 : 0.5));
+        const hDef = h.definition.harbor;
+        let bonus: number;
+        if (hDef.kind === 'generic') {
+          bonus = 0.25;
+        } else {
+          const prod = ctx.production?.[hDef.resource] ?? 0;
+          bonus = prod >= 0.2 ? 0.7 : prod >= 0.1 ? 0.5 : 0.3;
+        }
+        const distFactor = dFromTip === 0 ? 1.0 : 0.5;
+        harbor = Math.max(harbor, bonus * distFactor);
       }
     }
   }
@@ -182,6 +219,8 @@ export interface RoadDirectionBreakdown {
   score: number;
   room: number;
   harbor: number;
+  /** Which harbor resource matched, or 'generisk' */
+  harborMatch: string;
   connect: number;
   cutoff: number;
   contest: number;
@@ -239,13 +278,26 @@ export function scoreRoadDirectionDetailed(
   room += bestExpansion * 0.3;
 
   let harbor = 0;
+  let harborMatch = '';
   for (const h of board.harbors) {
     for (const node of h.nodeVertexIds) {
       const dFromTip = vertexRoadDistance(toVertexId, node);
       if (dFromTip === null) continue;
       if (dFromTip <= 1) {
-        const kindBonus = h.definition.harbor.kind === 'generic' ? 0.25 : 0.4;
-        harbor = Math.max(harbor, kindBonus * (dFromTip === 0 ? 1.0 : 0.5));
+        const hDef = h.definition.harbor;
+        let bonus: number;
+        if (hDef.kind === 'generic') {
+          bonus = 0.25;
+        } else {
+          const prod = ctx.production?.[hDef.resource] ?? 0;
+          bonus = prod >= 0.2 ? 0.7 : prod >= 0.1 ? 0.5 : 0.3;
+        }
+        const distFactor = dFromTip === 0 ? 1.0 : 0.5;
+        const value = bonus * distFactor;
+        if (value > harbor) {
+          harbor = value;
+          harborMatch = hDef.kind === 'generic' ? 'generisk' : hDef.resource;
+        }
       }
     }
   }
@@ -286,7 +338,7 @@ export function scoreRoadDirectionDetailed(
   if (isLongestRoadStrategy) connect *= 1.8;
 
   const score = room + harbor + connect + cutoff - contest;
-  return { toVertexId, score, room, harbor, connect, cutoff, contest };
+  return { toVertexId, score, room, harbor, harborMatch, connect, cutoff, contest };
 }
 
 export function rankRoadDirections(

@@ -38,6 +38,7 @@ import {
   type SimulationState,
 } from './catan/simulator';
 import {
+  computePlayerProduction,
   getExpansionTargets,
   getRoadTargets,
   rankRoadDirections,
@@ -363,14 +364,17 @@ function App() {
   ]);
 
   const roadScoringCtx: RoadScoringContext = useMemo(() => {
-    if (!simulation) return {};
+    if (!simulation || !board) return {};
     const player = currentPlayer(simulation);
     return {
       selfPlayer: player ?? undefined,
       strategy: strategyProfileId,
       playerCount: simulation.playerCount,
+      production: player !== null
+        ? computePlayerProduction(board, simulation.placements, player)
+        : undefined,
     };
-  }, [simulation, strategyProfileId]);
+  }, [simulation, board, strategyProfileId]);
 
   // Predict where opponents will place after human's confirmed settlement
   const predictedPlacements = useMemo(() => {
