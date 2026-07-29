@@ -57,7 +57,7 @@ interface SettlementSimulatorProps {
   recommendedStrategyChoice: StrategyChoice | null;
   strategyLevels: StrategyRelativeLevels | null;
   harborOpportunities: HarborStrategyOpportunity[];
-  rankedRoads: { toVertexId: string; score: number; room?: number; harbor?: number; harborMatch?: string; connect?: number; cutoff?: number; contest?: number }[];
+  rankedRoads: { toVertexId: string; score: number; room?: number; harbor?: number; harborMatch?: string; cutoff?: number; contest?: number }[];
   secondPreviewVertex: string | null;
   onSelectVertex: (vertexId: string) => void;
   onSelectRoad: (toVertexId: string) => void;
@@ -384,7 +384,6 @@ export function SettlementSimulator({
                                 : 'havn nær'
                         );
                       }
-                      if (rd.connect && rd.connect > 0.2) tags.push('kobler veier');
                       if (rd.cutoff && rd.cutoff > 0.1) tags.push('kutter motstander');
                       if (rd.contest && rd.contest > 0.3) tags.push('bestridt');
                       return (
