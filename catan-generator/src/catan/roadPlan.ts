@@ -115,10 +115,10 @@ export function scoreRoadDirection(
   const isLongestRoadStrategy =
     ctx.strategy === 'longestRoad' || ctx.strategy === 'both';
 
-  // Quality-weighted expansion: find reachable settlement candidates 1–2 hops
-  // from the road tip and pick the best one.
-  let room = 0;
+  // Quality-weighted expansion: best reachable settlement candidate + count bonus.
+  // Capped so it doesn't drown out harbor value.
   let bestExpansion = 0;
+  let openCount = 0;
   const seen = new Set<string>([fromVertexId, toVertexId]);
   const frontier = [toVertexId];
   const depth = new Map<string, number>([[toVertexId, 0]]);
@@ -139,15 +139,15 @@ export function scoreRoadDirection(
           (p) => p.vertexId === n || getVertices().get(p.vertexId)?.neighbors.includes(n)
         );
         if (!blocked) {
+          openCount++;
           const quality = expansionVertexQuality(n, board);
-          room += (d === 0 ? 0.2 : 0.3) + quality * (d === 0 ? 0.15 : 0.25);
           bestExpansion = Math.max(bestExpansion, quality);
         }
       }
     }
   }
-  // Bonus for the best reachable expansion spot
-  room += bestExpansion * 0.3;
+  // Best expansion spot dominates, small bonus for having alternatives
+  const room = bestExpansion * 0.8 + Math.min(openCount, 5) * 0.08;
 
   // Harbor nodes near the tip (max 1 hop from tip = 2 roads from settlement).
   // Resource harbors scale with player's production: a 2:1 harbor for a
@@ -250,8 +250,8 @@ export function scoreRoadDirectionDetailed(
   const isLongestRoadStrategy =
     ctx.strategy === 'longestRoad' || ctx.strategy === 'both';
 
-  let room = 0;
   let bestExpansion = 0;
+  let openCount = 0;
   const seen = new Set<string>([fromVertexId, toVertexId]);
   const frontier = [toVertexId];
   const depth = new Map<string, number>([[toVertexId, 0]]);
@@ -272,14 +272,14 @@ export function scoreRoadDirectionDetailed(
           (p) => p.vertexId === n || getVertices().get(p.vertexId)?.neighbors.includes(n)
         );
         if (!blocked) {
+          openCount++;
           const quality = expansionVertexQuality(n, board);
-          room += (d === 0 ? 0.2 : 0.3) + quality * (d === 0 ? 0.15 : 0.25);
           bestExpansion = Math.max(bestExpansion, quality);
         }
       }
     }
   }
-  room += bestExpansion * 0.3;
+  const room = bestExpansion * 0.8 + Math.min(openCount, 5) * 0.08;
 
   let harbor = 0;
   let harborMatch = '';
