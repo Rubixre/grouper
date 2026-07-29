@@ -69,6 +69,7 @@ export function computePlayerProduction(
 function expansionVertexQuality(
   vertexId: string,
   board: Board,
+  production?: Partial<Record<ResourceType, number>>,
 ): number {
   const vertices = getVertices();
   const landSet = getLandSet();
@@ -80,17 +81,24 @@ function expansionVertexQuality(
   if (hexCount === 0) return 0;
 
   let pipSum = 0;
+  let missingResourceBonus = 0;
   for (const hex of landHexes) {
     const tile = board.hexes.find(
       (h) => h.coord.q === hex.q && h.coord.r === hex.r
     );
     if (!tile || tile.kind !== 'land' || !tile.resource || tile.resource === 'desert') continue;
-    if (tile.number != null) pipSum += NUMBER_PROB[tile.number] ?? 0;
+    if (tile.number != null) {
+      const pip = NUMBER_PROB[tile.number] ?? 0;
+      pipSum += pip;
+      const current = production?.[tile.resource] ?? 0;
+      if (current < 0.08) missingResourceBonus += pip * 0.9;
+      else if (current < 0.14) missingResourceBonus += pip * 0.45;
+    }
   }
 
   const hexBonus = hexCount >= 3 ? 1.0 : hexCount === 2 ? 0.55 : 0.25;
 
-  return hexBonus * 0.5 + pipSum * 2.0;
+  return hexBonus * 0.5 + pipSum * 2.0 + missingResourceBonus;
 }
 
 /**
@@ -140,14 +148,14 @@ export function scoreRoadDirection(
         );
         if (!blocked) {
           openCount++;
-          const quality = expansionVertexQuality(n, board);
+          const quality = expansionVertexQuality(n, board, ctx.production);
           bestExpansion = Math.max(bestExpansion, quality);
         }
       }
     }
   }
   // Best expansion spot dominates, small bonus for having alternatives
-  const room = bestExpansion * 0.8 + Math.min(openCount, 5) * 0.08;
+  const room = bestExpansion * 1.05 + Math.min(openCount, 4) * 0.06;
 
   // Harbor should mostly be a tie-breaker unless the player already has strong
   // production of that exact resource.
@@ -197,7 +205,9 @@ export function scoreRoadDirection(
     cutoffBonus *= 0.5 + 0.5 * positionalAggression;
   }
 
-  return room + harbor + cutoffBonus - contest;
+  const contestScale =
+    bestExpansion >= 1.4 ? 0.35 : bestExpansion >= 1.15 ? 0.55 : 1.0;
+  return room + harbor + cutoffBonus - contest * contestScale;
 }
 
 export interface RoadDirectionBreakdown {
@@ -254,13 +264,13 @@ export function scoreRoadDirectionDetailed(
         );
         if (!blocked) {
           openCount++;
-          const quality = expansionVertexQuality(n, board);
+          const quality = expansionVertexQuality(n, board, ctx.production);
           bestExpansion = Math.max(bestExpansion, quality);
         }
       }
     }
   }
-  const room = bestExpansion * 0.8 + Math.min(openCount, 5) * 0.08;
+  const room = bestExpansion * 1.05 + Math.min(openCount, 4) * 0.06;
 
   let harbor = 0;
   let harborMatch = '';
@@ -310,8 +320,11 @@ export function scoreRoadDirectionDetailed(
     cutoff *= 0.5 + 0.5 * positionalAggression;
   }
 
-  const score = room + harbor + cutoff - contest;
-  return { toVertexId, score, room, harbor, harborMatch, cutoff, contest };
+  const contestScale =
+    bestExpansion >= 1.4 ? 0.35 : bestExpansion >= 1.15 ? 0.55 : 1.0;
+  const effectiveContest = contest * contestScale;
+  const score = room + harbor + cutoff - effectiveContest;
+  return { toVertexId, score, room, harbor, harborMatch, cutoff, contest: effectiveContest };
 }
 
 export function rankRoadDirections(
