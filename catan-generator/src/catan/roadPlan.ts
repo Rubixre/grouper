@@ -149,9 +149,8 @@ export function scoreRoadDirection(
   // Best expansion spot dominates, small bonus for having alternatives
   const room = bestExpansion * 0.8 + Math.min(openCount, 5) * 0.08;
 
-  // Harbor nodes near the tip (max 1 hop from tip = 2 roads from settlement).
-  // Resource harbors scale with player's production: a 2:1 harbor for a
-  // resource you produce heavily is one of the strongest advantages in Catan.
+  // Harbor should mostly be a tie-breaker unless the player already has strong
+  // production of that exact resource.
   let harbor = 0;
   for (const h of board.harbors) {
     for (const node of h.nodeVertexIds) {
@@ -161,12 +160,12 @@ export function scoreRoadDirection(
         const hDef = h.definition.harbor;
         let bonus: number;
         if (hDef.kind === 'generic') {
-          bonus = 0.25;
+          bonus = 0.08;
         } else {
           const prod = ctx.production?.[hDef.resource] ?? 0;
-          // Scale continuously with production — a 2:1 harbor with high
-          // production is game-changing (effectively doubles trade value)
-          bonus = 0.3 + Math.min(prod, 0.4) * 4.0;
+          if (prod < 0.12) bonus = 0.06;
+          else if (prod < 0.2) bonus = 0.18;
+          else bonus = 0.35 + Math.min(prod - 0.2, 0.22) * 5.0;
         }
         const distFactor = dFromTip === 0 ? 1.0 : 0.6;
         harbor = Math.max(harbor, bonus * distFactor);
@@ -291,10 +290,12 @@ export function scoreRoadDirectionDetailed(
         const hDef = h.definition.harbor;
         let bonus: number;
         if (hDef.kind === 'generic') {
-          bonus = 0.25;
+          bonus = 0.08;
         } else {
           const prod = ctx.production?.[hDef.resource] ?? 0;
-          bonus = 0.3 + Math.min(prod, 0.4) * 4.0;
+          if (prod < 0.12) bonus = 0.06;
+          else if (prod < 0.2) bonus = 0.18;
+          else bonus = 0.35 + Math.min(prod - 0.2, 0.22) * 5.0;
         }
         const distFactor = dFromTip === 0 ? 1.0 : 0.6;
         const value = bonus * distFactor;

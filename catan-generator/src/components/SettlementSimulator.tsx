@@ -375,9 +375,9 @@ export function SettlementSimulator({
                           ? RESOURCE_LABELS[rd.harborMatch as ProdResource] ?? rd.harborMatch
                           : null;
                         tags.push(
-                          rd.harbor >= 1.0 && matchLabel
+                          rd.harbor >= 0.8 && matchLabel
                             ? `${matchLabel}-havn (sterk match!)`
-                            : rd.harbor >= 0.5 && matchLabel
+                            : rd.harbor >= 0.3 && matchLabel
                               ? `${matchLabel}-havn (god match)`
                               : matchLabel
                                 ? `${matchLabel}-havn nær`
