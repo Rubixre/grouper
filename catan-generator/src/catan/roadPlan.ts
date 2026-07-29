@@ -33,13 +33,13 @@ export interface RoadScoringContext {
  * Rate how good a potential expansion vertex is:
  * - 3-hex strongly preferred over 2-hex/1-hex
  * - pip production quality matters
- * - discount if opponents are close (likely to be taken)
+ *
+ * Risk filtering is handled upstream: callers pass predicted placements
+ * (after simulating opponents) so blocked vertices are already excluded.
  */
 function expansionVertexQuality(
   vertexId: string,
   board: Board,
-  placed: PlacedSettlement[],
-  selfPlayer?: number
 ): number {
   const vertices = getVertices();
   const landSet = getLandSet();
@@ -50,7 +50,6 @@ function expansionVertexQuality(
   const hexCount = landHexes.length;
   if (hexCount === 0) return 0;
 
-  // Production quality: sum of pip probabilities on producing hexes
   let pipSum = 0;
   for (const hex of landHexes) {
     const tile = board.hexes.find(
@@ -60,24 +59,9 @@ function expansionVertexQuality(
     if (tile.number != null) pipSum += NUMBER_PROB[tile.number] ?? 0;
   }
 
-  // Hex count bonus: 3-hex = 1.0, 2-hex = 0.55, 1-hex = 0.25
   const hexBonus = hexCount >= 3 ? 1.0 : hexCount === 2 ? 0.55 : 0.25;
 
-  // Risk: how close are opponents? If an opponent is 1–2 edges away,
-  // they're likely to take this spot.
-  let risk = 0;
-  for (const p of placed) {
-    if (selfPlayer !== undefined && p.player === selfPlayer) continue;
-    const dSet = vertexRoadDistance(vertexId, p.vertexId);
-    if (dSet !== null && dSet <= 2) risk += dSet === 1 ? 0.6 : 0.25;
-    if (p.roadToVertexId) {
-      const dTip = vertexRoadDistance(vertexId, p.roadToVertexId);
-      if (dTip !== null && dTip <= 2) risk += dTip === 0 ? 0.7 : dTip === 1 ? 0.4 : 0.15;
-    }
-  }
-  const riskDiscount = Math.max(0, 1 - Math.min(risk, 0.85));
-
-  return (hexBonus * 0.5 + pipSum * 2.0) * riskDiscount;
+  return hexBonus * 0.5 + pipSum * 2.0;
 }
 
 /**
@@ -126,7 +110,7 @@ export function scoreRoadDirection(
           (p) => p.vertexId === n || getVertices().get(p.vertexId)?.neighbors.includes(n)
         );
         if (!blocked) {
-          const quality = expansionVertexQuality(n, board, placed, ctx.selfPlayer);
+          const quality = expansionVertexQuality(n, board);
           room += (d === 0 ? 0.2 : 0.3) + quality * (d === 0 ? 0.15 : 0.25);
           bestExpansion = Math.max(bestExpansion, quality);
         }
@@ -160,7 +144,6 @@ export function scoreRoadDirection(
     const dTip = vertexRoadDistance(p.roadToVertexId, toVertexId);
     if (dTip !== null && dTip <= 2) {
       contest += 0.35 * (1 - dTip * 0.3);
-      // Cutting off: pointing directly at their road tip is aggressive
       if (isLongestRoadStrategy && dTip <= 1) {
         cutoffBonus += 0.3 * (1 - dTip * 0.4);
       }
@@ -169,14 +152,11 @@ export function scoreRoadDirection(
     if (dSet !== null && dSet <= 1) contest += 0.45;
   }
 
-  // Later players (higher index) benefit more from aggressive cutoff:
-  // they place after opponents have committed direction.
   if (ctx.selfPlayer !== undefined && ctx.playerCount !== undefined && ctx.playerCount > 2) {
     const positionalAggression = ctx.selfPlayer / (ctx.playerCount - 1);
     cutoffBonus *= 0.5 + 0.5 * positionalAggression;
   }
 
-  // Connect with own earlier opening road when placing #2
   let connect = 0;
   const own = placed.filter(
     (p) => p.roadToVertexId && (ctx.selfPlayer === undefined || p.player === ctx.selfPlayer)
@@ -190,7 +170,6 @@ export function scoreRoadDirection(
     if (d !== null && d <= 2) connect += 0.2 * (1 - d * 0.25);
   }
 
-  // Longest-road strategy strongly amplifies connect (chain both roads)
   if (isLongestRoadStrategy) {
     connect *= 1.8;
   }
@@ -250,7 +229,7 @@ export function scoreRoadDirectionDetailed(
           (p) => p.vertexId === n || getVertices().get(p.vertexId)?.neighbors.includes(n)
         );
         if (!blocked) {
-          const quality = expansionVertexQuality(n, board, placed, ctx.selfPlayer);
+          const quality = expansionVertexQuality(n, board);
           room += (d === 0 ? 0.2 : 0.3) + quality * (d === 0 ? 0.15 : 0.25);
           bestExpansion = Math.max(bestExpansion, quality);
         }
