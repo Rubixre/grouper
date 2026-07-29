@@ -1,5 +1,6 @@
 import type { Board, PlacedSettlement } from './types';
 import type { StrategyProfileId } from './resourceWeights';
+import { NUMBER_PROB } from './placementModel';
 import { coordKey } from './hex';
 import { getLandSet } from './boardLayout';
 import {
@@ -29,12 +30,60 @@ export interface RoadScoringContext {
 }
 
 /**
+ * Rate how good a potential expansion vertex is:
+ * - 3-hex strongly preferred over 2-hex/1-hex
+ * - pip production quality matters
+ * - discount if opponents are close (likely to be taken)
+ */
+function expansionVertexQuality(
+  vertexId: string,
+  board: Board,
+  placed: PlacedSettlement[],
+  selfPlayer?: number
+): number {
+  const vertices = getVertices();
+  const landSet = getLandSet();
+  const v = vertices.get(vertexId);
+  if (!v) return 0;
+
+  const landHexes = v.hexes.filter((h) => landSet.has(coordKey(h)));
+  const hexCount = landHexes.length;
+  if (hexCount === 0) return 0;
+
+  // Production quality: sum of pip probabilities on producing hexes
+  let pipSum = 0;
+  for (const hex of landHexes) {
+    const tile = board.hexes.find(
+      (h) => h.coord.q === hex.q && h.coord.r === hex.r
+    );
+    if (!tile || tile.kind !== 'land' || !tile.resource || tile.resource === 'desert') continue;
+    if (tile.number != null) pipSum += NUMBER_PROB[tile.number] ?? 0;
+  }
+
+  // Hex count bonus: 3-hex = 1.0, 2-hex = 0.55, 1-hex = 0.25
+  const hexBonus = hexCount >= 3 ? 1.0 : hexCount === 2 ? 0.55 : 0.25;
+
+  // Risk: how close are opponents? If an opponent is 1–2 edges away,
+  // they're likely to take this spot.
+  let risk = 0;
+  for (const p of placed) {
+    if (selfPlayer !== undefined && p.player === selfPlayer) continue;
+    const dSet = vertexRoadDistance(vertexId, p.vertexId);
+    if (dSet !== null && dSet <= 2) risk += dSet === 1 ? 0.6 : 0.25;
+    if (p.roadToVertexId) {
+      const dTip = vertexRoadDistance(vertexId, p.roadToVertexId);
+      if (dTip !== null && dTip <= 2) risk += dTip === 0 ? 0.7 : dTip === 1 ? 0.4 : 0.15;
+    }
+  }
+  const riskDiscount = Math.max(0, 1 - Math.min(risk, 0.85));
+
+  return (hexBonus * 0.5 + pipSum * 2.0) * riskDiscount;
+}
+
+/**
  * Score how good it is to point the opening road from `from` toward `to`.
- * Higher = more expansion room / harbor reach / less contested.
- *
- * Context-aware: strategy (longest-road amplifies connect/cutoff),
- * player number (later players benefit more from cutting off early players
- * who have fewer remaining picks).
+ * Evaluates expansion quality (hex count, production, risk), harbor reach,
+ * opponent contest/cutoff, and own-road chaining.
  */
 export function scoreRoadDirection(
   fromVertexId: string,
@@ -53,8 +102,10 @@ export function scoreRoadDirection(
   const isLongestRoadStrategy =
     ctx.strategy === 'longestRoad' || ctx.strategy === 'both';
 
-  // Open land vertices reachable in 1–2 hops beyond the first road step
+  // Quality-weighted expansion: find reachable settlement candidates 1–2 hops
+  // from the road tip and pick the best one.
   let room = 0;
+  let bestExpansion = 0;
   const seen = new Set<string>([fromVertexId, toVertexId]);
   const frontier = [toVertexId];
   const depth = new Map<string, number>([[toVertexId, 0]]);
@@ -74,10 +125,16 @@ export function scoreRoadDirection(
         const blocked = placed.some(
           (p) => p.vertexId === n || getVertices().get(p.vertexId)?.neighbors.includes(n)
         );
-        if (!blocked) room += d === 0 ? 0.35 : 0.55;
+        if (!blocked) {
+          const quality = expansionVertexQuality(n, board, placed, ctx.selfPlayer);
+          room += (d === 0 ? 0.2 : 0.3) + quality * (d === 0 ? 0.15 : 0.25);
+          bestExpansion = Math.max(bestExpansion, quality);
+        }
       }
     }
   }
+  // Bonus for the best reachable expansion spot
+  room += bestExpansion * 0.3;
 
   // Harbor nodes near the tip / along the branch
   let harbor = 0;
@@ -172,6 +229,7 @@ export function scoreRoadDirectionDetailed(
     ctx.strategy === 'longestRoad' || ctx.strategy === 'both';
 
   let room = 0;
+  let bestExpansion = 0;
   const seen = new Set<string>([fromVertexId, toVertexId]);
   const frontier = [toVertexId];
   const depth = new Map<string, number>([[toVertexId, 0]]);
@@ -191,10 +249,15 @@ export function scoreRoadDirectionDetailed(
         const blocked = placed.some(
           (p) => p.vertexId === n || getVertices().get(p.vertexId)?.neighbors.includes(n)
         );
-        if (!blocked) room += d === 0 ? 0.35 : 0.55;
+        if (!blocked) {
+          const quality = expansionVertexQuality(n, board, placed, ctx.selfPlayer);
+          room += (d === 0 ? 0.2 : 0.3) + quality * (d === 0 ? 0.15 : 0.25);
+          bestExpansion = Math.max(bestExpansion, quality);
+        }
       }
     }
   }
+  room += bestExpansion * 0.3;
 
   let harbor = 0;
   for (const h of board.harbors) {
