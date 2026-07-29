@@ -368,7 +368,8 @@ export function SettlementSimulator({
                       const isBest = i === 0;
                       const isSelected = selectedRoadTo === rd.toVertexId;
                       const tags: string[] = [];
-                      if (rd.room && rd.room > 0.8) tags.push('god plass');
+                      if (rd.room && rd.room > 1.2) tags.push('sterk ekspansjon');
+                      else if (rd.room && rd.room > 0.6) tags.push('god plass');
                       if (rd.harbor && rd.harbor > 0.1) tags.push('havn nær');
                       if (rd.connect && rd.connect > 0.2) tags.push('kobler veier');
                       if (rd.cutoff && rd.cutoff > 0.1) tags.push('kutter motstander');
