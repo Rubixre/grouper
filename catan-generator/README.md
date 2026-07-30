@@ -39,6 +39,16 @@ npm run test:logic
 ```
 Sjekker brettgenerering, havner, vertices og simulator.
 
+### Premium (fase 1 — lokal gate)
+Bonanzabrett og startposisjon-simulering er Premium-funksjoner.
+
+- **Gratis:** ubegrenset generering av standardbrett
+- **Premium:** Bonanza + plasseringsforslag (landsby/vei)
+
+Under utvikling kan du låse opp midlertidig via:
+- knappen **Prøv Premium** → «Start 14 dagers gratis prøve» / «Aktiver Premium (utvikling)»
+- eller URL-parameter `?premium=1`
+
 ### 4. Manuell sjekkliste i nettleseren
 1. Klikk **Generer nytt brett**
 2. Verifiser at alle fire regler er avkrysset som standard
