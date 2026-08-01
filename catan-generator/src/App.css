@@ -423,6 +423,77 @@ body {
   font-size: 0.8rem;
 }
 
+.setting-row-locked {
+  opacity: 0.92;
+}
+
+.setting-lock-hint {
+  color: #a04000 !important;
+  font-weight: 600;
+}
+
+.premium-badge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+  color: #5c3b00;
+  background: #f5d76e;
+}
+
+h2 .premium-badge {
+  margin-left: 0.5rem;
+}
+
+.premium-status-chip {
+  border-color: #f5d76e !important;
+  color: #f5d76e !important;
+}
+
+.premium-gate-banner {
+  margin: 0 0 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  background: #fff8e6;
+  border: 1px solid #f0d78c;
+  color: #5c3b00;
+}
+
+.btn-premium-locked {
+  background: linear-gradient(135deg, #c9a227, #a67c00) !important;
+  border-color: #8a6800 !important;
+}
+
+.premium-paywall {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.premium-paywall-heading {
+  margin: 0.25rem 0 0;
+  font-size: 0.95rem;
+}
+
+.premium-perk-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.premium-paywall-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 0.35rem;
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -2911,6 +2982,118 @@ body {
   font-size: 0.85rem;
 }
 
+.photo-harbor-step {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.25rem 0 0.5rem;
+}
+
+.photo-harbor-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.45rem;
+  max-height: 16rem;
+  overflow: auto;
+}
+
+.photo-harbor-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.55rem 0.65rem;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 8px;
+}
+
+.photo-harbor-label {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.photo-harbor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.photo-harbor-actions .btn {
+  min-height: 2.75rem;
+}
+
 .photo-board-footer {
   justify-content: flex-end;
+}
+
+.midgame-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.midgame-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.midgame-panel-header h2 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.midgame-section h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+}
+
+.midgame-vp-list,
+.midgame-road-rank,
+.midgame-robber-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.midgame-vp-list li,
+.midgame-road-rank li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.45rem 0.55rem;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.midgame-city-actions,
+.midgame-road-targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.midgame-city-actions .btn,
+.midgame-road-targets .btn,
+.midgame-robber-btn {
+  min-height: 2.75rem;
+}
+
+.midgame-robber-btn.active {
+  outline: 2px solid #1a5f4a;
+}
+
+.sim-done {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
 }

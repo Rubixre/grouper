@@ -2143,5 +2143,65 @@ import { getLandHexCoords } from '../src/catan/boardLayout.ts';
   );
 }
 
+console.log('\nMidgame + photo harbors');
+import {
+  rebuildBoardHarbors,
+  createMidgameState,
+  upgradeToCity,
+  computeVictoryPoints,
+  longestRoadLength,
+  roadsFromPlacements,
+  rankRobberTargets,
+} from '../src/catan/index.ts';
+{
+  const board = generateBoard(DEFAULT_SETTINGS, 'base');
+  assert(!!board, 'Board for midgame tests');
+  if (board) {
+    const reshuffled = rebuildBoardHarbors(board, { randomize: true });
+    assert(reshuffled.harbors.length === board.harbors.length, 'Harbor rebuild keeps count');
+    assert(
+      reshuffled.hexes.filter((h) => h.kind === 'land').length ===
+        board.hexes.filter((h) => h.kind === 'land').length,
+      'Harbor rebuild keeps land'
+    );
+
+    const sim = createSimulation(board, createSimulationConfig(3, 0));
+    let state = sim;
+    let guard = 0;
+    while (!state.finished && guard < 40) {
+      const opts = getOptionsForCurrentTurn(state);
+      if (opts.length === 0) break;
+      state = placeSettlement(state, opts[0]!.vertexId);
+      guard += 1;
+    }
+    assert(state.finished, 'Setup draft finishes for midgame');
+    const mid = createMidgameState(state);
+    assert(mid.roads.length >= state.playerCount, 'Midgame seeds setup roads');
+    const roads = roadsFromPlacements(state.placements);
+    assert(
+      longestRoadLength(roads, state.placements, 0) >= 1,
+      'Human has at least one road segment'
+    );
+
+    const human = state.config.humanPlayerIndex;
+    const first = state.placements.find((p) => p.player === human);
+    assert(!!first, 'Human has a settlement');
+    if (first) {
+      const withCity = upgradeToCity(state.placements, first.vertexId, human);
+      assert(
+        withCity.some((p) => p.vertexId === first.vertexId && p.isCity),
+        'City upgrade flips isCity'
+      );
+      const vp = computeVictoryPoints(withCity, state.playerCount, null);
+      const humanRow = vp.find((r) => r.player === human);
+      assert(!!humanRow && humanRow.cities >= 1, 'VP counts city');
+      assert(!!humanRow && humanRow.buildingVp >= 3, 'City+settlement VP ≥ 3');
+    }
+
+    const robber = rankRobberTargets(board, state.placements, human, null);
+    assert(robber.length > 0, 'Robber advice returns candidates');
+  }
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

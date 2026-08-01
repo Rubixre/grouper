@@ -7,6 +7,9 @@ interface SettingsPanelProps {
   embedded?: boolean;
   /** Styrer om bonanza-valget vises (kun grunnspill) */
   boardSize?: BoardSize;
+  /** When false, Bonanza is locked and opens paywall instead of toggling */
+  canUseBonanza?: boolean;
+  onPremiumRequired?: () => void;
 }
 
 const SETTING_LABELS: {
@@ -15,6 +18,7 @@ const SETTING_LABELS: {
   description: string;
   /** Hvis satt, vises innstillingen bare for denne brettstørrelsen */
   onlyBoardSize?: BoardSize;
+  premium?: boolean;
 }[] = [
   {
     key: 'allowAdjacent6And8',
@@ -48,6 +52,7 @@ const SETTING_LABELS: {
     description:
       'Trekker 19 av 30 ressursbrikker og tall fra samlet pool (18 grunn + 28 utvidelse = 46). Kan gi to ørkener, mange av én type — eller ingen.',
     onlyBoardSize: 'base',
+    premium: true,
   },
 ];
 
@@ -56,6 +61,8 @@ export function SettingsPanel({
   onChange,
   embedded = false,
   boardSize = 'base',
+  canUseBonanza = true,
+  onPremiumRequired,
 }: SettingsPanelProps) {
   const visibleSettings = SETTING_LABELS.filter(
     (row) => !row.onlyBoardSize || row.onlyBoardSize === boardSize
@@ -66,21 +73,50 @@ export function SettingsPanel({
       {embedded ? <h3>Genereringsregler</h3> : <h2>Genereringsregler</h2>}
       <p className="muted small">Avkrysset = tillatt / aktiv</p>
       <div className="settings-list">
-        {visibleSettings.map(({ key, label, description }) => (
-          <label key={key} className="setting-row">
-            <input
-              type="checkbox"
-              checked={settings[key]}
-              onChange={(e) =>
-                onChange({ ...settings, [key]: e.target.checked })
-              }
-            />
-            <span className="setting-text">
-              <strong>{label}</strong>
-              <small>{description}</small>
-            </span>
-          </label>
-        ))}
+        {visibleSettings.map(({ key, label, description, premium }) => {
+          const locked = Boolean(premium && !canUseBonanza);
+          return (
+            <label
+              key={key}
+              className={`setting-row ${locked ? 'setting-row-locked' : ''}`}
+            >
+              <input
+                type="checkbox"
+                checked={settings[key]}
+                disabled={locked && !settings[key]}
+                onChange={(e) => {
+                  if (locked && e.target.checked) {
+                    onPremiumRequired?.();
+                    return;
+                  }
+                  onChange({ ...settings, [key]: e.target.checked });
+                }}
+                onClick={(e) => {
+                  if (locked && !settings[key]) {
+                    e.preventDefault();
+                    onPremiumRequired?.();
+                  }
+                }}
+              />
+              <span className="setting-text">
+                <strong>
+                  {label}
+                  {premium ? (
+                    <span className="premium-badge" title="Premium">
+                      Premium
+                    </span>
+                  ) : null}
+                </strong>
+                <small>{description}</small>
+                {locked ? (
+                  <small className="setting-lock-hint">
+                    Låst — start gratis prøve for å bruke Bonanza
+                  </small>
+                ) : null}
+              </span>
+            </label>
+          );
+        })}
       </div>
     </>
   );

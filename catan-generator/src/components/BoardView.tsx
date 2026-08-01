@@ -1,10 +1,11 @@
-import type { Board, PlacedSettlement, SettlementScore } from '../catan/types';
+import type { Board, HexCoord, PlacedSettlement, SettlementScore } from '../catan/types';
 import type { BoardMapping } from '../catan/mapping';
 import type { SimulationConfig } from '../catan/playerConfig';
 import { getPlayerConfig } from '../catan/playerConfig';
 import { getEdgePieces, getSingleEdgePieces } from '../catan/edgePieces';
-import { hexCorner } from '../catan/hex';
+import { hexCorner, hexToPixel } from '../catan/hex';
 import { getVertices } from '../catan/settlements';
+import type { OwnedRoad } from '../catan/roadGraph';
 import { BoardHex } from './BoardHex';
 import { EdgePieceShape } from './EdgePieceShape';
 import { BoardEdgeMasks } from './BoardEdgeMasks';
@@ -46,6 +47,10 @@ interface BoardViewProps {
   /** Fyll rammen (crop) — brukt på mobil under simulering for full bredde.
    * Med viewBox strammet til den lyseblå kantrammen blir ytterkantene selve rammen. */
   coverFrame?: boolean;
+  /** Extra midgame roads beyond setup tips */
+  midgameRoads?: OwnedRoad[];
+  /** coordKey of hex currently occupied by the robber */
+  robberHex?: HexCoord | null;
 }
 
 const HEX_SIZE = BOARD_HEX_SIZE;
@@ -118,6 +123,8 @@ export function BoardView({
   highlightEdge = null,
   highlightCorner = null,
   coverFrame = false,
+  midgameRoads = [],
+  robberHex = null,
 }: BoardViewProps) {
   const topPlacements = highlightedVertices.slice(0, TOP_PLACEMENT_MARKERS);
   const otherPlacements = highlightedVertices.slice(TOP_PLACEMENT_MARKERS);
@@ -251,38 +258,93 @@ export function BoardView({
         />
       )}
 
-      {/* Setup roads — under settlement markers */}
+      {/* Robber highlight on a land hex */}
       {!mappingMode &&
-        placements.map((p, i) => {
-          if (!p.roadToVertexId) return null;
-          const from = getVertexPixel(p.vertexId, HEX_SIZE);
-          const to = getVertexPixel(p.roadToVertexId, HEX_SIZE);
-          if (!from || !to) return null;
-          const color = playerColor(p.player);
+        robberHex &&
+        (() => {
+          const center = hexToPixel(robberHex, HEX_SIZE);
           return (
-            <g key={`road-${p.vertexId}-${i}`} className="setup-road">
-              <line
-                x1={from.x}
-                y1={from.y}
-                x2={to.x}
-                y2={to.y}
-                stroke="#0a2a40"
-                strokeWidth={7}
-                strokeLinecap="round"
-                opacity={0.35}
+            <g className="robber-marker" aria-label="Røver">
+              <circle
+                cx={center.x}
+                cy={center.y}
+                r={HEX_SIZE * 0.42}
+                fill="rgba(20,20,20,0.35)"
+                stroke="#111"
+                strokeWidth={2}
               />
-              <line
-                x1={from.x}
-                y1={from.y}
-                x2={to.x}
-                y2={to.y}
-                stroke={color}
-                strokeWidth={4.5}
-                strokeLinecap="round"
-              />
+              <text
+                x={center.x}
+                y={center.y + 4}
+                textAnchor="middle"
+                fill="#fff"
+                fontSize={12}
+                fontWeight={800}
+              >
+                R
+              </text>
             </g>
           );
-        })}
+        })()}
+
+      {/* Setup + midgame roads — under settlement markers */}
+      {!mappingMode &&
+        (() => {
+          const drawn = new Set<string>();
+          const segments: { key: string; from: string; to: string; player: number }[] = [];
+          for (const p of placements) {
+            if (!p.roadToVertexId) continue;
+            const key = [p.vertexId, p.roadToVertexId].sort().join('|');
+            if (drawn.has(key)) continue;
+            drawn.add(key);
+            segments.push({
+              key,
+              from: p.vertexId,
+              to: p.roadToVertexId,
+              player: p.player,
+            });
+          }
+          for (const r of midgameRoads) {
+            const key = [r.fromVertexId, r.toVertexId].sort().join('|');
+            if (drawn.has(key)) continue;
+            drawn.add(key);
+            segments.push({
+              key,
+              from: r.fromVertexId,
+              to: r.toVertexId,
+              player: r.player,
+            });
+          }
+          return segments.map((seg) => {
+            const from = getVertexPixel(seg.from, HEX_SIZE);
+            const to = getVertexPixel(seg.to, HEX_SIZE);
+            if (!from || !to) return null;
+            const color = playerColor(seg.player);
+            return (
+              <g key={`road-${seg.key}`} className="setup-road">
+                <line
+                  x1={from.x}
+                  y1={from.y}
+                  x2={to.x}
+                  y2={to.y}
+                  stroke="#0a2a40"
+                  strokeWidth={7}
+                  strokeLinecap="round"
+                  opacity={0.35}
+                />
+                <line
+                  x1={from.x}
+                  y1={from.y}
+                  x2={to.x}
+                  y2={to.y}
+                  stroke={color}
+                  strokeWidth={4.5}
+                  strokeLinecap="round"
+                />
+              </g>
+            );
+          });
+        })()}
 
       {/* Preview opening road for selected settlement */}
       {!mappingMode &&
@@ -309,21 +371,35 @@ export function BoardView({
           );
         })()}
 
-      {/* Settlement markers */}
+      {/* Settlement / city markers */}
       {!mappingMode &&
         placements.map((p, i) => {
         const pos = getVertexPixel(p.vertexId, HEX_SIZE);
         if (!pos) return null;
+        const color = playerColor(p.player);
         return (
-          <g key={`${p.vertexId}-${i}`}>
-            <circle
-              cx={pos.x}
-              cy={pos.y}
-              r={10}
-              fill={playerColor(p.player)}
-              stroke="#fff"
-              strokeWidth={2}
-            />
+          <g key={`${p.vertexId}-${i}`} className={p.isCity ? 'city-marker' : 'settlement-marker'}>
+            {p.isCity ? (
+              <rect
+                x={pos.x - 11}
+                y={pos.y - 11}
+                width={22}
+                height={22}
+                rx={3}
+                fill={color}
+                stroke="#fff"
+                strokeWidth={2.5}
+              />
+            ) : (
+              <circle
+                cx={pos.x}
+                cy={pos.y}
+                r={10}
+                fill={color}
+                stroke="#fff"
+                strokeWidth={2}
+              />
+            )}
             <text
               x={pos.x}
               y={pos.y + 4}
@@ -512,10 +588,18 @@ export function BoardView({
                 onRoadTargetClick?.(toId);
               }}
             >
+              {/* Invisible larger hit target for touch */}
               <circle
                 cx={pos.x}
                 cy={pos.y}
-                r={isActive ? 14 : isBest ? 13 : 12}
+                r={22}
+                fill="transparent"
+                stroke="none"
+              />
+              <circle
+                cx={pos.x}
+                cy={pos.y}
+                r={isActive ? 16 : isBest ? 15 : 14}
                 fill={fillColor}
                 stroke={strokeColor}
                 strokeWidth={isActive ? 3 : isBest ? 2.5 : 2}

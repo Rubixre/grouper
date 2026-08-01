@@ -6,9 +6,14 @@ import {
   createEmptyLandDraft,
   isLandHexComplete,
   landDraftKey,
+  rebuildBoardHarbors,
+  rotateBaseHarborOrder,
   validateLandDraft,
   type LandHexDraft,
 } from '../catan/boardFromPhoto';
+import { harborShortLabel } from '../catan/harbors';
+import { BASE_IDENTITY_ORDER } from '../catan/edgePieces';
+import { EXTENSION_IDENTITY_ORDER } from '../catan/extensionLayout';
 import {
   applyRecognitionToDraft,
   axialToImagePixel,
@@ -89,6 +94,9 @@ export function PhotoBoardModal({
   const [applyError, setApplyError] = useState<string | null>(null);
   const [recognizeStatus, setRecognizeStatus] = useState<string | null>(null);
   const [recognizing, setRecognizing] = useState(false);
+  /** Land grid first, then confirm/adjust harbors (not recognized from photo). */
+  const [step, setStep] = useState<'land' | 'harbors'>('land');
+  const [harborBoard, setHarborBoard] = useState<Board | null>(null);
 
   const landCoords = useMemo(() => getLandHexCoords(boardSize), [boardSize]);
 
@@ -98,6 +106,8 @@ export function PhotoBoardModal({
     setSelectedKey(null);
     setApplyError(null);
     setRecognizeStatus(null);
+    setStep('land');
+    setHarborBoard(null);
   }, [open, boardSize]);
 
   useEffect(() => {
@@ -216,13 +226,55 @@ export function PhotoBoardModal({
     }
   };
 
-  const handleApply = () => {
+  const goToHarborStep = () => {
     const result = buildBoardFromLandDraft(drafts, settings, boardSize);
     if (!result.ok) {
       setApplyError(result.error);
       return;
     }
-    onApply(result.board);
+    setApplyError(null);
+    setHarborBoard(result.board);
+    setStep('harbors');
+  };
+
+  const shuffleHarbors = () => {
+    if (!harborBoard) return;
+    setHarborBoard(rebuildBoardHarbors(harborBoard, { randomize: true }));
+  };
+
+  const resetHarborOrder = () => {
+    if (!harborBoard) return;
+    setHarborBoard(
+      rebuildBoardHarbors(harborBoard, {
+        edgePieceOrder: [...BASE_IDENTITY_ORDER],
+        extensionEdgeOrder: {
+          triple: [...EXTENSION_IDENTITY_ORDER.triple],
+          single: [...EXTENSION_IDENTITY_ORDER.single],
+        },
+      })
+    );
+  };
+
+  const rotateHarbors = () => {
+    if (!harborBoard || harborBoard.boardSize !== 'base') return;
+    const current = harborBoard.edgePieceOrder ?? BASE_IDENTITY_ORDER;
+    setHarborBoard(
+      rebuildBoardHarbors(harborBoard, {
+        edgePieceOrder: rotateBaseHarborOrder(current),
+      })
+    );
+  };
+
+  const handleApply = () => {
+    if (step === 'land') {
+      goToHarborStep();
+      return;
+    }
+    if (!harborBoard) {
+      setApplyError('Bygg havner først.');
+      return;
+    }
+    onApply(harborBoard);
     onClose();
   };
 
@@ -231,6 +283,8 @@ export function PhotoBoardModal({
     setSelectedKey(null);
     setApplyError(null);
     setRecognizeStatus(null);
+    setStep('land');
+    setHarborBoard(null);
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -287,12 +341,47 @@ export function PhotoBoardModal({
 
         <div className="modal-body photo-board-body">
           <p className="muted small photo-board-intro">
-            Last opp et bilde mest mulig rett ovenfra, juster hex-overlayet til
-            brikkene, og kjør gjenkjenning. Ressurser leses fra terrengfarge;
-            tall fra pip/siffer på tallskiven. Rett feil i gridet før du bruker
-            brettet.
+            {step === 'land'
+              ? 'Last opp et bilde mest mulig rett ovenfra, juster hex-overlayet til brikkene, og kjør gjenkjenning. Ressurser leses fra terrengfarge; tall fra pip/siffer. Rett feil i gridet, deretter bekreft havner.'
+              : 'Havner gjenkjennes ikke fra bildet. Tilpass kantbrikkerekkefølgen til bildet før du bruker brettet — ellers blir havnråd feil.'}
           </p>
 
+          {step === 'harbors' && harborBoard ? (
+            <section className="photo-harbor-step">
+              <div className="photo-board-progress">
+                <strong>Steg 2 · Havner</strong>
+                <span className="muted small">
+                  {harborBoard.harbors.length} havner · matche bildet før Premium-sim
+                </span>
+              </div>
+              <ul className="photo-harbor-list">
+                {harborBoard.harbors.map((h) => (
+                  <li key={h.definition.id}>
+                    <span className="photo-harbor-label">
+                      {harborShortLabel(h.definition.harbor)}
+                    </span>
+                    <span className="muted small">
+                      {h.edgeHexLabel} · {h.nodeLabels.join('–')}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <div className="photo-harbor-actions">
+                <button type="button" className="btn" onClick={shuffleHarbors}>
+                  Tilfeldig rekkefølge
+                </button>
+                <button type="button" className="btn" onClick={resetHarborOrder}>
+                  Standard rekkefølge
+                </button>
+                {harborBoard.boardSize === 'base' && (
+                  <button type="button" className="btn" onClick={rotateHarbors}>
+                    Roter kantbrikker
+                  </button>
+                )}
+              </div>
+              {applyError && <p className="photo-board-error">{applyError}</p>}
+            </section>
+          ) : (
           <div className="photo-board-layout">
             <section className="photo-board-ref">
               <div className="photo-board-ref-toolbar">
@@ -593,12 +682,27 @@ export function PhotoBoardModal({
               {applyError && <p className="photo-board-error">{applyError}</p>}
             </section>
           </div>
+          )}
         </div>
 
         <footer className="modal-footer photo-board-footer">
-          <button type="button" className="btn" onClick={clearDraft}>
-            Tøm grid
-          </button>
+          {step === 'harbors' ? (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                setStep('land');
+                setHarborBoard(null);
+                setApplyError(null);
+              }}
+            >
+              Tilbake til land
+            </button>
+          ) : (
+            <button type="button" className="btn" onClick={clearDraft}>
+              Tøm grid
+            </button>
+          )}
           <button type="button" className="btn" onClick={onClose}>
             Avbryt
           </button>
@@ -606,9 +710,9 @@ export function PhotoBoardModal({
             type="button"
             className="btn primary"
             onClick={handleApply}
-            disabled={!validation.complete}
+            disabled={step === 'land' ? !validation.complete : !harborBoard}
           >
-            Bruk brett
+            {step === 'land' ? 'Neste: havner' : 'Bruk brett'}
           </button>
         </footer>
       </div>
