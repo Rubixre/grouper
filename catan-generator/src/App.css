@@ -2433,8 +2433,26 @@ body {
     display: none;
   }
 
+  /* Keep exit + settings reachable during mobile sim; hide bulk actions. */
   .app-simulating .header-actions {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.35rem;
+    margin-left: auto;
+  }
+
+  .app-simulating .header-actions .header-sim-hide {
     display: none;
+  }
+
+  .app-simulating .header-actions .header-sim-keep {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+    padding: 0.45rem 0.7rem;
+    font-size: 0.85rem;
   }
 
   .app-simulating .footer {

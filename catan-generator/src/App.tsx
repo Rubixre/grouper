@@ -48,6 +48,7 @@ import {
   loadSession,
   saveSession,
   type AppMode,
+  type PlacementStep,
 } from './catan/sessionPersistence';
 import { BoardView } from './components/BoardView';
 import { BoardStoryPanel } from './components/BoardStoryPanel';
@@ -87,12 +88,16 @@ function App() {
   const [selectedVertex, setSelectedVertex] = useState<string | null>(
     () => restoredSession?.selectedVertex ?? null
   );
-  const [selectedRoadTo, setSelectedRoadTo] = useState<string | null>(null);
-  /** Landsby bekreftes først, deretter velges startvei. */
-  const [placementStep, setPlacementStep] = useState<'settlement' | 'road'>(
-    'settlement'
+  const [selectedRoadTo, setSelectedRoadTo] = useState<string | null>(
+    () => restoredSession?.selectedRoadTo ?? null
   );
-  const [selectedHarborPlanKey, setSelectedHarborPlanKey] = useState<string | null>(null);
+  /** Landsby bekreftes først, deretter velges startvei. */
+  const [placementStep, setPlacementStep] = useState<PlacementStep>(
+    () => restoredSession?.placementStep ?? 'settlement'
+  );
+  const [selectedHarborPlanKey, setSelectedHarborPlanKey] = useState<string | null>(
+    () => restoredSession?.selectedHarborPlanKey ?? null
+  );
   const [boardStory, setBoardStory] = useState<BoardStory | null>(
     () => restoredSession?.boardStory ?? null
   );
@@ -134,7 +139,27 @@ function App() {
     setSimulationConfig((cfg) => syncConfigPlayerCount(cfg, count));
   };
 
+  const clearSimulationUi = useCallback(() => {
+    setSimulation(null);
+    setSelectedVertex(null);
+    setSelectedRoadTo(null);
+    setPlacementStep('settlement');
+    setSelectedHarborPlanKey(null);
+    setMode('view');
+  }, []);
+
+  const confirmWipeActiveSession = useCallback(
+    (actionLabel: string): boolean => {
+      if (!simulation && mode !== 'simulate') return true;
+      return window.confirm(
+        `${actionLabel} sletter pågående plassering. Vil du fortsette?`
+      );
+    },
+    [simulation, mode]
+  );
+
   const handleGenerate = useCallback(() => {
+    if (!confirmWipeActiveSession('Generer nytt brett')) return;
     const result = generateBoard(settings, boardSize);
     if (!result) {
       setError(
@@ -142,30 +167,27 @@ function App() {
       );
       setBoard(null);
       setBoardStory(null);
-      setSimulation(null);
+      clearSimulationUi();
       return;
     }
     setError(null);
     setBoard(result);
     setBoardStory(createBoardStory(result));
-    setSimulation(null);
-    setSelectedVertex(null);
-    setSelectedRoadTo(null);
-    setSelectedHarborPlanKey(null);
-    setMode('view');
-  }, [settings, boardSize]);
+    clearSimulationUi();
+  }, [settings, boardSize, confirmWipeActiveSession, clearSimulationUi]);
 
-  const handleApplyPhotoBoard = useCallback((next: Board) => {
-    setError(null);
-    setBoardSize(next.boardSize);
-    setBoard(next);
-    setBoardStory(createBoardStory(next));
-    setSimulation(null);
-    setSelectedVertex(null);
-    setSelectedRoadTo(null);
-    setMode('view');
-    setMappingMode(false);
-  }, []);
+  const handleApplyPhotoBoard = useCallback(
+    (next: Board) => {
+      if (!confirmWipeActiveSession('Bytt til fotobrett')) return;
+      setError(null);
+      setBoardSize(next.boardSize);
+      setBoard(next);
+      setBoardStory(createBoardStory(next));
+      clearSimulationUi();
+      setMappingMode(false);
+    },
+    [confirmWipeActiveSession, clearSimulationUi]
+  );
 
   useEffect(() => {
     if (!hydrated && !board) {
@@ -186,6 +208,9 @@ function App() {
       strategyChoice,
       simulation,
       selectedVertex,
+      selectedRoadTo,
+      placementStep,
+      selectedHarborPlanKey,
       mode,
     });
   }, [
@@ -197,12 +222,15 @@ function App() {
     strategyChoice,
     simulation,
     selectedVertex,
+    selectedRoadTo,
+    placementStep,
+    selectedHarborPlanKey,
     mode,
   ]);
 
   const startSimulation = () => {
     if (!board) return;
-    setStrategyChoice('general');
+    // Keep the player's chosen strategy — do not reset to general.
     setSimulation(createSimulation(board, simulationConfig));
     setSelectedVertex(null);
     setSelectedRoadTo(null);
@@ -214,12 +242,7 @@ function App() {
   };
 
   const resetSimulation = () => {
-    setSimulation(null);
-    setSelectedVertex(null);
-    setSelectedRoadTo(null);
-    setPlacementStep('settlement');
-    setSelectedHarborPlanKey(null);
-    setMode('view');
+    clearSimulationUi();
   };
 
   const simPlacing = simulation && simActive && !simulation.finished;
@@ -500,21 +523,34 @@ function App() {
           </p>
         </div>
         <div className="header-actions">
+          {simActive && (
+            <button
+              type="button"
+              className="btn header-btn header-sim-keep header-exit-sim"
+              onClick={resetSimulation}
+            >
+              Avslutt
+            </button>
+          )}
           <button
             type="button"
-            className="btn header-btn"
+            className="btn header-btn header-sim-keep"
             onClick={() => setSettingsOpen(true)}
           >
             Innstillinger
           </button>
           <button
             type="button"
-            className="btn header-btn"
+            className="btn header-btn header-sim-hide"
             onClick={() => setPhotoBoardOpen(true)}
           >
             Fra bilde
           </button>
-          <button type="button" className="btn primary" onClick={handleGenerate}>
+          <button
+            type="button"
+            className="btn primary header-sim-hide"
+            onClick={handleGenerate}
+          >
             Generer brett
           </button>
         </div>

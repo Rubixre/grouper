@@ -19,6 +19,8 @@ const STORAGE_KEY = 'catan-generator-session-v1';
 
 export type AppMode = 'view' | 'simulate';
 
+export type PlacementStep = 'settlement' | 'road';
+
 export interface PersistedSession {
   version: 1;
   settings: GeneratorSettings;
@@ -30,6 +32,10 @@ export interface PersistedSession {
   strategyChoice: StrategyChoice;
   simulation: SimulationState | null;
   selectedVertex: string | null;
+  /** Mid-turn road tip while confirming startvei */
+  selectedRoadTo: string | null;
+  placementStep: PlacementStep;
+  selectedHarborPlanKey: string | null;
   mode: AppMode;
 }
 
@@ -43,6 +49,9 @@ export interface RestoredSession {
   strategyChoice: StrategyChoice;
   simulation: SimulationState | null;
   selectedVertex: string | null;
+  selectedRoadTo: string | null;
+  placementStep: PlacementStep;
+  selectedHarborPlanKey: string | null;
   mode: AppMode;
 }
 
@@ -161,6 +170,14 @@ export function loadSession(): RestoredSession | null {
       : 'general';
     const selectedVertex =
       typeof parsed.selectedVertex === 'string' ? parsed.selectedVertex : null;
+    const selectedRoadTo =
+      typeof parsed.selectedRoadTo === 'string' ? parsed.selectedRoadTo : null;
+    const placementStep: PlacementStep =
+      parsed.placementStep === 'road' ? 'road' : 'settlement';
+    const selectedHarborPlanKey =
+      typeof parsed.selectedHarborPlanKey === 'string'
+        ? parsed.selectedHarborPlanKey
+        : null;
     const simulation = sanitizeSimulation(
       parsed.simulation,
       board,
@@ -172,6 +189,7 @@ export function loadSession(): RestoredSession | null {
 
     const restoredMode: AppMode =
       simulation !== null && parsed.mode === 'simulate' ? 'simulate' : 'view';
+    const inSim = restoredMode === 'simulate';
 
     return {
       settings,
@@ -182,7 +200,10 @@ export function loadSession(): RestoredSession | null {
       simulationConfig,
       strategyChoice,
       simulation,
-      selectedVertex: restoredMode === 'simulate' ? selectedVertex : null,
+      selectedVertex: inSim ? selectedVertex : null,
+      selectedRoadTo: inSim && placementStep === 'road' ? selectedRoadTo : null,
+      placementStep: inSim ? placementStep : 'settlement',
+      selectedHarborPlanKey: inSim ? selectedHarborPlanKey : null,
       mode: restoredMode,
     };
   } catch {
