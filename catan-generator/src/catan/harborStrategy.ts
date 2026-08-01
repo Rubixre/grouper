@@ -311,12 +311,13 @@ export function compareHarborOpportunities(
   a: HarborStrategyOpportunity,
   b: HarborStrategyOpportunity
 ): number {
+  // Rank by effective score first so a strong 3:1 can beat a weak 2:1.
+  const scoreDiff = harborOpportunityScore(b) - harborOpportunityScore(a);
+  if (Math.abs(scoreDiff) > 1e-12) return scoreDiff;
+
   const strengthRank = (s: 'strong' | 'moderate') => (s === 'strong' ? 1 : 0);
   const strengthDiff = strengthRank(b.strength) - strengthRank(a.strength);
   if (strengthDiff !== 0) return strengthDiff;
-
-  const scoreDiff = harborOpportunityScore(b) - harborOpportunityScore(a);
-  if (Math.abs(scoreDiff) > 1e-12) return scoreDiff;
 
   if (b.resourcePip !== a.resourcePip) return b.resourcePip - a.resourcePip;
   if (b.otherPip !== a.otherPip) return b.otherPip - a.otherPip;
@@ -667,7 +668,13 @@ function scoreHarborPlan(
 ): HarborPlanScore {
   const econ = computeBoardEconomics(board, weights);
   const ownCount = placed.filter((p) => p.player === humanPlayer).length;
-  const immediateScore = scoreVertex(opportunity.firstVertexId, board, econ).total;
+  const immediateScore = scoreVertex(
+    opportunity.firstVertexId,
+    board,
+    econ,
+    placed,
+    humanPlayer
+  ).total;
 
   // Landsby #2-tur: motstandere har allerede plassert — ingen lookahead-usikkerhet
   if (ownCount >= 1) {
@@ -677,7 +684,9 @@ function scoreHarborPlan(
             opportunity.secondVertexId,
             opportunity.firstVertexId,
             board,
-            econ
+            econ,
+            placed,
+            humanPlayer
           ).total
         : immediateScore;
     return {
@@ -693,7 +702,9 @@ function scoreHarborPlan(
       opportunity.secondVertexId,
       opportunity.firstVertexId,
       board,
-      econ
+      econ,
+      placed,
+      humanPlayer
     ).total;
     const pathConfidence = opportunity.pathConfidence ?? 1;
     return {
@@ -749,7 +760,17 @@ function bestBalancedReferenceScore(
     const firstId = own[0]!.vertexId;
     let best = 0;
     for (const secondId of valid) {
-      best = Math.max(best, scoreSecondSettlement(secondId, firstId, board, econ).total);
+      best = Math.max(
+        best,
+        scoreSecondSettlement(
+          secondId,
+          firstId,
+          board,
+          econ,
+          placed,
+          humanPlayer
+        ).total
+      );
     }
     return best;
   }

@@ -10,6 +10,8 @@ interface SettingsModalProps {
   onSettingsChange: (settings: GeneratorSettings) => void;
   boardSize: BoardSize;
   onBoardSizeChange: (size: BoardSize) => void;
+  canUseBonanza?: boolean;
+  onPremiumRequired?: () => void;
 }
 
 export function SettingsModal({
@@ -19,6 +21,8 @@ export function SettingsModal({
   onSettingsChange,
   boardSize,
   onBoardSizeChange,
+  canUseBonanza = true,
+  onPremiumRequired,
 }: SettingsModalProps) {
   useEffect(() => {
     if (!open) return;
@@ -86,6 +90,8 @@ export function SettingsModal({
             boardSize={boardSize}
             settings={settings}
             onChange={onSettingsChange}
+            canUseBonanza={canUseBonanza}
+            onPremiumRequired={onPremiumRequired}
           />
         </div>
 

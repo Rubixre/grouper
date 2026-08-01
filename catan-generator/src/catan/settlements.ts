@@ -294,7 +294,10 @@ export function expansionPotential(
   for (const [id, d] of dist) {
     if (d !== 2) continue;
     const v = vertices.get(id);
-    if (v && v.hexes.some((h) => landSet.has(coordKey(h)))) roomCount++;
+    if (!v || !v.hexes.some((h) => landSet.has(coordKey(h)))) continue;
+    // Only count spots that are still legal to settle (distance rule).
+    if (!isVertexAvailable(id, placed)) continue;
+    roomCount++;
   }
   const room = (Math.min(roomCount, 8) / 8) * EXPANSION_ROOM_SCALE;
 

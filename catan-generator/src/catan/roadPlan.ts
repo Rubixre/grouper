@@ -49,13 +49,42 @@ export function computePlayerProduction(
       const tile = board.hexes.find(
         (h) => h.coord.q === hex.q && h.coord.r === hex.r
       );
-      if (!tile || tile.kind !== 'land' || !tile.resource || tile.resource === 'desert') continue;
-      if (tile.number != null) {
-        result[tile.resource] = (result[tile.resource] ?? 0) + (NUMBER_PROB[tile.number] ?? 0);
+      if (!tile || tile.kind !== 'land' || !tile.resource || tile.resource === 'desert') {
+        continue;
       }
+      if (tile.number == null) continue;
+      const pip = NUMBER_PROB[tile.number] ?? 0;
+      const mult = p.isCity ? 2 : 1;
+      result[tile.resource] = (result[tile.resource] ?? 0) + pip * mult;
     }
   }
   return result;
+}
+
+/**
+ * Build scoring context for auto-picked setup roads (sim / lookahead).
+ * Includes the settlement being placed so harbor-match uses its production.
+ */
+export function buildRoadScoringContext(
+  board: Board,
+  priorPlaced: PlacedSettlement[],
+  player: number,
+  settlementVertexId: string,
+  options: {
+    strategy?: StrategyProfileId;
+    playerCount?: number;
+  } = {}
+): RoadScoringContext {
+  const productionPlaced: PlacedSettlement[] = [
+    ...priorPlaced,
+    { vertexId: settlementVertexId, player, isCity: false },
+  ];
+  return {
+    selfPlayer: player,
+    strategy: options.strategy,
+    playerCount: options.playerCount,
+    production: computePlayerProduction(board, productionPlaced, player),
+  };
 }
 
 /**
@@ -69,7 +98,7 @@ export function computePlayerProduction(
 function expansionVertexQuality(
   vertexId: string,
   board: Board,
-  production?: Partial<Record<ResourceType, number>>,
+  production?: Partial<Record<ResourceType, number>>
 ): number {
   const vertices = getVertices();
   const landSet = getLandSet();
@@ -114,112 +143,15 @@ function expansionVertexQuality(
 }
 
 /**
- * Score how good it is to point the opening road from `from` toward `to`.
- * Evaluates expansion quality (hex count, production, risk), harbor reach,
- * opponent contest/cutoff, and own-road chaining.
+ * Soft room vs harbor: strong matching harbors must be able to beat mediocre
+ * expansion corridors. Cap room so it cannot drown a clear harbor signal.
  */
-export function scoreRoadDirection(
-  fromVertexId: string,
-  toVertexId: string,
-  board: Board,
-  placed: PlacedSettlement[],
-  ctx: RoadScoringContext = {}
-): number {
-  if (!isLegalRoadTarget(fromVertexId, toVertexId)) return -Infinity;
-
-  const vertices = getVertices();
-  const landSet = getLandSet();
-  const tip = vertices.get(toVertexId);
-  if (!tip) return -Infinity;
-
-  const isLongestRoadStrategy =
-    ctx.strategy === 'longestRoad' || ctx.strategy === 'both';
-
-  // Quality-weighted expansion: best reachable settlement candidate + count bonus.
-  // Capped so it doesn't drown out harbor value.
-  let bestExpansion = 0;
-  let openCount = 0;
-  const seen = new Set<string>([fromVertexId, toVertexId]);
-  const frontier = [toVertexId];
-  const depth = new Map<string, number>([[toVertexId, 0]]);
-  while (frontier.length > 0) {
-    const cur = frontier.shift()!;
-    const d = depth.get(cur)!;
-    if (d >= 2) continue;
-    const v = vertices.get(cur);
-    if (!v) continue;
-    for (const n of v.neighbors) {
-      if (seen.has(n)) continue;
-      seen.add(n);
-      depth.set(n, d + 1);
-      frontier.push(n);
-      const nv = vertices.get(n);
-      if (nv && nv.hexes.some((h) => landSet.has(coordKey(h)))) {
-        const blocked = placed.some(
-          (p) => p.vertexId === n || getVertices().get(p.vertexId)?.neighbors.includes(n)
-        );
-        if (!blocked) {
-          openCount++;
-          const quality = expansionVertexQuality(n, board, ctx.production);
-          bestExpansion = Math.max(bestExpansion, quality);
-        }
-      }
-    }
-  }
-  // Best expansion spot dominates, small bonus for having alternatives
-  const room = bestExpansion * 1.05 + Math.min(openCount, 4) * 0.06;
-
-  // Harbor should mostly be a tie-breaker unless the player already has strong
-  // production of that exact resource.
-  let harbor = 0;
-  for (const h of board.harbors) {
-    for (const node of h.nodeVertexIds) {
-      const dFromTip = vertexRoadDistance(toVertexId, node);
-      if (dFromTip === null) continue;
-      if (dFromTip <= 1) {
-        const hDef = h.definition.harbor;
-        let bonus: number;
-        if (hDef.kind === 'generic') {
-          bonus = 0.08;
-        } else {
-          const prod = ctx.production?.[hDef.resource] ?? 0;
-          if (prod < 0.12) bonus = 0.06;
-          else if (prod < 0.2) bonus = 0.18;
-          else bonus = 0.35 + Math.min(prod - 0.2, 0.22) * 5.0;
-        }
-        const distFactor = dFromTip === 0 ? 1.0 : 0.6;
-        harbor = Math.max(harbor, bonus * distFactor);
-      }
-    }
-  }
-
-  // Contested: opponent road already points into this corridor.
-  // For longest-road strategy: contesting (cutting off) an opponent who already
-  // built into this corridor can be *positive* if we can block their path.
-  let contest = 0;
-  let cutoffBonus = 0;
-  for (const p of placed) {
-    if (ctx.selfPlayer !== undefined && p.player === ctx.selfPlayer) continue;
-    if (!p.roadToVertexId) continue;
-    const dTip = vertexRoadDistance(p.roadToVertexId, toVertexId);
-    if (dTip !== null && dTip <= 2) {
-      contest += 0.35 * (1 - dTip * 0.3);
-      if (isLongestRoadStrategy && dTip <= 1) {
-        cutoffBonus += 0.3 * (1 - dTip * 0.4);
-      }
-    }
-    const dSet = vertexRoadDistance(p.vertexId, toVertexId);
-    if (dSet !== null && dSet <= 1) contest += 0.45;
-  }
-
-  if (ctx.selfPlayer !== undefined && ctx.playerCount !== undefined && ctx.playerCount > 2) {
-    const positionalAggression = ctx.selfPlayer / (ctx.playerCount - 1);
-    cutoffBonus *= 0.5 + 0.5 * positionalAggression;
-  }
-
-  const contestScale =
-    bestExpansion >= 1.4 ? 0.35 : bestExpansion >= 1.15 ? 0.55 : 1.0;
-  return room + harbor + cutoffBonus - contest * contestScale;
+function balancedRoomScore(bestExpansion: number, openCount: number, harbor: number): number {
+  const roomRaw = bestExpansion * 0.8 + Math.min(openCount, 4) * 0.06;
+  if (harbor <= 0.2) return roomRaw;
+  // When harbor is meaningful, keep room from outrunning it by more than ~40%.
+  const roomCap = harbor * 1.4 + 0.45;
+  return Math.min(roomRaw, Math.max(roomCap, 0.9));
 }
 
 export interface RoadDirectionBreakdown {
@@ -282,7 +214,6 @@ export function scoreRoadDirectionDetailed(
       }
     }
   }
-  const room = bestExpansion * 1.05 + Math.min(openCount, 4) * 0.06;
 
   let harbor = 0;
   let harborMatch = '';
@@ -310,6 +241,8 @@ export function scoreRoadDirectionDetailed(
       }
     }
   }
+
+  const room = balancedRoomScore(bestExpansion, openCount, harbor);
 
   let contest = 0;
   let cutoff = 0;
@@ -339,6 +272,20 @@ export function scoreRoadDirectionDetailed(
   return { toVertexId, score, room, harbor, harborMatch, cutoff, contest: effectiveContest };
 }
 
+/**
+ * Score how good it is to point the opening road from `from` toward `to`.
+ * Delegates to the detailed scorer so sim and UI stay in sync.
+ */
+export function scoreRoadDirection(
+  fromVertexId: string,
+  toVertexId: string,
+  board: Board,
+  placed: PlacedSettlement[],
+  ctx: RoadScoringContext = {}
+): number {
+  return scoreRoadDirectionDetailed(fromVertexId, toVertexId, board, placed, ctx)?.score ?? -Infinity;
+}
+
 export function rankRoadDirections(
   fromVertexId: string,
   board: Board,
@@ -364,7 +311,8 @@ export function pickBestRoadDirection(
 export function withSetupRoad(
   placement: PlacedSettlement,
   board: Board,
-  priorPlaced: PlacedSettlement[]
+  priorPlaced: PlacedSettlement[],
+  ctx: RoadScoringContext = {}
 ): PlacedSettlement {
   if (
     placement.roadToVertexId &&
@@ -372,10 +320,18 @@ export function withSetupRoad(
   ) {
     return placement;
   }
+  const scoringCtx =
+    ctx.selfPlayer !== undefined || ctx.production
+      ? ctx
+      : buildRoadScoringContext(board, priorPlaced, placement.player, placement.vertexId, {
+          strategy: ctx.strategy,
+          playerCount: ctx.playerCount,
+        });
   const roadToVertexId = pickBestRoadDirection(
     placement.vertexId,
     board,
-    priorPlaced
+    priorPlaced,
+    scoringCtx
   );
   return roadToVertexId ? { ...placement, roadToVertexId } : placement;
 }
@@ -410,18 +366,17 @@ export function getExpansionTargets(
 
   const results: { vertexId: string; distance: number }[] = [];
   for (const [id, d] of dist) {
-    if (d < 2) continue;
+    if (d < 2 || d > maxDist) continue;
     const v = vertices.get(id);
     if (!v) continue;
     if (!v.hexes.some((h) => landSet.has(coordKey(h)))) continue;
     const blocked = placed.some(
-      (p) =>
-        p.vertexId === id ||
-        vertices.get(p.vertexId)?.neighbors.includes(id)
+      (p) => p.vertexId === id || vertices.get(p.vertexId)?.neighbors.includes(id)
     );
-    if (!blocked) results.push({ vertexId: id, distance: d });
+    if (blocked) continue;
+    results.push({ vertexId: id, distance: d });
   }
-  return results.sort((a, b) => a.distance - b.distance);
+  return results.sort((a, b) => a.distance - b.distance || a.vertexId.localeCompare(b.vertexId));
 }
 
 /**

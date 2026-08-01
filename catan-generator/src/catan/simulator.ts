@@ -16,6 +16,7 @@ import {
   type BoardEconomics,
 } from './placementModel';
 import {
+  buildRoadScoringContext,
   isLegalRoadTarget,
   pickBestRoadDirection,
 } from './roadPlan';
@@ -137,10 +138,18 @@ export function placeSettlement(
   const valid = getValidVertices(state.placements);
   if (!valid.includes(vertexId)) return state;
 
+  const roadCtx = buildRoadScoringContext(
+    state.board,
+    state.placements,
+    player,
+    vertexId,
+    { playerCount: state.playerCount }
+  );
+
   const resolvedRoad =
     roadToVertexId && isLegalRoadTarget(vertexId, roadToVertexId)
       ? roadToVertexId
-      : pickBestRoadDirection(vertexId, state.board, state.placements);
+      : pickBestRoadDirection(vertexId, state.board, state.placements, roadCtx);
 
   if (!resolvedRoad) return state;
 

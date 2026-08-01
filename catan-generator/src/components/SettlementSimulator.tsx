@@ -66,6 +66,9 @@ interface SettlementSimulatorProps {
   onUndo: () => void;
   onCancel: () => void;
   onStrategyChoiceChange: (choice: StrategyChoice) => void;
+  /** After draft: open Premium midgame coach */
+  onStartMidgame?: () => void;
+  midgameLocked?: boolean;
 }
 
 const DEFAULT_VISIBLE_OPTIONS = 5;
@@ -121,6 +124,8 @@ export function SettlementSimulator({
   onUndo,
   onCancel,
   onStrategyChoiceChange,
+  onStartMidgame,
+  midgameLocked = false,
 }: SettlementSimulatorProps) {
   const [showAllOptions, setShowAllOptions] = useState(false);
   const [scoreModalOpen, setScoreModalOpen] = useState(false);
@@ -332,7 +337,20 @@ export function SettlementSimulator({
       </div>
 
       {state.finished ? (
-        <p className="sim-done">Ferdig! Statistikk vises under brettet.</p>
+        <div className="sim-done">
+          <p>Ferdig! Statistikk vises under brettet.</p>
+          {onStartMidgame && (
+            <button
+              type="button"
+              className={`btn primary btn-block ${midgameLocked ? 'btn-premium-locked' : ''}`}
+              onClick={onStartMidgame}
+            >
+              {midgameLocked
+                ? 'Lås opp midgame · Premium'
+                : 'Fortsett til midgame'}
+            </button>
+          )}
+        </div>
       ) : (
         <div className="sim-main-scroll" role="tabpanel">
           <div className="options-list options-list-compact">

@@ -17,11 +17,14 @@ import {
 } from './boardLayout';
 import {
   BASE_IDENTITY_ORDER,
+  normalizeBaseEdgeOrder,
   randomBaseEdgeOrder,
+  type BaseEdgeOrder,
 } from './edgePieces';
 import {
   EXTENSION_IDENTITY_ORDER,
   randomExtensionEdgeOrder,
+  type ExtensionEdgeOrder,
 } from './extensionLayout';
 import { placeHarbors } from './harbors';
 import { resetBoardMapping } from './mapping';
@@ -252,4 +255,81 @@ export function buildBoardFromLandDraft(
       extensionEdgeOrder,
     },
   };
+}
+
+export type HarborOrderOptions = {
+  /** Grunnspill: B1–B6-permutasjon. */
+  edgePieceOrder?: BaseEdgeOrder | number[];
+  /** Utvidelse: triple/single-permutasjon. */
+  extensionEdgeOrder?: ExtensionEdgeOrder;
+  /** Hvis true: trekk ny tilfeldig rekkefølge (ignorerer eksplisitte ordre). */
+  randomize?: boolean;
+};
+
+/**
+ * Bygg havner på nytt for et fotobrett uten å endre landhex.
+ * Brukes til å matche havnplassering mot bildet før Premium-sim.
+ */
+export function rebuildBoardHarbors(
+  board: Board,
+  options: HarborOrderOptions = {}
+): Board {
+  const boardSize = board.boardSize;
+  setBoardSize(boardSize);
+  clearBoardCaches();
+  resetVertices();
+  resetBoardMapping();
+
+  let edgePieceOrder = board.edgePieceOrder
+    ? normalizeBaseEdgeOrder(board.edgePieceOrder)
+    : [...BASE_IDENTITY_ORDER];
+  let extensionEdgeOrder = board.extensionEdgeOrder
+    ? {
+        triple: [...board.extensionEdgeOrder.triple],
+        single: [...board.extensionEdgeOrder.single],
+      }
+    : { ...EXTENSION_IDENTITY_ORDER, triple: [...EXTENSION_IDENTITY_ORDER.triple], single: [...EXTENSION_IDENTITY_ORDER.single] };
+
+  if (options.randomize) {
+    if (boardSize === 'base') {
+      edgePieceOrder = randomBaseEdgeOrder();
+    } else {
+      extensionEdgeOrder = randomExtensionEdgeOrder();
+    }
+  } else {
+    if (options.edgePieceOrder) {
+      edgePieceOrder = normalizeBaseEdgeOrder(options.edgePieceOrder);
+    }
+    if (options.extensionEdgeOrder) {
+      extensionEdgeOrder = {
+        triple: [...options.extensionEdgeOrder.triple],
+        single: [...options.extensionEdgeOrder.single],
+      };
+    }
+  }
+
+  const harbors = placeHarbors(
+    board.edgeRotation ?? 0,
+    1,
+    boardSize,
+    extensionEdgeOrder,
+    edgePieceOrder
+  );
+
+  return {
+    ...board,
+    harbors,
+    edgePieceOrder: boardSize === 'base' ? [...edgePieceOrder] : board.edgePieceOrder,
+    extensionEdgeOrder:
+      boardSize === 'extension56' ? extensionEdgeOrder : board.extensionEdgeOrder,
+  };
+}
+
+/** Roter kantbrikkerekkefølge ett steg (grunnspill) for manuell finjustering. */
+export function rotateBaseHarborOrder(order: number[]): BaseEdgeOrder {
+  const normalized = normalizeBaseEdgeOrder(order);
+  return [
+    normalized[normalized.length - 1]!,
+    ...normalized.slice(0, -1),
+  ] as BaseEdgeOrder;
 }

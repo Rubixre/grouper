@@ -113,7 +113,8 @@ const DEV_SYNERGY_SCALE = 0.2;
 const COORDINATION_SCALE = 0.15;
 const RESOURCE_OVERLAP_SCALE = 0.35;
 const NUMBER_OVERLAP_SCALE = 0.2;
-const HARBOR_MAX_SHARE = 0.03;
+/** Max harbor share of production — high enough that matching 2:1 can matter vs low-hex. */
+const HARBOR_MAX_SHARE = 0.1;
 const HARBOR_RATE_GENERIC = 0.024;
 const HARBOR_RATE_RESOURCE_MATCH = 0.04;
 const HARBOR_RATE_RESOURCE_OTHER = 0.028;
@@ -375,7 +376,12 @@ function buildingSynergy(
   const ore = combinedRaw(first, second, 'ore');
 
   const road = Math.min(wood, brick) * ((weights.wood + weights.brick) / 2) * ROAD_SYNERGY_SCALE;
-  const city = Math.min(ore, wheat * (2 / 3)) * ((weights.ore + weights.wheat) / 2) * CITY_SYNERGY_SCALE;
+  // City recipe is 3 ore + 2 wheat → packages = min(ore/3, wheat/2)
+  const city =
+    Math.min(ore / 3, wheat / 2) *
+    ((weights.ore + weights.wheat) / 2) *
+    CITY_SYNERGY_SCALE *
+    3;
   const settlement =
     Math.min(wood, brick, wheat, sheep) *
     ((weights.wood + weights.brick + weights.wheat + weights.sheep) / 4) *
@@ -437,9 +443,22 @@ function resourceNumberOverlap(
   for (const number of Object.keys(NUMBER_PROB).map(Number)) {
     const v1 = first.rawByNumber[number] ?? 0;
     const v2 = second.rawByNumber[number] ?? 0;
-    if (v1 > 0 && v2 > 0) {
-      numberOverlap += Math.min(v1, v2) * NUMBER_OVERLAP_SCALE;
+    if (v1 <= 0 || v2 <= 0) continue;
+    // Do not tax same-number wood+brick — that timing is rewarded in coordination.
+    const woodOnN =
+      (first.rawByResourceNumber.wood?.[number] ?? 0) +
+      (second.rawByResourceNumber.wood?.[number] ?? 0);
+    const brickOnN =
+      (first.rawByResourceNumber.brick?.[number] ?? 0) +
+      (second.rawByResourceNumber.brick?.[number] ?? 0);
+    if (woodOnN > 0 && brickOnN > 0) {
+      const coordinated = Math.min(woodOnN, brickOnN);
+      const overlapPip = Math.min(v1, v2);
+      const taxable = Math.max(0, overlapPip - coordinated);
+      if (taxable > 0) numberOverlap += taxable * NUMBER_OVERLAP_SCALE;
+      continue;
     }
+    numberOverlap += Math.min(v1, v2) * NUMBER_OVERLAP_SCALE;
   }
 
   return resourceOverlap + numberOverlap;

@@ -22,7 +22,7 @@ import {
 } from './settlements';
 import { computeBoardEconomics } from './placementModel';
 import { getPlacementOrder } from './draftOrder';
-import { withSetupRoad } from './roadPlan';
+import { buildRoadScoringContext, withSetupRoad } from './roadPlan';
 
 export interface FirstSettlementPath {
   firstVertexId: string;
@@ -67,8 +67,12 @@ export function pairTrustFromConfidence(confidence: number): number {
 }
 
 /**
- * Bland lokal spot-score med parscore etter sti-sikkerhet.
- * Bruker konservativ par-tillit (c²), ikke lineær 50/50 ved 50 % sikker.
+ * Bland lokal spot-score med forventet par-surplus etter sti-sikkerhet.
+ *
+ * `pairScore` er full parverdi (~to landsbyer); vi legger kun til den
+ * tillitsvektede marginalen `(pair - first)` slik at lav sikkerhet holder
+ * resultatet på første-landsby-skala, mens høy sikkerhet løfter mot paret.
+ * Algebraisk lik `first*(1-w) + pair*w`, men uttrykt som marginal for klarhet.
  */
 export function blendLookaheadScore(
   immediateScore: number,
@@ -76,7 +80,8 @@ export function blendLookaheadScore(
   confidence: number
 ): number {
   const pairWeight = pairTrustFromConfidence(confidence);
-  return immediateScore * (1 - pairWeight) + pairScore * pairWeight;
+  const marginalSecond = pairScore - immediateScore;
+  return immediateScore + pairWeight * marginalSecond;
 }
 
 export interface ProfileStrategyEvaluation {
@@ -181,7 +186,10 @@ export function simulateToHumanSecondTurnDetailed(
     withSetupRoad(
       { vertexId: humanFirstVertex, player: humanPlayer, isCity: false },
       board,
-      placed
+      placed,
+      buildRoadScoringContext(board, placed, humanPlayer, humanFirstVertex, {
+        playerCount,
+      })
     ),
   ];
 
@@ -214,7 +222,10 @@ export function simulateToHumanSecondTurnDetailed(
       withSetupRoad(
         { vertexId: choice.vertexId, player, isCity: false },
         board,
-        simulated
+        simulated,
+        buildRoadScoringContext(board, simulated, player, choice.vertexId, {
+          playerCount,
+        })
       ),
     ];
     step += 1;
@@ -264,12 +275,27 @@ export function evaluateFirstSettlementPath(
 
   const econ = computeBoardEconomics(board, weights);
   const secondOptions = getValidVertices(simulated.placements)
-    .map((id) => scoreSecondSettlement(id, firstVertexId, board, econ))
+    .map((id) =>
+      scoreSecondSettlement(
+        id,
+        firstVertexId,
+        board,
+        econ,
+        simulated.placements,
+        humanPlayer
+      )
+    )
     .sort((a, b) => b.total - a.total);
   if (secondOptions.length === 0) return null;
 
   const bestSecond = secondOptions[0]!;
-  const firstScore = scoreVertex(firstVertexId, board, econ);
+  const firstScore = scoreVertex(
+    firstVertexId,
+    board,
+    econ,
+    placed,
+    humanPlayer
+  );
   const pathConfidence = simulated.pathConfidence;
   const pairScore = bestSecond.total;
 
@@ -385,7 +411,13 @@ export function recommendStrategy(
         option.vertexId,
         weights
       );
-      if (path && (!bestPath || path.pairScore > bestPath.pairScore)) {
+      if (
+        path &&
+        (!bestPath ||
+          path.adjustedPairScore > bestPath.adjustedPairScore ||
+          (path.adjustedPairScore === bestPath.adjustedPairScore &&
+            path.pairScore > bestPath.pairScore))
+      ) {
         bestPath = path;
       }
     }
@@ -395,8 +427,8 @@ export function recommendStrategy(
 
   const ranked = [...evaluations].sort(
     (a, b) =>
-      pathComparableScore(b.bestPath, b.profile.weights, false) -
-      pathComparableScore(a.bestPath, a.profile.weights, false)
+      pathComparableScore(b.bestPath, b.profile.weights, true) -
+      pathComparableScore(a.bestPath, a.profile.weights, true)
   );
   const winner = ranked[0];
   const recommendedProfile = winner?.profile ?? STRATEGY_PROFILES[0]!;
@@ -404,7 +436,7 @@ export function recommendStrategy(
 
   let reason = 'Ingen gyldige parplasseringer funnet – bruker balansert profil.';
   if (winnerPath) {
-    reason = `${recommendedProfile.label} gir best forventet parscore (${winnerPath.pairScore.toFixed(2)}) når motspillere velger høy produksjon (pip) og du følger med landsby nr. 2 på ${describeSecondPreview(board, winnerPath, recommendedProfile.weights)}.`;
+    reason = `${recommendedProfile.label} gir best forventet parscore (${winnerPath.adjustedPairScore.toFixed(2)}) når motspillere velger høy produksjon (pip) og du følger med landsby nr. 2 på ${describeSecondPreview(board, winnerPath, recommendedProfile.weights, placed, humanPlayer)}.`;
   }
 
   const suggestedPaths: FirstSettlementPath[] = [];
@@ -425,7 +457,10 @@ export function recommendStrategy(
     );
     if (path) suggestedPaths.push(path);
   }
-  suggestedPaths.sort((a, b) => b.pairScore - a.pairScore);
+  suggestedPaths.sort(
+    (a, b) =>
+      b.adjustedPairScore - a.adjustedPairScore || b.pairScore - a.pairScore
+  );
 
   return {
     recommendedProfileId: recommendedProfile.id,
@@ -439,13 +474,17 @@ export function recommendStrategy(
 function describeSecondPreview(
   board: Board,
   path: FirstSettlementPath,
-  weights: ResourceWeights
+  weights: ResourceWeights,
+  placed: PlacedSettlement[] = [],
+  humanPlayer?: number
 ): string {
   const score = scoreSecondSettlement(
     path.bestSecondVertexId,
     path.firstVertexId,
     board,
-    computeBoardEconomics(board, weights)
+    computeBoardEconomics(board, weights),
+    placed,
+    humanPlayer
   );
   const resources = new Set(score.breakdown.map((b) => b.resource));
   const labels: Record<string, string> = {
@@ -520,14 +559,29 @@ export function recommendStrategyForSecondSettlement(
     const weights = profile.weights;
     const econ = computeBoardEconomics(board, weights);
     const secondOptions = getValidVertices(placed)
-      .map((id) => scoreSecondSettlement(id, firstVertexId, board, econ))
+      .map((id) =>
+        scoreSecondSettlement(
+          id,
+          firstVertexId,
+          board,
+          econ,
+          placed,
+          humanPlayer
+        )
+      )
       .sort((a, b) => b.total - a.total);
     const best = secondOptions[0];
     if (!best) {
       evaluations.push({ profile, bestPath: null });
       continue;
     }
-    const firstScore = scoreVertex(firstVertexId, board, econ);
+    const firstScore = scoreVertex(
+      firstVertexId,
+      board,
+      econ,
+      placed,
+      humanPlayer
+    );
     evaluations.push({
       profile,
       bestPath: {
