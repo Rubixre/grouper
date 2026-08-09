@@ -25,6 +25,10 @@ from pathlib import Path
 from typing import Any
 
 API = "https://fantasy.premierleague.com/api"
+# Self-update / Windows-install pulls the coach from this raw URL
+UPDATE_URL = (
+    "https://raw.githubusercontent.com/Rubixre/grouper/main/fpl/tools/fpl_cli.py"
+)
 BUDGET = 1000  # £100.0m in tenths
 SQUAD_LIMITS = {1: 2, 2: 5, 3: 5, 4: 3}
 MAX_PER_CLUB = 3
@@ -2057,6 +2061,31 @@ def cmd_show(ctx: Context, args: argparse.Namespace) -> None:
     print_squad_block(ctx, squad, "Lagret tropp")
 
 
+def cmd_update(_ctx: Context | None, args: argparse.Namespace) -> None:
+    """Download latest fpl_cli.py from GitHub main (keeps config/squad next to it)."""
+    del args
+    target = Path(__file__).resolve()
+    url = UPDATE_URL
+    print(f"Henter nyeste coach fra:\n  {url}")
+    req = urllib.request.Request(url, headers={"User-Agent": "fpl-coach/2.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            body = resp.read()
+    except urllib.error.URLError as exc:
+        raise SystemExit(f"Nedlasting feilet: {exc}") from exc
+    text = body.decode("utf-8")
+    if "def main()" not in text or len(text) < 1000:
+        raise SystemExit("Nedlastet fil ser ugyldig ut — avbryter.")
+    backup = target.with_suffix(".py.bak")
+    if target.exists():
+        backup.write_bytes(target.read_bytes())
+    target.write_text(text, encoding="utf-8", newline="\n")
+    print(f"Oppdatert: {target}")
+    if backup.exists():
+        print(f"Backup:    {backup}")
+    print("Start på nytt (START-FPL.bat eller python fpl_cli.py).")
+
+
 def cmd_suggest(ctx: Context, args: argparse.Namespace) -> None:
     cfg = load_config()
     competition = competition_pressure(cfg)
@@ -2265,6 +2294,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_link.add_argument("--league", type=int, default=None, help="Mini-liga id (valgfritt)")
     p_link.set_defaults(func=cmd_link, needs_ctx=False)
 
+    p_upd = sub.add_parser("update", help="Last ned nyeste fpl_cli.py fra GitHub (main)")
+    p_upd.set_defaults(func=cmd_update, needs_ctx=False)
+
     p_sug = sub.add_parser("suggest", help="Hovedkommando: lagforslag / ukentlige bytter")
     p_sug.add_argument("--apply", action="store_true", help="Lagre foreslåtte bytter lokalt")
     p_sug.add_argument("--refresh", action="store_true", help="Hent tropp fra FPL på nytt")
@@ -2348,6 +2380,7 @@ def interactive_menu() -> None:
             "7) Fixtures (neste 6 GW)\n"
             "8) Refresh historikk (element-summary)\n"
             "9) Over/under xGI\n"
+            "10) Oppdater programmet (fra GitHub)\n"
             "0) Avslutt"
         )
         choice = input("\nVelg: ").strip()
@@ -2388,6 +2421,8 @@ def interactive_menu() -> None:
                 )
             elif choice == "9":
                 cmd_overunder(load_context(), argparse.Namespace(top=15))
+            elif choice == "10":
+                cmd_update(None, argparse.Namespace())
             else:
                 print("Ugyldig valg.\n")
                 continue
