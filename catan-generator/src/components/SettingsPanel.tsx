@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import type { BoardSize, GeneratorSettings } from '../catan/types';
 
 interface SettingsPanelProps {
@@ -12,45 +13,42 @@ interface SettingsPanelProps {
   onPremiumRequired?: () => void;
 }
 
-const SETTING_LABELS: {
+const SETTING_ROWS: {
   key: keyof GeneratorSettings;
-  label: string;
-  description: string;
-  /** Hvis satt, vises innstillingen bare for denne brettstørrelsen */
+  labelKey: string;
+  descKey: string;
   onlyBoardSize?: BoardSize;
   premium?: boolean;
 }[] = [
   {
     key: 'allowAdjacent6And8',
-    label: '6 og 8 kan være naboer',
-    description: 'Tillater at tallbrikkene 6 og 8 ligger ved siden av hverandre',
+    labelKey: 'settings.allowAdjacent68',
+    descKey: 'settings.allowAdjacent68Desc',
   },
   {
     key: 'allowAdjacent2And12',
-    label: '2 og 12 kan være naboer',
-    description: 'Tillater at tallbrikkene 2 og 12 ligger ved siden av hverandre',
+    labelKey: 'settings.allowAdjacent212',
+    descKey: 'settings.allowAdjacent212Desc',
   },
   {
     key: 'allowAdjacentSameResource',
-    label: 'Like ressurser kan være naboer',
-    description: 'Tillater at to like ressursbrikker ligger ved siden av hverandre',
+    labelKey: 'settings.allowSameResource',
+    descKey: 'settings.allowSameResourceDesc',
   },
   {
     key: 'allowAdjacentSameNumber',
-    label: 'Like tall kan være naboer',
-    description: 'Tillater at to like tallbrikker ligger ved siden av hverandre',
+    labelKey: 'settings.allowSameNumber',
+    descKey: 'settings.allowSameNumberDesc',
   },
   {
     key: 'randomHarbors',
-    label: 'Tilfeldige havner',
-    description:
-      'Blander rekkefølgen på kantbrikkene (B1–B6). Hver brikke beholder sin relative havnplassering. Av = original rekkefølge.',
+    labelKey: 'settings.randomHarbors',
+    descKey: 'settings.randomHarborsDesc',
   },
   {
     key: 'bonanzaBoard',
-    label: 'Bonanzabrett',
-    description:
-      'Trekker 19 av 30 ressursbrikker og tall fra samlet pool (18 grunn + 28 utvidelse = 46). Kan gi to ørkener, mange av én type — eller ingen.',
+    labelKey: 'settings.bonanzaBoard',
+    descKey: 'settings.bonanzaBoardDesc',
     onlyBoardSize: 'base',
     premium: true,
   },
@@ -64,16 +62,19 @@ export function SettingsPanel({
   canUseBonanza = true,
   onPremiumRequired,
 }: SettingsPanelProps) {
-  const visibleSettings = SETTING_LABELS.filter(
+  const { t } = useTranslation();
+  const visibleSettings = SETTING_ROWS.filter(
     (row) => !row.onlyBoardSize || row.onlyBoardSize === boardSize
   );
 
+  const Heading = embedded ? 'h3' : 'h2';
+
   const inner = (
     <>
-      {embedded ? <h3>Genereringsregler</h3> : <h2>Genereringsregler</h2>}
-      <p className="muted small">Avkrysset = tillatt / aktiv</p>
+      <Heading>{t('settings.generationRules')}</Heading>
+      <p className="muted small">{t('settings.checkedMeans')}</p>
       <div className="settings-list">
-        {visibleSettings.map(({ key, label, description, premium }) => {
+        {visibleSettings.map(({ key, labelKey, descKey, premium }) => {
           const locked = Boolean(premium && !canUseBonanza);
           return (
             <label
@@ -100,18 +101,16 @@ export function SettingsPanel({
               />
               <span className="setting-text">
                 <strong>
-                  {label}
+                  {t(labelKey)}
                   {premium ? (
                     <span className="premium-badge" title="Premium">
                       Premium
                     </span>
                   ) : null}
                 </strong>
-                <small>{description}</small>
+                <small>{t(descKey)}</small>
                 {locked ? (
-                  <small className="setting-lock-hint">
-                    Låst — start gratis prøve for å bruke Bonanza
-                  </small>
+                  <small className="setting-lock-hint">{t('settings.bonanzaLocked')}</small>
                 ) : null}
               </span>
             </label>
@@ -121,9 +120,6 @@ export function SettingsPanel({
     </>
   );
 
-  if (embedded) {
-    return <section className="modal-section settings-panel-embedded">{inner}</section>;
-  }
-
+  if (embedded) return <div className="settings-panel embedded">{inner}</div>;
   return <div className="panel settings-panel">{inner}</div>;
 }

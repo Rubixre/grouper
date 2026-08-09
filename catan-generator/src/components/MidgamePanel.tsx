@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { Board, PlacedSettlement } from '../catan/types';
 import type { SimulationConfig } from '../catan/playerConfig';
 import { getPlayerName } from '../catan/playerConfig';
@@ -11,7 +12,6 @@ import {
   legalRoadExtensions,
   rankLongestRoads,
 } from '../catan/roadGraph';
-import { RESOURCE_LABELS } from '../catan/playerStats';
 
 interface MidgamePanelProps {
   board: Board;
@@ -36,6 +36,7 @@ export function MidgamePanel({
   onSetRobber,
   onExit,
 }: MidgamePanelProps) {
+  const { t } = useTranslation();
   const human = config.humanPlayerIndex;
   const [roadFrom, setRoadFrom] = useState<string | null>(null);
 
@@ -65,28 +66,30 @@ export function MidgamePanel({
     <div className="panel midgame-panel">
       <div className="midgame-panel-header">
         <h2>
-          Midgame
+          {t('midgame.title')}
           <span className="premium-badge">Premium</span>
         </h2>
         <button type="button" className="btn" onClick={onExit}>
-          Avslutt midgame
+          {t('midgame.exit')}
         </button>
       </div>
 
       <section className="midgame-section">
-        <h3>Seierspoeng</h3>
+        <h3>{t('midgame.victoryPoints')}</h3>
         <ul className="midgame-vp-list">
           {vpRows.map((row) => (
             <li key={row.player}>
               <strong>
                 {getPlayerName(config, row.player)}
-                {row.player === human ? ' (deg)' : ''}
+                {row.player === human ? ` ${t('midgame.you')}` : ''}
               </strong>
               <span>
-                {row.totalVp} VP
-                {row.longestRoadBonus > 0 ? ' · lengste vei' : ''}
-                {' · '}
-                {row.settlements} landsby / {row.cities} by
+                {t('midgame.vpLine', {
+                  total: row.totalVp,
+                  lr: row.longestRoadBonus > 0 ? t('midgame.longestRoadTag') : '',
+                  settlements: row.settlements,
+                  cities: row.cities,
+                })}
               </span>
             </li>
           ))}
@@ -94,11 +97,10 @@ export function MidgamePanel({
       </section>
 
       <section className="midgame-section">
-        <h3>Lengste vei</h3>
+        <h3>{t('midgame.longestRoad')}</h3>
         <p className="muted small">
-          Holder:{' '}
           {midgame.longestRoadPlayer == null
-            ? 'ingen (trenger ≥5)'
+            ? t('midgame.holderNone')
             : `${getPlayerName(config, midgame.longestRoadPlayer)} (${
                 roadRanks.find((r) => r.player === midgame.longestRoadPlayer)
                   ?.length ?? '—'
@@ -107,21 +109,25 @@ export function MidgamePanel({
         <ul className="midgame-road-rank">
           {roadRanks.slice(0, 4).map((r) => (
             <li key={r.player}>
-              {getPlayerName(config, r.player)}: {r.length} veier
+              {t('midgame.roadsCount', {
+                name: getPlayerName(config, r.player),
+                count: r.length,
+              })}
             </li>
           ))}
         </ul>
 
         <label className="field">
-          Legg vei fra (din landsby/by eller tip)
+          {t('midgame.addRoadFrom')}
           <select
             value={roadFrom ?? ''}
             onChange={(e) => setRoadFrom(e.target.value || null)}
           >
-            <option value="">Velg startpunkt…</option>
+            <option value="">{t('midgame.chooseStart')}</option>
             {ownSettlements.map((p) => (
               <option key={p.vertexId} value={p.vertexId}>
-                {p.isCity ? 'By' : 'Landsby'} {p.vertexId}
+                {p.isCity ? t('midgame.city') : t('midgame.settlement')}{' '}
+                {p.vertexId}
               </option>
             ))}
           </select>
@@ -129,7 +135,7 @@ export function MidgamePanel({
         {roadFrom && (
           <div className="midgame-road-targets">
             {roadTargets.length === 0 ? (
-              <p className="muted small">Ingen ledige naboveier her.</p>
+              <p className="muted small">{t('midgame.noOpenRoads')}</p>
             ) : (
               roadTargets.map((to) => (
                 <button
@@ -141,7 +147,7 @@ export function MidgamePanel({
                     setRoadFrom(to);
                   }}
                 >
-                  Til {to}
+                  {t('midgame.toVertex', { id: to })}
                 </button>
               ))
             )}
@@ -150,9 +156,9 @@ export function MidgamePanel({
       </section>
 
       <section className="midgame-section">
-        <h3>Oppgrader til by</h3>
+        <h3>{t('midgame.upgradeCity')}</h3>
         {upgradeable.length === 0 ? (
-          <p className="muted small">Ingen landsbyer igjen å oppgradere.</p>
+          <p className="muted small">{t('midgame.noUpgradeable')}</p>
         ) : (
           <div className="midgame-city-actions">
             {upgradeable.map((p) => (
@@ -162,7 +168,7 @@ export function MidgamePanel({
                 className="btn primary"
                 onClick={() => onUpgradeCity(p.vertexId)}
               >
-                By på {p.vertexId}
+                {t('midgame.cityOn', { id: p.vertexId })}
               </button>
             ))}
           </div>
@@ -170,10 +176,8 @@ export function MidgamePanel({
       </section>
 
       <section className="midgame-section">
-        <h3>Røverråd</h3>
-        <p className="muted small">
-          Anbefalte hex å legge røveren på (treffer motstandere, skåner deg).
-        </p>
+        <h3>{t('midgame.robberAdvice')}</h3>
+        <p className="muted small">{t('midgame.robberHint')}</p>
         <ol className="midgame-robber-list">
           {robberTips.map((tip, i) => (
             <li key={tip.key}>
@@ -184,7 +188,10 @@ export function MidgamePanel({
                 }`}
                 onClick={() => onSetRobber(tip.key)}
               >
-                #{i + 1} {tip.resource ? RESOURCE_LABELS[tip.resource as keyof typeof RESOURCE_LABELS] ?? tip.resource : '?'}{' '}
+                #{i + 1}{' '}
+                {tip.resource
+                  ? t(`resources.${tip.resource}`, { defaultValue: tip.resource })
+                  : '?'}{' '}
                 {tip.number} · {tip.reason}
               </button>
             </li>

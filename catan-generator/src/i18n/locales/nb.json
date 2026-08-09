@@ -1,0 +1,163 @@
+{
+  "app": {
+    "title": "Hex Settlement Coach",
+    "generateBoard": "Generer brett",
+    "settings": "Innstillinger",
+    "fromPhoto": "Fra bilde",
+    "exit": "Avslutt",
+    "tryPremium": "Prøv Premium",
+    "premium": "Premium",
+    "premiumTrial": "Premium · prøve",
+    "generating": "Genererer brett…",
+    "confirmWipeGenerate": "Generer nytt brett sletter pågående plassering. Vil du fortsette?",
+    "confirmWipePhoto": "Bytt til fotobrett sletter pågående plassering. Vil du fortsette?",
+    "confirmClearPremium": "Fjerne Premium-tilstilling? Bonanza og plassering låses til prøven er aktivert igjen.",
+    "generateFailed": "Kunne ikke generere gyldig brett med valgte regler. Prøv igjen eller slakk på begrensningene.",
+    "footer": "Grunnspill + 5–6 utvidelse · Vektede ressursverdier (Board Game Analysis)",
+    "bonanzaTag": "Bonanza"
+  },
+  "language": {
+    "label": "Språk",
+    "en": "Engelsk",
+    "nb": "Norsk"
+  },
+  "setup": {
+    "heading": "Startposisjon",
+    "premiumGate": "Simulering med rangering av landsby og vei krever Premium. Du kan starte 14 dagers gratis prøve.",
+    "playerCount": "Antall spillere",
+    "players_one": "{{count}} spiller",
+    "players_other": "{{count}} spillere",
+    "startPlacement": "Start plassering",
+    "unlockPlacement": "Lås opp plassering · Premium",
+    "newRound": "Ny runde",
+    "scoringHint": "Strategivalget gjelder bare deg. Anbefalt får gullkant — du bytter selv. Trykk «Poengforklaring» under plassering for detaljer.",
+    "placeholder": "Velg hvem du er, gi spillere navn og farger. Alle plasseres manuelt i draft-rekkefølge: bekreft landsby, deretter bekreft startvei. Velg strategi med knappene — gullkant markerer anbefaling under din tur. Havn ligger i samme velger."
+  },
+  "strategy": {
+    "hintHarbor": "Havn aktiveres når det er din tur og det finnes planer. Gullkant kommer under plassering."
+  },
+  "settings": {
+    "title": "Innstillinger",
+    "generationRules": "Genereringsregler",
+    "checkedMeans": "Avkrysset = tillatt / aktiv",
+    "boardSize": "Brettstørrelse",
+    "base": "Grunnspill (3–4)",
+    "extension56": "5–6 utvidelse",
+    "allowAdjacent68": "6 og 8 kan være naboer",
+    "allowAdjacent68Desc": "Tillater at tallbrikkene 6 og 8 ligger ved siden av hverandre",
+    "allowAdjacent212": "2 og 12 kan være naboer",
+    "allowAdjacent212Desc": "Tillater at tallbrikkene 2 og 12 ligger ved siden av hverandre",
+    "allowSameResource": "Like ressurser kan være naboer",
+    "allowSameResourceDesc": "Tillater at to like ressursbrikker ligger ved siden av hverandre",
+    "allowSameNumber": "Like tall kan være naboer",
+    "allowSameNumberDesc": "Tillater at to like tallbrikker ligger ved siden av hverandre",
+    "randomHarbors": "Tilfeldige havner",
+    "randomHarborsDesc": "Blander rekkefølgen på kantbrikkene (B1–B6). Hver brikke beholder sin relative havnplassering. Av = original rekkefølge.",
+    "bonanzaBoard": "Bonanzabrett",
+    "bonanzaBoardDesc": "Trekker 19 av 30 ressursbrikker og tall fra samlet pool (18 grunn + 28 utvidelse = 46). Kan gi to ørkener, mange av én type — eller ingen.",
+    "bonanzaLocked": "Låst — start gratis prøve for å bruke Bonanza",
+    "feedback": "Send tilbakemelding",
+    "privacy": "Personvernerklæring",
+    "aboutVersion": "Versjon {{version}}"
+  },
+  "premium": {
+    "title": "Premium",
+    "featureIsPremium": "{{feature}} er en Premium-funksjon.",
+    "freeBoards": "Du kan generere så mange standardbrett du vil gratis. Premium låser opp avanserte brettvarianter og plasseringsrådgivning.",
+    "includedHeading": "Inkludert i Premium",
+    "perkBonanza": "Bonanzabrett (tilfeldig pool fra grunnspill + utvidelse)",
+    "perkSimulation": "Startposisjon-simulering med rangering av landsbyer",
+    "perkRoads": "Forslag til veiretning og ekspansjon",
+    "perkStrategy": "Strategi- og havnråd under plassering",
+    "perkMidgame": "Midgame: veinett / lengste vei, byer og røverråd",
+    "startTrial": "Start 14 dagers gratis prøve",
+    "activateDev": "Aktiver Premium (utvikling)",
+    "continueFree": "Fortsett gratis",
+    "footerNote": "14 dagers gratis prøve · deretter abonnement (kommer i app-butikkene)",
+    "featureBonanza": "Bonanzabrett",
+    "featureSimulation": "Startposisjon-simulering",
+    "featureMidgame": "Midgame-råd (vei, by, røver)"
+  },
+  "resources": {
+    "wood": "Tømmer",
+    "brick": "Tegl",
+    "sheep": "Ull",
+    "wheat": "Korn",
+    "ore": "Malm",
+    "desert": "Ørken"
+  },
+  "boardSize": {
+    "base": "Grunnspill",
+    "extension56": "5–6 utvidelse"
+  },
+  "sim": {
+    "done": "Ferdig! Statistikk vises under brettet.",
+    "continueMidgame": "Fortsett til midgame",
+    "unlockMidgame": "Lås opp midgame · Premium",
+    "yourTurn": "Din tur",
+    "opponentTurn": "Motstanders tur",
+    "seeBoard": "Se markering på brettet",
+    "manualYouAre": "Manuell · du er {{name}}",
+    "evenWeights": "Jevne vekter (motstander)",
+    "confirmSettlement": "Bekreft landsby",
+    "confirmRoad": "Bekreft vei",
+    "undo": "Angre",
+    "cancel": "Avslutt"
+  },
+  "midgame": {
+    "title": "Midgame",
+    "exit": "Avslutt midgame",
+    "victoryPoints": "Seierspoeng",
+    "you": "(deg)",
+    "longestRoad": "Lengste vei",
+    "holderNone": "ingen (trenger ≥5)",
+    "roadsCount": "{{name}}: {{count}} veier",
+    "addRoadFrom": "Legg vei fra (din landsby/by eller tip)",
+    "chooseStart": "Velg startpunkt…",
+    "settlement": "Landsby",
+    "city": "By",
+    "noOpenRoads": "Ingen ledige naboveier her.",
+    "toVertex": "Til {{id}}",
+    "upgradeCity": "Oppgrader til by",
+    "noUpgradeable": "Ingen landsbyer igjen å oppgradere.",
+    "cityOn": "By på {{id}}",
+    "robberAdvice": "Røverråd",
+    "robberHint": "Anbefalte hex å legge røveren på (treffer motstandere, skåner deg).",
+    "vpLine": "{{total}} VP{{lr}} · {{settlements}} landsby / {{cities}} by",
+    "longestRoadTag": " · lengste vei"
+  },
+  "photo": {
+    "title": "Brett fra bilde",
+    "introLand": "Last opp et bilde mest mulig rett ovenfra, juster hex-overlayet til brikkene, og kjør gjenkjenning. Rett feil i gridet, deretter bekreft havner.",
+    "introHarbors": "Havner gjenkjennes ikke fra bildet. Tilpass kantbrikkerekkefølgen til bildet før du bruker brettet — ellers blir havnråd feil.",
+    "nextHarbors": "Neste: havner",
+    "useBoard": "Bruk brett",
+    "cancel": "Avbryt",
+    "clearGrid": "Tøm grid",
+    "backToLand": "Tilbake til land",
+    "harborStep": "Steg 2 · Havner",
+    "harborCount": "{{count}} havner · matche bildet før Premium-sim",
+    "shuffle": "Tilfeldig rekkefølge",
+    "standardOrder": "Standard rekkefølge",
+    "rotateEdges": "Roter kantbrikker"
+  },
+  "feedback": {
+    "subject": "Hex Settlement Coach tilbakemelding",
+    "bodyPrefix": "Beskriv feil eller idé:\n\nApp-versjon: {{version}}\nSpråk: {{lang}}\n"
+  },
+  "common": {
+    "close": "Lukk",
+    "loading": "Laster…"
+  },
+  "variants": {
+    "heading": "Brettvarianter",
+    "base": "Grunnøy",
+    "baseDesc": "Klassisk 19-hex-layout for 3–4 spillere.",
+    "extension56": "5–6 spillerøy",
+    "extension56Desc": "Større land- og havnlayout for 5–6 spillere.",
+    "seafarersLite": "Sjruter (kommer)",
+    "seafarersLiteDesc": "Øyer og skip — planlagt etter v1.0.",
+    "citiesLite": "Byer og fremgang (kommer)",
+    "citiesLiteDesc": "Byoppgraderinger og fremgangsspor — planlagt senere."
+  }
+}

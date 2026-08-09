@@ -1,7 +1,11 @@
 import { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { BoardSize, GeneratorSettings } from '../catan/types';
-import { BOARD_SIZE_CONFIG } from '../catan/boardLayout';
 import { SettingsPanel } from './SettingsPanel';
+import { setAppLocale, type AppLocale } from '../i18n';
+import { openFeedbackEmail, openPrivacyPolicy } from '../native/feedback';
+import { APP_VERSION_LABEL } from '../product/appIdentity';
+import { upcomingVariants } from '../catan/variants';
 
 interface SettingsModalProps {
   open: boolean;
@@ -24,6 +28,8 @@ export function SettingsModal({
   canUseBonanza = true,
   onPremiumRequired,
 }: SettingsModalProps) {
+  const { t, i18n } = useTranslation();
+
   useEffect(() => {
     if (!open) return;
 
@@ -42,6 +48,8 @@ export function SettingsModal({
 
   if (!open) return null;
 
+  const locale = (i18n.language === 'nb' ? 'nb' : 'en') as AppLocale;
+
   return (
     <div className="modal-backdrop" onClick={onClose} role="presentation">
       <div
@@ -52,12 +60,12 @@ export function SettingsModal({
         onClick={(e) => e.stopPropagation()}
       >
         <header className="modal-header">
-          <h2 id="settings-modal-title">Innstillinger</h2>
+          <h2 id="settings-modal-title">{t('settings.title')}</h2>
           <button
             type="button"
             className="modal-close"
             onClick={onClose}
-            aria-label="Lukk"
+            aria-label={t('common.close')}
           >
             ×
           </button>
@@ -65,44 +73,63 @@ export function SettingsModal({
 
         <div className="modal-body">
           <section className="modal-section">
-            <h3>Brettstørrelse</h3>
+            <h3>{t('language.label')}</h3>
             <label className="field">
-              Variant
+              {t('language.label')}
+              <select
+                value={locale}
+                onChange={(e) => {
+                  void setAppLocale(e.target.value as AppLocale);
+                }}
+              >
+                <option value="en">{t('language.en')}</option>
+                <option value="nb">{t('language.nb')}</option>
+              </select>
+            </label>
+          </section>
+
+          <section className="modal-section">
+            <h3>{t('settings.boardSize')}</h3>
+            <label className="field">
+              {t('variants.heading')}
               <select
                 value={boardSize}
                 onChange={(e) => onBoardSizeChange(e.target.value as BoardSize)}
               >
-                {(Object.keys(BOARD_SIZE_CONFIG) as BoardSize[]).map((key) => (
-                  <option key={key} value={key}>
-                    {BOARD_SIZE_CONFIG[key].label}
-                  </option>
-                ))}
+                <option value="base">{t('settings.base')}</option>
+                <option value="extension56">{t('settings.extension56')}</option>
               </select>
             </label>
-            <p className="muted small">
-              Utvidelse legger til 11 landhexer og 4 enkelt-hex kantbrikker (B7–B10).
-              Bonanzabrett er bare tilgjengelig for grunnspill.
-            </p>
+            {upcomingVariants().length > 0 && (
+              <p className="muted small">
+                {upcomingVariants()
+                  .map((v) => t(v.labelKey))
+                  .join(' · ')}
+              </p>
+            )}
           </section>
 
           <SettingsPanel
-            embedded
-            boardSize={boardSize}
             settings={settings}
             onChange={onSettingsChange}
+            embedded
+            boardSize={boardSize}
             canUseBonanza={canUseBonanza}
             onPremiumRequired={onPremiumRequired}
           />
-        </div>
 
-        <footer className="modal-footer">
-          <p className="muted small">
-            Endringer gjelder neste gang du genererer et nytt brett.
-          </p>
-          <button type="button" className="btn primary" onClick={onClose}>
-            Lukk
-          </button>
-        </footer>
+          <section className="modal-section settings-support">
+            <button type="button" className="btn btn-block" onClick={openFeedbackEmail}>
+              {t('settings.feedback')}
+            </button>
+            <button type="button" className="btn btn-block" onClick={openPrivacyPolicy}>
+              {t('settings.privacy')}
+            </button>
+            <p className="muted small">
+              {t('settings.aboutVersion', { version: APP_VERSION_LABEL })}
+            </p>
+          </section>
+        </div>
       </div>
     </div>
   );

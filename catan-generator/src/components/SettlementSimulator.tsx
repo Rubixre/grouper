@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { SettlementScore, ResourceWeights, BoardSize } from '../catan/types';
 import type { Board } from '../catan/types';
 import type { SimulationState } from '../catan/simulator';
@@ -127,6 +128,7 @@ export function SettlementSimulator({
   onStartMidgame,
   midgameLocked = false,
 }: SettlementSimulatorProps) {
+  const { t } = useTranslation();
   const [showAllOptions, setShowAllOptions] = useState(false);
   const [scoreModalOpen, setScoreModalOpen] = useState(false);
   const [logModalOpen, setLogModalOpen] = useState(false);
@@ -338,7 +340,7 @@ export function SettlementSimulator({
 
       {state.finished ? (
         <div className="sim-done">
-          <p>Ferdig! Statistikk vises under brettet.</p>
+          <p>{t('sim.done')}</p>
           {onStartMidgame && (
             <button
               type="button"
@@ -346,8 +348,8 @@ export function SettlementSimulator({
               onClick={onStartMidgame}
             >
               {midgameLocked
-                ? 'Lås opp midgame · Premium'
-                : 'Fortsett til midgame'}
+                ? t('sim.unlockMidgame')
+                : t('sim.continueMidgame')}
             </button>
           )}
         </div>

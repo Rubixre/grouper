@@ -1,8 +1,9 @@
+import { useTranslation } from 'react-i18next';
 import { InfoModal } from './InfoModal';
 import type { PremiumFeature } from '../catan/entitlements';
 import {
   isDevPremiumUnlockEnabled,
-  premiumFeatureLabel,
+  premiumFeatureLabelKey,
 } from '../catan/entitlements';
 
 interface PremiumPaywallModalProps {
@@ -15,13 +16,13 @@ interface PremiumPaywallModalProps {
   onActivateDev?: () => void;
 }
 
-const PREMIUM_PERKS = [
-  'Bonanzabrett (tilfeldig pool fra grunnspill + utvidelse)',
-  'Startposisjon-simulering med rangering av landsbyer',
-  'Forslag til veiretning og ekspansjon',
-  'Strategi- og havnråd under plassering',
-  'Midgame: veinett / lengste vei, byer og røverråd',
-];
+const PERK_KEYS = [
+  'premium.perkBonanza',
+  'premium.perkSimulation',
+  'premium.perkRoads',
+  'premium.perkStrategy',
+  'premium.perkMidgame',
+] as const;
 
 export function PremiumPaywallModal({
   open,
@@ -30,43 +31,41 @@ export function PremiumPaywallModal({
   onStartTrial,
   onActivateDev,
 }: PremiumPaywallModalProps) {
-  const featureName = feature ? premiumFeatureLabel(feature) : 'Premium';
+  const { t } = useTranslation();
+  const featureName = feature
+    ? t(premiumFeatureLabelKey(feature))
+    : t('premium.title');
   const showDevUnlock = Boolean(onActivateDev) && isDevPremiumUnlockEnabled();
 
   return (
     <InfoModal
       open={open}
-      title="Premium"
+      title={t('premium.title')}
       onClose={onClose}
-      footerNote="14 dagers gratis prøve · deretter abonnement (kommer i app-butikkene)"
+      footerNote={t('premium.footerNote')}
     >
       <div className="premium-paywall">
-        <p>
-          <strong>{featureName}</strong> er en Premium-funksjon.
-        </p>
-        <p className="muted small">
-          Du kan generere så mange standardbrett du vil gratis. Premium låser opp
-          avanserte brettvarianter og plasseringsrådgivning.
-        </p>
+        <p>{t('premium.featureIsPremium', { feature: featureName })}</p>
+        <p className="muted small">{t('premium.freeBoards')}</p>
 
-        <h3 className="premium-paywall-heading">Inkludert i Premium</h3>
+        <h3 className="premium-paywall-heading">{t('premium.includedHeading')}</h3>
         <ul className="premium-perk-list">
-          {PREMIUM_PERKS.map((perk) => (
-            <li key={perk}>{perk}</li>
+          {PERK_KEYS.map((key) => (
+            <li key={key}>{t(key)}</li>
           ))}
         </ul>
 
         <div className="premium-paywall-actions">
           <button type="button" className="btn primary btn-block" onClick={onStartTrial}>
-            Start 14 dagers gratis prøve
+            {t('premium.startTrial')}
           </button>
           {showDevUnlock && (
             <button type="button" className="btn btn-block" onClick={onActivateDev}>
-              Aktiver Premium (utvikling)
+              {t('premium.activateDev')}
             </button>
           )}
           <button type="button" className="btn btn-block" onClick={onClose}>
-            Fortsett gratis
+            {t('premium.continueFree')}
           </button>
         </div>
       </div>

@@ -3097,3 +3097,12 @@ h2 .premium-badge {
   flex-direction: column;
   gap: 0.65rem;
 }
+
+.settings-support {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
