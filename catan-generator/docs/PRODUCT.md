@@ -39,3 +39,4 @@ Change the company segment in App Store Connect / Xcode if needed; keep it stabl
 2. Create the app record in App Store Connect with the display name above
 3. Confirm support email + privacy URL
 4. Decide final icon art (generic hex island — no official settlers art)
+5. Set up **Codemagic** (no local Mac): [CODEMAGIC.md](./CODEMAGIC.md)

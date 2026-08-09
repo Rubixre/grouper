@@ -5,32 +5,32 @@ Product identity: see [PRODUCT.md](./PRODUCT.md).
 ## Prerequisites (you)
 
 1. Apple Developer Program membership
-2. Mac with Xcode 15+
+2. **No local Mac required** — use [Codemagic](./CODEMAGIC.md) (recommended) or a rented Mac
 3. App record in App Store Connect (`com.hexsettlement.coach`)
 4. Privacy URL (hosted `privacy.html`) + support email
 5. App icon 1024×1024 (generic hex island — no trademarked settlers art)
 
-## Generate the native iOS project (Mac)
+## Build & TestFlight without a Mac (Codemagic)
+
+Follow **[CODEMAGIC.md](./CODEMAGIC.md)** end-to-end:
+
+1. App Store Connect API key → Codemagic Developer Portal integration  
+2. Push / start workflow `ios-testflight`  
+3. Install via TestFlight on iPhone  
+
+Repo config: [`codemagic.yaml`](../../codemagic.yaml) (repository root).
+
+## Optional: local Mac / Xcode
 
 From `catan-generator/`:
 
 ```bash
 npm install
-npm run build
-npx cap add ios          # once
-npm run build:ios        # vite build + cap sync
+npm run build:ios
 npx cap open ios
 ```
 
-In Xcode:
-
-1. Select the **App** target → Signing & Capabilities → your Team
-2. Confirm Bundle Identifier `com.hexsettlement.coach`
-3. Deployment target iOS 15.0+
-4. Add camera / photo library usage strings if photo import uses device camera:
-   - `NSCameraUsageDescription`
-   - `NSPhotoLibraryUsageDescription`
-5. Product → Archive → Distribute App → TestFlight / App Store
+Then Archive → TestFlight in Xcode (Team signing, bundle `com.hexsettlement.coach`).
 
 ## Scripts
 

@@ -43,11 +43,12 @@ Dev-only unlock: **Try Premium** → development activate, or `?premium=1` (not 
 
 Subscriptions: RevenueCat + StoreKit — see [docs/ios-release.md](docs/ios-release.md).
 
-## iOS / App Store
+## iOS / App Store (no Mac required)
 
-Step-by-step: [docs/ios-release.md](docs/ios-release.md)  
-Product / legal: [docs/PRODUCT.md](docs/PRODUCT.md)  
-Privacy page: [public/privacy.html](public/privacy.html)
+**Codemagic CI:** [docs/CODEMAGIC.md](docs/CODEMAGIC.md) — builds on cloud Macs → TestFlight  
+Config: [`codemagic.yaml`](../codemagic.yaml) at repo root  
+
+Also: [docs/ios-release.md](docs/ios-release.md) · [docs/PRODUCT.md](docs/PRODUCT.md) · [public/privacy.html](public/privacy.html)
 
 ## Feedback
 
