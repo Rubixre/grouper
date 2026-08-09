@@ -38,9 +38,27 @@ Gjør dette fra hvilken som helst PC:
 ## Steg 2 — Codemagic-konto og repo
 
 1. Opprett konto på [codemagic.io](https://codemagic.io) (logg inn med GitHub).
-2. **Add application** → velg repo `Rubixre/grouper` (eller din fork).
-3. Project type: **React Native / Ionic / other** (eller «Configure later» / YAML).
-4. Bekreft at Codemagic finner `codemagic.yaml` i rot.
+2. **Add application** → velg repo `Rubixre/grouper`.
+3. Når du får **"The repository doesn't seem to contain a mobile application"**:
+   - Det er forventet. Repoet er en monorepo; iOS ligger under `catan-generator/ios/`, og `codemagic.yaml` ligger i **rot** på branchen `cursor/ios-app-store-roadmap-e438` (ikke nødvendigvis på `main` ennå).
+   - **Ikke** stol på auto-scan av `main`.
+   - Velg project type manuelt: **Ionic / Capacitor** (eller **React Native** / **Other** hvis Ionic mangler).
+   - Klikk **Finish: Add application** / fortsett uten scan.
+4. Inne i appen i Codemagic:
+   - Øverst: velg branch **`cursor/ios-app-store-roadmap-e438`** (eller `main` etter merge).
+   - Klikk **Check for configuration file** / scan for `codemagic.yaml`.
+   - Du skal se workflows: `ios-build-only` og `ios-testflight`.
+
+### Hvis scan fortsatt feiler
+
+| Felt i Codemagic | Verdi |
+|------------------|--------|
+| Project type | Ionic / Capacitor (manuelt) |
+| Branch to scan | `cursor/ios-app-store-roadmap-e438` |
+| Config path | `codemagic.yaml` i repo-roten (ikke under `catan-generator/`) |
+| Xcode project (i YAML) | `catan-generator/ios/App/App.xcodeproj` |
+
+Du trenger **ikke** at Codemagic «finner» `.xcodeproj` i rot — YAML-en peker allerede på riktig sti.
 
 ---
 
