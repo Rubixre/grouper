@@ -45,15 +45,13 @@ python fpl_cli.py suggest
 
 Skal skrive ut en 15-manns tropp, XI, kaptein og chip-råd. Krever nett (FPL API).
 
-## Test siste endringer før de er på main
-
-Hvis du vil prøve en PR-branch (f.eks. nøytral XI+C):
+## Test denne PR-branchen (før merge til main)
 
 ```powershell
-$dir = "$env:USERPROFILE\fpl-coach"; New-Item -ItemType Directory -Force -Path $dir | Out-Null; Set-Location $dir; $raw = "https://raw.githubusercontent.com/Rubixre/grouper/cursor/fpl-neutral-xi-captain-127c/fpl/tools"; Invoke-WebRequest "$raw/fpl_cli.py" -OutFile fpl_cli.py; Invoke-WebRequest "$raw/START-FPL.bat" -OutFile START-FPL.bat; .\START-FPL.bat
+$dir = "$env:USERPROFILE\fpl-coach"; New-Item -ItemType Directory -Force -Path $dir | Out-Null; Set-Location $dir; $b = "cursor/fpl-easy-pc-setup-127c"; $raw = "https://raw.githubusercontent.com/Rubixre/grouper/$b/fpl/tools"; Invoke-WebRequest "$raw/fpl_cli.py" -OutFile fpl_cli.py; Invoke-WebRequest "$raw/START-FPL.bat" -OutFile START-FPL.bat; .\START-FPL.bat
 ```
 
-Etter at PR er merget til `main`: bruk vanlig `INSTALL-PC.bat` / menyvalg **10** for oppdatering.
+Etter merge: vanlig install fra `main` + menyvalg **10** for oppdatering.
 
 ## Hele repoet (Mac/Linux/git)
 
