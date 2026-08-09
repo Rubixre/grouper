@@ -1,0 +1,163 @@
+{
+  "app": {
+    "title": "Hex Settlement Coach",
+    "generateBoard": "Generate board",
+    "settings": "Settings",
+    "fromPhoto": "From photo",
+    "exit": "Exit",
+    "tryPremium": "Try Premium",
+    "premium": "Premium",
+    "premiumTrial": "Premium · trial",
+    "generating": "Generating board…",
+    "confirmWipeGenerate": "Generate a new board clears the current placement. Continue?",
+    "confirmWipePhoto": "Switching to a photo board clears the current placement. Continue?",
+    "confirmClearPremium": "Remove Premium access? Bonanza and placement unlock again only after starting a trial.",
+    "generateFailed": "Could not generate a valid board with the selected rules. Try again or relax the constraints.",
+    "footer": "Base game + 5–6 extension · Weighted resource values (Board Game Analysis)",
+    "bonanzaTag": "Bonanza"
+  },
+  "language": {
+    "label": "Language",
+    "en": "English",
+    "nb": "Norwegian"
+  },
+  "setup": {
+    "heading": "Starting positions",
+    "premiumGate": "Simulation with ranked settlements and roads requires Premium. You can start a 14-day free trial.",
+    "playerCount": "Number of players",
+    "players_one": "{{count}} player",
+    "players_other": "{{count}} players",
+    "startPlacement": "Start placement",
+    "unlockPlacement": "Unlock placement · Premium",
+    "newRound": "New round",
+    "scoringHint": "Strategy applies only to you. Recommended gets a gold outline — you choose. Open “Score breakdown” during placement for details.",
+    "placeholder": "Choose who you are, name players and colors. Everyone places manually in draft order: confirm settlement, then confirm opening road. Pick a strategy with the buttons — gold outline marks the recommendation on your turn. Harbor is in the same picker."
+  },
+  "strategy": {
+    "hintHarbor": "Harbor activates on your turn when plans exist. Gold outline appears during placement."
+  },
+  "settings": {
+    "title": "Settings",
+    "generationRules": "Generation rules",
+    "checkedMeans": "Checked = allowed / active",
+    "boardSize": "Board size",
+    "base": "Base game (3–4)",
+    "extension56": "5–6 player extension",
+    "allowAdjacent68": "6 and 8 may be adjacent",
+    "allowAdjacent68Desc": "Allows number tokens 6 and 8 next to each other",
+    "allowAdjacent212": "2 and 12 may be adjacent",
+    "allowAdjacent212Desc": "Allows number tokens 2 and 12 next to each other",
+    "allowSameResource": "Same resources may be adjacent",
+    "allowSameResourceDesc": "Allows two identical resource tiles next to each other",
+    "allowSameNumber": "Same numbers may be adjacent",
+    "allowSameNumberDesc": "Allows two identical number tokens next to each other",
+    "randomHarbors": "Random harbors",
+    "randomHarborsDesc": "Shuffles edge piece order (B1–B6). Each piece keeps its relative harbor layout. Off = original order.",
+    "bonanzaBoard": "Bonanza board",
+    "bonanzaBoardDesc": "Draws 19 of 30 resource and number tiles from the combined pool (18 base + 28 extension = 46). May yield two deserts, many of one type — or none.",
+    "bonanzaLocked": "Locked — start a free trial to use Bonanza",
+    "feedback": "Send feedback",
+    "privacy": "Privacy policy",
+    "aboutVersion": "Version {{version}}"
+  },
+  "premium": {
+    "title": "Premium",
+    "featureIsPremium": "{{feature}} is a Premium feature.",
+    "freeBoards": "You can generate as many standard boards as you like for free. Premium unlocks advanced board variants and placement coaching.",
+    "includedHeading": "Included in Premium",
+    "perkBonanza": "Bonanza board (random pool from base + extension)",
+    "perkSimulation": "Starting-position simulation with ranked settlements",
+    "perkRoads": "Opening-road and expansion suggestions",
+    "perkStrategy": "Strategy and harbor advice during placement",
+    "perkMidgame": "Midgame: road network / longest road, cities, and robber tips",
+    "startTrial": "Start 14-day free trial",
+    "activateDev": "Activate Premium (development)",
+    "continueFree": "Continue free",
+    "footerNote": "14-day free trial · then subscription (coming to the app stores)",
+    "featureBonanza": "Bonanza board",
+    "featureSimulation": "Starting-position simulation",
+    "featureMidgame": "Midgame advice (roads, cities, robber)"
+  },
+  "resources": {
+    "wood": "Lumber",
+    "brick": "Brick",
+    "sheep": "Wool",
+    "wheat": "Grain",
+    "ore": "Ore",
+    "desert": "Desert"
+  },
+  "boardSize": {
+    "base": "Base game",
+    "extension56": "5–6 player extension"
+  },
+  "sim": {
+    "done": "Done! Stats are shown under the board.",
+    "continueMidgame": "Continue to midgame",
+    "unlockMidgame": "Unlock midgame · Premium",
+    "yourTurn": "Your turn",
+    "opponentTurn": "Opponent turn",
+    "seeBoard": "See markers on the board",
+    "manualYouAre": "Manual · you are {{name}}",
+    "evenWeights": "Even weights (opponent)",
+    "confirmSettlement": "Confirm settlement",
+    "confirmRoad": "Confirm road",
+    "undo": "Undo",
+    "cancel": "End"
+  },
+  "midgame": {
+    "title": "Midgame",
+    "exit": "Exit midgame",
+    "victoryPoints": "Victory points",
+    "you": "(you)",
+    "longestRoad": "Longest road",
+    "holderNone": "none (needs ≥5)",
+    "roadsCount": "{{name}}: {{count}} roads",
+    "addRoadFrom": "Add road from (your settlement/city or tip)",
+    "chooseStart": "Choose starting point…",
+    "settlement": "Settlement",
+    "city": "City",
+    "noOpenRoads": "No free neighboring roads here.",
+    "toVertex": "To {{id}}",
+    "upgradeCity": "Upgrade to city",
+    "noUpgradeable": "No settlements left to upgrade.",
+    "cityOn": "City on {{id}}",
+    "robberAdvice": "Robber advice",
+    "robberHint": "Recommended hexes for the robber (hits opponents, spares you).",
+    "vpLine": "{{total}} VP{{lr}} · {{settlements}} settlement / {{cities}} city",
+    "longestRoadTag": " · longest road"
+  },
+  "photo": {
+    "title": "Board from photo",
+    "introLand": "Upload a photo from as straight above as possible, align the hex overlay, and run recognition. Fix mistakes in the grid, then confirm harbors.",
+    "introHarbors": "Harbors are not recognized from the photo. Match edge-piece order to the photo before using the board — otherwise harbor advice will be wrong.",
+    "nextHarbors": "Next: harbors",
+    "useBoard": "Use board",
+    "cancel": "Cancel",
+    "clearGrid": "Clear grid",
+    "backToLand": "Back to land",
+    "harborStep": "Step 2 · Harbors",
+    "harborCount": "{{count}} harbors · match the photo before Premium sim",
+    "shuffle": "Random order",
+    "standardOrder": "Standard order",
+    "rotateEdges": "Rotate edge pieces"
+  },
+  "feedback": {
+    "subject": "Hex Settlement Coach feedback",
+    "bodyPrefix": "Describe the bug or idea:\n\nApp version: {{version}}\nLanguage: {{lang}}\n"
+  },
+  "common": {
+    "close": "Close",
+    "loading": "Loading…"
+  },
+  "variants": {
+    "heading": "Board variants",
+    "base": "Base island",
+    "baseDesc": "Classic 19-hex layout for 3–4 players.",
+    "extension56": "5–6 player island",
+    "extension56Desc": "Larger land and harbor layout for 5–6 players.",
+    "seafarersLite": "Sea routes (coming)",
+    "seafarersLiteDesc": "Islands and ships — planned after v1.0.",
+    "citiesLite": "Cities & progress (coming)",
+    "citiesLiteDesc": "City upgrades and progress tracks — planned later."
+  }
+}

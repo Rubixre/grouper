@@ -29,6 +29,7 @@ export * from './roadGraph';
 export * from './robberAdvice';
 export * from './midgame';
 export * from './entitlements';
+export * from './variants';
 export * from './playerStats';
 export * from './boardStory';
 export * from './sessionPersistence';

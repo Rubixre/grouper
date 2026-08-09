@@ -1,0 +1,126 @@
+# Codemagic CI — Hex Settlement Coach (Capacitor iOS)
+# Docs: catan-generator/docs/CODEMAGIC.md
+#
+# Prerequisites in Codemagic UI:
+# 1. Connect this GitHub repo
+# 2. Team integrations → Developer Portal → add App Store Connect API key
+#    (name it exactly: HexSettlementCoach — or change integrations.app_store_connect below)
+# 3. Optional: set APP_STORE_APPLE_ID in a variable group "ios_credentials"
+
+workflows:
+  ios-testflight:
+    name: iOS → TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 120
+    integrations:
+      # Must match the API key name in Codemagic → Team integrations → Developer Portal
+      app_store_connect: HexSettlementCoach
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.hexsettlement.coach
+      vars:
+        XCODE_PROJECT: App.xcodeproj
+        XCODE_SCHEME: App
+        BUNDLE_ID: com.hexsettlement.coach
+        # Numeric Apple ID from App Store Connect → App Information (set in UI or here)
+        # APP_STORE_APPLE_ID: "1234567890"
+      node: 22
+      xcode: latest
+      cocoapods: default
+    # Manual start in Codemagic UI until Apple/API key is ready.
+    # Uncomment to auto-build on push to main:
+    # triggering:
+    #   events:
+    #     - push
+    #   branch_patterns:
+    #     - pattern: main
+    #       include: true
+    #       source: true
+    #   cancel_previous_builds: true
+    scripts:
+      - name: Install npm dependencies
+        script: |
+          cd catan-generator
+          npm ci
+      - name: Build web assets (base=/ for Capacitor)
+        script: |
+          cd catan-generator
+          npm run build
+      - name: Capacitor sync iOS
+        script: |
+          cd catan-generator
+          npx cap sync ios
+      - name: Set up code signing profiles
+        script: |
+          xcode-project use-profiles
+      - name: Increment iOS build number
+        script: |
+          cd catan-generator/ios/App
+          # Falls back to Codemagic build number when Apple ID / previous builds are missing
+          if [ -n "${APP_STORE_APPLE_ID:-}" ]; then
+            LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" || \
+                     app-store-connect get-latest-app-store-build-number "$APP_STORE_APPLE_ID" || echo 0)
+            NEXT=$((LATEST + 1))
+          else
+            NEXT="${BUILD_NUMBER:-${CM_BUILD_NUMBER:-1}}"
+          fi
+          echo "Setting CURRENT_PROJECT_VERSION=$NEXT"
+          agvtool new-version -all "$NEXT"
+      - name: Build IPA
+        script: |
+          cd catan-generator/ios/App
+          xcode-project build-ipa \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME"
+    artifacts:
+      - catan-generator/ios/App/build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+    publishing:
+      email:
+        recipients:
+          - support@hexsettlement.coach
+        notify:
+          success: true
+          failure: true
+      app_store_connect:
+        auth: integration
+        # Upload to App Store Connect / TestFlight processing
+        submit_to_testflight: true
+        # Set true only when you intentionally want App Review submission
+        submit_to_app_store: false
+
+  ios-build-only:
+    name: iOS build (no publish)
+    instance_type: mac_mini_m2
+    max_build_duration: 90
+    integrations:
+      app_store_connect: HexSettlementCoach
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.hexsettlement.coach
+      vars:
+        XCODE_PROJECT: App.xcodeproj
+        XCODE_SCHEME: App
+      node: 22
+      xcode: latest
+    scripts:
+      - name: Install + build + sync
+        script: |
+          cd catan-generator
+          npm ci
+          npm run build
+          npx cap sync ios
+      - name: Code signing
+        script: xcode-project use-profiles
+      - name: Build IPA
+        script: |
+          cd catan-generator/ios/App
+          xcode-project build-ipa \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME"
+    artifacts:
+      - catan-generator/ios/App/build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log

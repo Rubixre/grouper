@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { Board, BoardSize, GeneratorSettings, PlayerCount } from './catan/types';
 import { DEFAULT_SETTINGS } from './catan/types';
 import { BOARD_SIZE_CONFIG } from './catan/boardLayout';
@@ -80,11 +81,16 @@ import {
   type MidgameState,
 } from './catan/midgame';
 import { parseCoord } from './catan/hex';
+import { initPurchases } from './catan/purchases';
+import { initTelemetry } from './native/telemetry';
+import { maybeRequestStoreReview } from './native/storeReview';
+import { APP_DISPLAY_NAME } from './product/appIdentity';
 import './App.css';
 
 const restoredSession = typeof window !== 'undefined' ? loadSession() : null;
 
 function App() {
+  const { t, i18n } = useTranslation();
   const [settings, setSettings] = useState<GeneratorSettings>(
     () => restoredSession?.settings ?? DEFAULT_SETTINGS
   );
@@ -194,17 +200,15 @@ function App() {
   }, []);
 
   const confirmWipeActiveSession = useCallback(
-    (actionLabel: string): boolean => {
+    (messageKey: 'app.confirmWipeGenerate' | 'app.confirmWipePhoto'): boolean => {
       if (!simulation && mode !== 'simulate') return true;
-      return window.confirm(
-        `${actionLabel} sletter pågående plassering. Vil du fortsette?`
-      );
+      return window.confirm(t(messageKey));
     },
-    [simulation, mode]
+    [simulation, mode, t]
   );
 
   const handleGenerate = useCallback(() => {
-    if (!confirmWipeActiveSession('Generer nytt brett')) return;
+    if (!confirmWipeActiveSession('app.confirmWipeGenerate')) return;
     const effectiveSettings =
       canUseBonanza(getEntitlementState()) || !settings.bonanzaBoard
         ? settings
@@ -214,9 +218,7 @@ function App() {
     }
     const result = generateBoard(effectiveSettings, boardSize);
     if (!result) {
-      setError(
-        'Kunne ikke generere gyldig brett med valgte regler. Prøv igjen eller slakk på begrensningene.'
-      );
+      setError(t('app.generateFailed'));
       setBoard(null);
       setBoardStory(null);
       clearSimulationUi();
@@ -226,11 +228,11 @@ function App() {
     setBoard(result);
     setBoardStory(createBoardStory(result));
     clearSimulationUi();
-  }, [settings, boardSize, confirmWipeActiveSession, clearSimulationUi]);
+  }, [settings, boardSize, confirmWipeActiveSession, clearSimulationUi, t]);
 
   const handleApplyPhotoBoard = useCallback(
     (next: Board) => {
-      if (!confirmWipeActiveSession('Bytt til fotobrett')) return;
+      if (!confirmWipeActiveSession('app.confirmWipePhoto')) return;
       setError(null);
       setBoardSize(next.boardSize);
       setBoard(next);
@@ -246,6 +248,17 @@ function App() {
       handleGenerate();
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    void initTelemetry();
+    void initPurchases();
+  }, []);
+
+  useEffect(() => {
+    if (simulation?.finished) {
+      void maybeRequestStoreReview('setupFinished');
+    }
+  }, [simulation?.finished]);
 
   // Drop premium-only session bits when access is missing
   useEffect(() => {
@@ -589,20 +602,23 @@ function App() {
     <div className={`app ${simPlacing ? 'app-simulating' : ''}`}>
       <header className="header">
         <div>
-          <h1>Catan Brettgenerator</h1>
+          <h1>{t('app.title')}</h1>
           <p className="subtitle">
             {boardStory ? (
               <>
                 {boardStory.islandName}
                 <span className="subtitle-sep"> · </span>
-                {BOARD_SIZE_CONFIG[boardSize].label}
-                {settings.bonanzaBoard && boardSize === 'base' ? ' · Bonanza' : ''}
+                {t(`boardSize.${boardSize}`)}
+                {settings.bonanzaBoard && boardSize === 'base'
+                  ? ` · ${t('app.bonanzaTag')}`
+                  : ''}
               </>
             ) : (
               <>
-                {BOARD_SIZE_CONFIG[boardSize].totalHexes} hex ·{' '}
-                {BOARD_SIZE_CONFIG[boardSize].label}
-                {settings.bonanzaBoard && boardSize === 'base' ? ' · Bonanza' : ''}
+                {BOARD_SIZE_CONFIG[boardSize].totalHexes} hex · {t(`boardSize.${boardSize}`)}
+                {settings.bonanzaBoard && boardSize === 'base'
+                  ? ` · ${t('app.bonanzaTag')}`
+                  : ''}
               </>
             )}
           </p>
@@ -614,7 +630,7 @@ function App() {
               className="btn header-btn header-sim-keep header-exit-sim"
               onClick={resetSimulation}
             >
-              Avslutt
+              {t('app.exit')}
             </button>
           )}
           {entitlement.isPremium ? (
@@ -623,22 +639,19 @@ function App() {
               className="btn header-btn premium-status-chip header-sim-hide"
               title={
                 entitlement.expiresAt
-                  ? `Utløper ${new Date(entitlement.expiresAt).toLocaleDateString('nb-NO')}`
-                  : 'Premium aktiv'
+                  ? new Date(entitlement.expiresAt).toLocaleDateString(
+                      i18n.language === 'nb' ? 'nb-NO' : 'en-US'
+                    )
+                  : t('app.premium')
               }
               onClick={() => {
-                if (
-                  !window.confirm(
-                    'Fjerne Premium-tilstilling? Bonanza og plassering låses til prøven er aktivert igjen.'
-                  )
-                ) {
+                if (!window.confirm(t('app.confirmClearPremium'))) {
                   return;
                 }
                 refreshEntitlement(clearPremiumAccess());
               }}
             >
-              Premium
-              {entitlement.source === 'trial' ? ' · prøve' : ''}
+              {entitlement.source === 'trial' ? t('app.premiumTrial') : t('app.premium')}
             </button>
           ) : (
             <button
@@ -646,7 +659,7 @@ function App() {
               className="btn header-btn header-sim-hide"
               onClick={() => openPaywall('simulation')}
             >
-              Prøv Premium
+              {t('app.tryPremium')}
             </button>
           )}
           <button
@@ -654,21 +667,21 @@ function App() {
             className="btn header-btn header-sim-keep"
             onClick={() => setSettingsOpen(true)}
           >
-            Innstillinger
+            {t('app.settings')}
           </button>
           <button
             type="button"
             className="btn header-btn header-sim-hide"
             onClick={() => setPhotoBoardOpen(true)}
           >
-            Fra bilde
+            {t('app.fromPhoto')}
           </button>
           <button
             type="button"
             className="btn primary header-sim-hide"
             onClick={handleGenerate}
           >
-            Generer brett
+            {t('app.generateBoard')}
           </button>
         </div>
       </header>
@@ -794,7 +807,7 @@ function App() {
               )}
             </>
           ) : (
-            <div className="empty-board">Genererer brett…</div>
+            <div className="empty-board">{t('app.generating')}</div>
           )}
 
           {boardStory && !mappingMode && !simPlacing && (
@@ -886,19 +899,16 @@ function App() {
             <>
               <div className="panel simulation-setup">
                 <h2>
-                  Startposisjon
+                  {t('setup.heading')}
                   <span className="premium-badge">Premium</span>
                 </h2>
 
                 {!premiumSimulation && (
-                  <p className="premium-gate-banner muted small">
-                    Simulering med rangering av landsby og vei krever Premium.
-                    Du kan starte 14 dagers gratis prøve.
-                  </p>
+                  <p className="premium-gate-banner muted small">{t('setup.premiumGate')}</p>
                 )}
 
                 <label className="field">
-                  Antall spillere
+                  {t('setup.playerCount')}
                   <select
                     value={playerCount}
                     disabled={simActive && !simulation?.finished}
@@ -906,15 +916,17 @@ function App() {
                       handlePlayerCountChange(Number(e.target.value) as PlayerCount)
                     }
                   >
-                    <option value={2}>2 spillere</option>
-                    <option value={3}>3 spillere</option>
-                    <option value={4}>4 spillere</option>
-                    {boardSize === 'extension56' && (
-                      <>
-                        <option value={5}>5 spillere</option>
-                        <option value={6}>6 spillere</option>
-                      </>
-                    )}
+                    {([2, 3, 4] as const).map((n) => (
+                      <option key={n} value={n}>
+                        {t('setup.players', { count: n })}
+                      </option>
+                    ))}
+                    {boardSize === 'extension56' &&
+                      ([5, 6] as const).map((n) => (
+                        <option key={n} value={n}>
+                          {t('setup.players', { count: n })}
+                        </option>
+                      ))}
                   </select>
                 </label>
 
@@ -931,15 +943,12 @@ function App() {
                   harborEnabled
                   hint={
                     strategyChoice === 'harbor'
-                      ? 'Havn aktiveres når det er din tur og det finnes planer. Gullkant kommer under plassering.'
+                      ? t('strategy.hintHarbor')
                       : activeStrategy.description
                   }
                 />
 
-                <p className="muted small scoring-hint">
-                  Strategivalget gjelder bare deg. Anbefalt får gullkant — du bytter selv.
-                  Trykk «Poengforklaring» under plassering for detaljer.
-                </p>
+                <p className="muted small scoring-hint">{t('setup.scoringHint')}</p>
 
                 {!simActive ? (
                   <button
@@ -948,7 +957,9 @@ function App() {
                     disabled={!board}
                     onClick={startSimulation}
                   >
-                    {premiumSimulation ? 'Start plassering' : 'Lås opp plassering · Premium'}
+                    {premiumSimulation
+                      ? t('setup.startPlacement')
+                      : t('setup.unlockPlacement')}
                   </button>
                 ) : (
                   <div className="sim-actions">
@@ -957,7 +968,7 @@ function App() {
                       className="btn primary btn-block"
                       onClick={startSimulation}
                     >
-                      Ny runde
+                      {t('setup.newRound')}
                     </button>
                   </div>
                 )}
@@ -965,12 +976,7 @@ function App() {
 
               {!simActive && (
                 <div className="panel sim-placeholder">
-                  <p className="muted small">
-                    Velg hvem du er, gi spillere navn og farger. Alle plasseres manuelt i
-                    draft-rekkefølge: bekreft landsby, deretter bekreft startvei.
-                    Velg strategi med knappene — gullkant markerer anbefaling under din tur.
-                    Havn ligger i samme velger.
-                  </p>
+                  <p className="muted small">{t('setup.placeholder')}</p>
                 </div>
               )}
             </>
@@ -979,7 +985,9 @@ function App() {
       </div>
 
       <footer className="footer">
-        <p>Grunnspill + 5–6 utvidelse · Vektede ressursverdier (Board Game Analysis)</p>
+        <p>
+          {APP_DISPLAY_NAME} · {t('app.footer')}
+        </p>
       </footer>
     </div>
   );

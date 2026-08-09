@@ -132,13 +132,26 @@ export function clearPremiumAccess(): EntitlementState {
   return { ...next };
 }
 
+/** i18n key for premium feature labels */
+export function premiumFeatureLabelKey(feature: PremiumFeature): string {
+  switch (feature) {
+    case 'bonanza':
+      return 'premium.featureBonanza';
+    case 'simulation':
+      return 'premium.featureSimulation';
+    case 'midgame':
+      return 'premium.featureMidgame';
+  }
+}
+
+/** @deprecated Prefer premiumFeatureLabelKey + t() */
 export function premiumFeatureLabel(feature: PremiumFeature): string {
   switch (feature) {
     case 'bonanza':
-      return 'Bonanzabrett';
+      return 'Bonanza board';
     case 'simulation':
-      return 'Startposisjon-simulering';
+      return 'Starting-position simulation';
     case 'midgame':
-      return 'Midgame-råd (vei, by, røver)';
+      return 'Midgame advice (roads, cities, robber)';
   }
 }

@@ -11,6 +11,14 @@ node_modules
 dist
 dist-ssr
 *.local
+.env
+.env.*.local
+
+# Native derived data (commit ios/ when generated on a Mac)
+ios/App/Pods
+ios/App/build
+ios/DerivedData
+*.xcuserstate
 
 # Editor directories and files
 .vscode/*
