@@ -24,7 +24,7 @@ Gir: bytter · XI · kaptein · **chip-anbefaling (EV)** basert på ditt lag.
 - Form / PPG / xGI (+ CS-proxy for GK/DEF)
 - **FDR skalert etter pris** — dyre assets mer fixture-sensitive enn £4.5–5.5
 - Mild **xGI residual tilt** (under/over underlying — ikke auto-bytte på én uke)
-- Sterkere verdi-vekt for **DEF/MID** (Part Four-struktur)
+- **Ingen favoritter** — draft/bytter/kaptein maksimerer estimert XI+C (kaptein 2×) under budsjett/klubb/posisjon
 - Bytter i **forventede poeng** (hits −4)
 
 ```bash
