@@ -2,6 +2,8 @@
 
 Mål: **minst mulig lesing**. Én kommando gir lagforslag, bytter og chip-råd.
 
+**Ny PC / Windows?** Se [KJØR-PÅ-PC.md](KJØR-PÅ-PC.md) — dobbeltklikk `INSTALL-PC.bat`, deretter `START-FPL.bat`.
+
 ## 1) Koble laget (én gang)
 
 ```bash
