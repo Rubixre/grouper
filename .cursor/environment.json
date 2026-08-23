@@ -1,0 +1,10 @@
+{
+  "name": "grouper",
+  "install": "cd catan-generator && npm ci",
+  "terminals": [
+    {
+      "name": "catan-dev",
+      "command": "cd catan-generator && npm run dev"
+    }
+  ]
+}
