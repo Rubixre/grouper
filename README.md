@@ -9,6 +9,7 @@ Samling av små prosjekter og prosessdokumenter.
 | [catan-generator/](catan-generator/) | Catan-brettgenerator med startposisjon-analyse |
 | [baerland/](baerland/) | Vedlikeholdsplan for jordbær- og bringebærlend |
 | [fpl/](fpl/) | Fantasy Premier League 2026/27 — prosess + dataverktøy |
+| [stafett/](stafett/) | Påmeldingsliste til stafett, Levanger maraton (Nesheim skole) |
 
 ---
 

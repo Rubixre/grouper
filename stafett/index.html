@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stafett – Nesheim skole</title>
+  <meta name="description" content="Påmeldingsliste til stafett på Levanger maraton for Nesheim skole.">
+  <meta name="theme-color" content="#0f3d2c">
+  <style>
+    :root {
+      --ink: #1a2332;
+      --muted: #5c675f;
+      --green: #1a5c40;
+      --green-deep: #0f3d2c;
+      --paper: #fffdf8;
+      --line: #efe6d8;
+      --bg: #e5eee6;
+      --amber: #8a5410;
+      --danger: #8d3b32;
+      --shadow: 0 16px 40px rgba(28, 48, 36, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 500px at 50% -10%, #f7f3ea 0%, transparent 55%),
+        var(--bg);
+      font-family: "Source Sans 3", "Segoe UI", sans-serif;
+      font-size: 1.05rem;
+      line-height: 1.45;
+    }
+
+    main {
+      width: min(680px, calc(100% - 1.5rem));
+      margin: 1.25rem auto 2.5rem;
+    }
+
+    .sheet {
+      background: var(--paper);
+      border: 1px solid #e4dccf;
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    header {
+      background: var(--green-deep);
+      color: #f6f3ea;
+      padding: 1.4rem 1.4rem 1.25rem;
+    }
+
+    .kicker {
+      margin: 0;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0.25rem 0 0;
+      font-family: Fraunces, "Iowan Old Style", Palatino, Georgia, serif;
+      font-size: clamp(2.3rem, 7vw, 3.3rem);
+      font-weight: 560;
+      letter-spacing: -0.03em;
+      line-height: 0.95;
+    }
+
+    .event {
+      margin: 0.45rem 0 0;
+      color: #d7e6dc;
+    }
+
+    .distance {
+      margin: 0.9rem 0 0;
+      font-size: 1.15rem;
+      font-weight: 700;
+    }
+
+    .stages {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      margin-top: 0.7rem;
+    }
+
+    .stages span {
+      width: 0.7rem;
+      height: 0.7rem;
+      border-radius: 50%;
+      background: #f3d7a1;
+      box-shadow: 0 0 0 4px rgba(243, 215, 161, 0.18);
+    }
+
+    .stages i {
+      flex: 1;
+      height: 2px;
+      background: rgba(246, 243, 234, 0.45);
+    }
+
+    .facts {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.6rem;
+      margin: 1rem 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .facts li {
+      background: rgba(255, 253, 248, 0.08);
+      border-radius: 10px;
+      padding: 0.55rem 0.65rem;
+    }
+
+    .facts small {
+      display: block;
+      color: #c5d7cc;
+      font-size: 0.75rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .facts strong {
+      display: block;
+      margin-top: 0.1rem;
+      font-size: 0.98rem;
+    }
+
+    .about {
+      padding: 1.15rem 1.4rem 0.2rem;
+    }
+
+    .about p {
+      margin: 0 0 0.8rem;
+    }
+
+    .signup, .list-wrap, .toolbar {
+      padding: 0 1.4rem;
+    }
+
+    .signup {
+      padding-top: 0.4rem;
+    }
+
+    label {
+      display: block;
+      font-weight: 700;
+      margin-bottom: 0.35rem;
+    }
+
+    .row {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      min-width: 0;
+      font: inherit;
+      font-size: 1.05rem;
+      color: var(--ink);
+      background: #fff;
+      border: 1.5px solid #d9d0c2;
+      border-radius: 12px;
+      padding: 0.75rem 0.85rem;
+    }
+
+    input[type="text"]:focus {
+      outline: 3px solid rgba(26, 92, 64, 0.25);
+      border-color: var(--green);
+    }
+
+    button, .ghost {
+      font: inherit;
+      cursor: pointer;
+    }
+
+    button[type="submit"] {
+      background: var(--green);
+      color: #fff;
+      border: 0;
+      border-radius: 12px;
+      padding: 0.75rem 1rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    button[type="submit"]:hover { background: var(--green-deep); }
+
+    .error {
+      min-height: 1.3rem;
+      margin: 0.4rem 0 0;
+      color: var(--danger);
+      font-weight: 600;
+    }
+
+    .summary {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.75rem;
+      align-items: baseline;
+      margin: 0.3rem 0 0.6rem;
+    }
+
+    .summary h2 {
+      margin: 0;
+      font-size: 1.25rem;
+    }
+
+    .summary p {
+      margin: 0;
+      color: var(--muted);
+      text-align: right;
+    }
+
+    .team + .team { margin-top: 1rem; }
+
+    .team-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 0.25rem;
+    }
+
+    .team-head h3 {
+      margin: 0;
+      font-size: 0.95rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .badge {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--green);
+    }
+
+    .badge.open { color: var(--amber); }
+
+    .names {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .names li {
+      display: grid;
+      grid-template-columns: 2rem 1fr auto;
+      gap: 0.4rem;
+      align-items: center;
+      min-height: 3rem;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .num {
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .name { font-weight: 600; overflow-wrap: anywhere; }
+
+    .empty .name {
+      color: #b3aa9d;
+      font-weight: 500;
+    }
+
+    .remove {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      width: 2.5rem;
+      height: 2.5rem;
+      border-radius: 999px;
+      font-size: 1.2rem;
+      line-height: 1;
+    }
+
+    .remove:hover { background: #f6e8e4; color: var(--danger); }
+
+    .hint {
+      color: var(--muted);
+      font-size: 0.92rem;
+      margin: 0.8rem 0 0;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      padding-top: 1rem;
+      padding-bottom: 1.3rem;
+    }
+
+    .ghost {
+      background: transparent;
+      border: 1.5px solid #d9d0c2;
+      border-radius: 999px;
+      padding: 0.45rem 0.85rem;
+      color: var(--ink);
+    }
+
+    .ghost.quiet { color: var(--muted); }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 1rem;
+      transform: translateX(-50%);
+      background: var(--ink);
+      color: #fff;
+      border-radius: 999px;
+      padding: 0.65rem 0.7rem 0.65rem 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      box-shadow: var(--shadow);
+    }
+
+    .toast[hidden] { display: none; }
+
+    .toast button {
+      background: #fff;
+      color: var(--ink);
+      border: 0;
+      border-radius: 999px;
+      padding: 0.35rem 0.7rem;
+      font-weight: 700;
+    }
+
+    @media (max-width: 560px) {
+      .facts { grid-template-columns: 1fr; }
+      .row { flex-direction: column; }
+      .summary { flex-direction: column; }
+      .summary p { text-align: left; }
+    }
+
+    @media print {
+      body { background: #fff; }
+      main { width: auto; margin: 0; }
+      .sheet { border: 0; box-shadow: none; }
+      .signup, .toolbar, .remove, .toast, .hint { display: none !important; }
+      header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <main>
+    <article class="sheet">
+      <header>
+        <p class="kicker">Nesheim skole</p>
+        <h1>Stafett</h1>
+        <p class="event">Levanger maraton</p>
+        <p class="distance">4 × ca. 5,27 km</p>
+        <div class="stages" aria-hidden="true"><span></span><i></i><span></span><i></i><span></span><i></i><span></span></div>
+        <ul class="facts">
+          <li><small>Start</small><strong>kl. 11:40</strong></li>
+          <li><small>Pris</small><strong>NOK 800,− per lag</strong></li>
+          <li><small>Anbefalt for</small><strong>Lag på 4</strong></li>
+        </ul>
+      </header>
+
+      <section class="about">
+        <p>Stafett på halvmaratondistansen fordelt på fire etapper. Hvert lag må ha fire deltakere, og tidtakeren festes på stafettpinnen som veksles mellom løperne.</p>
+      </section>
+
+      <form class="signup" id="signup">
+        <label for="name">Skriv navnet ditt</label>
+        <div class="row">
+          <input id="name" name="name" type="text" maxlength="80" autocomplete="name" autocapitalize="words" placeholder="Fornavn og etternavn" required>
+          <button type="submit">Meld meg på</button>
+        </div>
+        <p class="error" id="error" role="alert"></p>
+      </form>
+
+      <section class="list-wrap" aria-labelledby="list-title">
+        <div class="summary">
+          <h2 id="list-title">Påmeldingsliste</h2>
+          <p id="summary">Ingen påmeldt ennå</p>
+        </div>
+        <div id="teams"></div>
+        <p class="hint">Navnene settes i lag på fire etter påmeldingsrekkefølge. Listen lagres i denne nettleseren.</p>
+      </section>
+
+      <div class="toolbar">
+        <button class="ghost" type="button" id="copy">Kopier liste</button>
+        <button class="ghost" type="button" id="print">Skriv ut</button>
+        <button class="ghost quiet" type="button" id="clear">Tøm listen</button>
+      </div>
+    </article>
+  </main>
+
+  <div class="toast" id="toast" hidden>
+    <span id="toast-text"></span>
+    <button type="button" id="undo">Angre</button>
+  </div>
+
+  <script>
+    const KEY = "nesheim-levanger-stafett-v1";
+    const form = document.querySelector("#signup");
+    const nameInput = document.querySelector("#name");
+    const error = document.querySelector("#error");
+    const teamsEl = document.querySelector("#teams");
+    const summaryEl = document.querySelector("#summary");
+    const toast = document.querySelector("#toast");
+    const toastText = document.querySelector("#toast-text");
+    let entries = load();
+    let undo = null;
+    let toastTimer = 0;
+
+    function load() {
+      try {
+        const data = JSON.parse(localStorage.getItem(KEY) || "[]");
+        if (!Array.isArray(data)) return [];
+        return data
+          .filter((item) => item && typeof item.name === "string")
+          .map((item) => ({
+            id: String(item.id || crypto.randomUUID()),
+            name: clean(item.name),
+          }))
+          .filter((item) => item.name);
+      } catch {
+        return [];
+      }
+    }
+
+    function save() {
+      localStorage.setItem(KEY, JSON.stringify(entries));
+      document.title = entries.length
+        ? `Stafett – Nesheim skole (${entries.length})`
+        : "Stafett – Nesheim skole";
+    }
+
+    function clean(value) {
+      return String(value).replace(/[\u0000-\u001F\u007F]/g, "").replace(/\s+/g, " ").trim().slice(0, 80);
+    }
+
+    function money(amount) {
+      return `NOK\u00a0${new Intl.NumberFormat("nb-NO").format(amount)},−`;
+    }
+
+    function summaryText() {
+      const n = entries.length;
+      if (!n) return "Ingen påmeldt ennå";
+      const full = Math.floor(n / 4);
+      const rest = n % 4;
+      const people = n === 1 ? "1 påmeldt" : `${n} påmeldte`;
+      const teams = full === 1 ? "1 fullt lag" : `${full} fulle lag`;
+      if (!rest) return `${people} · ${teams} · ${money(full * 800)}`;
+      const missing = 4 - rest;
+      const gap = missing === 1 ? "mangler 1 deltaker" : `mangler ${missing} deltakere`;
+      const price = full ? ` · ${money(full * 800)}` : "";
+      return `${people} · ${teams} · siste lag ${gap}${price}`;
+    }
+
+    function render() {
+      summaryEl.textContent = summaryText();
+      teamsEl.replaceChildren();
+      const groupCount = Math.max(1, Math.ceil(entries.length / 4));
+      for (let g = 0; g < groupCount; g += 1) {
+        const section = document.createElement("section");
+        section.className = "team";
+        const filled = entries.slice(g * 4, g * 4 + 4);
+        const head = document.createElement("div");
+        head.className = "team-head";
+        const title = document.createElement("h3");
+        title.textContent = `Lag ${g + 1}`;
+        const badge = document.createElement("span");
+        badge.className = filled.length === 4 ? "badge" : "badge open";
+        badge.textContent = filled.length === 4 ? "Fullt lag" : `${filled.length}/4`;
+        head.append(title, badge);
+        const list = document.createElement("ol");
+        list.className = "names";
+        for (let s = 0; s < 4; s += 1) {
+          const entry = filled[s];
+          const item = document.createElement("li");
+          const num = document.createElement("span");
+          num.className = "num";
+          num.textContent = String(g * 4 + s + 1);
+          const name = document.createElement("span");
+          name.className = "name";
+          if (entry) {
+            name.textContent = entry.name;
+            const remove = document.createElement("button");
+            remove.type = "button";
+            remove.className = "remove";
+            remove.setAttribute("aria-label", `Fjern ${entry.name}`);
+            remove.textContent = "×";
+            remove.addEventListener("click", () => removeEntry(entry.id));
+            item.append(num, name, remove);
+          } else {
+            item.className = "empty";
+            name.textContent = "Ledig plass";
+            item.append(num, name);
+          }
+          list.append(item);
+        }
+        section.append(head, list);
+        teamsEl.append(section);
+      }
+      save();
+    }
+
+    function showToast(text, canUndo) {
+      toastText.textContent = text;
+      document.querySelector("#undo").hidden = !canUndo;
+      toast.hidden = false;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { toast.hidden = true; }, 6000);
+    }
+
+    function removeEntry(id) {
+      const index = entries.findIndex((entry) => entry.id === id);
+      if (index < 0) return;
+      const [removed] = entries.splice(index, 1);
+      undo = { entry: removed, index };
+      render();
+      showToast(`${removed.name} er fjernet.`, true);
+    }
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const name = clean(nameInput.value);
+      if (!name) {
+        error.textContent = "Skriv inn et navn.";
+        nameInput.focus();
+        return;
+      }
+      if (entries.length >= 200) {
+        error.textContent = "Listen er full.";
+        return;
+      }
+      error.textContent = "";
+      entries.push({ id: crypto.randomUUID(), name });
+      undo = null;
+      nameInput.value = "";
+      render();
+      showToast(`${name} er påmeldt.`, false);
+      nameInput.focus();
+    });
+
+    document.querySelector("#undo").addEventListener("click", () => {
+      if (!undo) return;
+      entries.splice(undo.index, 0, undo.entry);
+      undo = null;
+      toast.hidden = true;
+      render();
+    });
+
+    document.querySelector("#copy").addEventListener("click", async () => {
+      const lines = [
+        "Stafett – Levanger maraton",
+        "Nesheim skole",
+        "4 × ca. 5,27 km",
+        "Start: kl. 11:40",
+        "Pris: NOK 800,− per lag",
+        "",
+        summaryText(),
+        "",
+      ];
+      entries.forEach((entry, index) => {
+        if (index % 4 === 0) lines.push(`Lag ${index / 4 + 1}`);
+        lines.push(`${index + 1}. ${entry.name}`);
+      });
+      if (!entries.length) lines.push("Ingen påmeldte.");
+      const text = lines.join("\n");
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast("Listen er kopiert.", false);
+      } catch {
+        const area = document.createElement("textarea");
+        area.value = text;
+        document.body.append(area);
+        area.select();
+        const copied = document.execCommand("copy");
+        area.remove();
+        if (copied) showToast("Listen er kopiert.", false);
+        else error.textContent = "Klarte ikke å kopiere listen.";
+      }
+    });
+
+    document.querySelector("#print").addEventListener("click", () => window.print());
+
+    document.querySelector("#clear").addEventListener("click", () => {
+      if (!entries.length) return;
+      if (!confirm("Tømme hele påmeldingslisten?")) return;
+      entries = [];
+      undo = null;
+      render();
+      showToast("Listen er tømt.", false);
+    });
+
+    render();
+  </script>
+</body>
+</html>
