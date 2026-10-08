@@ -70,6 +70,8 @@ interface SettlementSimulatorProps {
   /** After draft: open Premium midgame coach */
   onStartMidgame?: () => void;
   midgameLocked?: boolean;
+  /** Hide midgame CTA (mobile opening-coach focus). */
+  hideMidgame?: boolean;
 }
 
 const DEFAULT_VISIBLE_OPTIONS = 5;
@@ -127,6 +129,7 @@ export function SettlementSimulator({
   onStrategyChoiceChange,
   onStartMidgame,
   midgameLocked = false,
+  hideMidgame = false,
 }: SettlementSimulatorProps) {
   const { t } = useTranslation();
   const [showAllOptions, setShowAllOptions] = useState(false);
@@ -341,7 +344,7 @@ export function SettlementSimulator({
       {state.finished ? (
         <div className="sim-done">
           <p>{t('sim.done')}</p>
-          {onStartMidgame && (
+          {onStartMidgame && !hideMidgame && (
             <button
               type="button"
               className={`btn primary btn-block ${midgameLocked ? 'btn-premium-locked' : ''}`}

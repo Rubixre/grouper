@@ -3106,3 +3106,171 @@ h2 .premium-badge {
   padding-top: 0.75rem;
   border-top: 1px solid rgba(0, 0, 0, 0.08);
 }
+
+/* —— Mobile opening coach (everyday UX) —— */
+.app-mobile-coach .footer {
+  display: none;
+}
+
+.app-mobile-coach .mobile-coach-hide-desktop-setup {
+  display: none;
+}
+
+.mobile-coach-bar {
+  order: 2;
+  width: 100%;
+  padding: 0 0.65rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+}
+
+.mobile-coach-bar-inner {
+  background: #fff;
+  border-radius: 16px;
+  padding: 1rem 1rem 0.85rem;
+  box-shadow: 0 8px 28px rgba(26, 82, 118, 0.12);
+  border: 1px solid rgba(26, 82, 118, 0.08);
+}
+
+.mobile-coach-kicker {
+  margin: 0 0 0.65rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #1a5276;
+}
+
+.mobile-segment {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+  margin-bottom: 0.65rem;
+}
+
+.mobile-segment-btn {
+  min-height: 2.75rem;
+  border-radius: 12px;
+  border: 1.5px solid #c5d4e0;
+  background: #f7fafc;
+  color: #1a1a2e;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.mobile-segment-btn.is-active {
+  background: #1a5276;
+  border-color: #1a5276;
+  color: #fff;
+}
+
+.mobile-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  margin-bottom: 0.65rem;
+}
+
+.mobile-chip-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #4a5568;
+  margin-right: 0.15rem;
+}
+
+.mobile-chip {
+  min-height: 2.4rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1.5px solid #c5d4e0;
+  background: #fff;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.mobile-chip.is-active {
+  background: #e8f4fc;
+  border-color: #1a5276;
+  color: #1a5276;
+}
+
+.mobile-chip-player.is-active {
+  box-shadow: inset 0 0 0 1px var(--chip-color, #1a5276);
+}
+
+.mobile-chip-dot {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.mobile-coach-actions {
+  display: grid;
+  grid-template-columns: 1fr 1.35fr auto;
+  gap: 0.45rem;
+  align-items: stretch;
+}
+
+.mobile-coach-actions .btn {
+  min-height: 3rem;
+  margin: 0;
+}
+
+.mobile-coach-primary {
+  font-weight: 700;
+}
+
+.mobile-coach-gear {
+  min-width: 3rem;
+  padding-inline: 0.5rem;
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.mobile-coach-hint,
+.mobile-coach-done-msg {
+  margin: 0.65rem 0 0;
+  line-height: 1.35;
+}
+
+.mobile-coach-done-msg {
+  font-weight: 600;
+  color: #1a5276;
+  margin-bottom: 0.65rem;
+}
+
+@media (max-width: 980px) {
+  .app-mobile-coach .layout-two-col:not(.layout-simulating) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding-bottom: 0.25rem;
+  }
+
+  .app-mobile-coach .board-area {
+    order: 1;
+  }
+
+  .app-mobile-coach:not(.app-simulating) .header-actions {
+    display: none;
+  }
+
+  .app-mobile-coach:not(.app-simulating) .header {
+    padding: 0.75rem 1rem;
+  }
+
+  .app-mobile-coach:not(.app-simulating) .header h1 {
+    font-size: 1.2rem;
+  }
+}
+
+@media (min-width: 981px) {
+  .mobile-coach-bar {
+    display: none;
+  }
+}

@@ -145,6 +145,38 @@
     "subject": "Hex Settlement Coach tilbakemelding",
     "bodyPrefix": "Beskriv feil eller idé:\n\nApp-versjon: {{version}}\nSpråk: {{lang}}\n"
   },
+  "mobile": {
+    "coachBarLabel": "Brett og åpningscoach",
+    "configureTitle": "Brett og spillere",
+    "boardBase": "Grunnspill 3–4",
+    "boardExtension": "Utvidelse 5–6",
+    "youAre": "Du er",
+    "you": "Deg",
+    "getOpeningPicks": "Få åpningsforslag",
+    "unlockOpeningPicks": "Åpningsforslag · gratis prøve",
+    "newBoard": "Nytt brett",
+    "flowHint": "Generer et brett, deretter rangerte landsbyer og startveier for din farge.",
+    "doneHint": "Åpningsdraft ferdig. Start ny runde på dette brettet, eller generer et nytt.",
+    "legendSettlement": "Trykk en markør eller velg i lista, og bekreft landsby",
+    "legendRoad": "Steg 2: velg startvei (#1 anbefalt), og bekreft",
+    "legendOpponent": "Plasser manuelt for denne spilleren — markører viser modellens toppforslag"
+  },
+  "mobile": {
+    "coachBarLabel": "Brett og åpningscoach",
+    "configureTitle": "Brett og spillere",
+    "boardBase": "Grunnspill 3–4",
+    "boardExtension": "Utvidelse 5–6",
+    "youAre": "Du er",
+    "you": "Deg",
+    "getOpeningPicks": "Få åpningsforslag",
+    "unlockOpeningPicks": "Åpningsforslag · gratis prøve",
+    "newBoard": "Nytt brett",
+    "flowHint": "Generer et brett, deretter rangerte landsbyer og startveier for din farge.",
+    "doneHint": "Åpningsdraft ferdig. Start ny runde på dette brettet, eller generer et nytt.",
+    "legendSettlement": "Trykk en markør eller velg i lista, og bekreft landsby",
+    "legendRoad": "Steg 2: velg startvei (#1 anbefalt), og bekreft",
+    "legendOpponent": "Plasser manuelt for denne spilleren — markører viser modellens toppforslag"
+  },
   "common": {
     "close": "Lukk",
     "loading": "Laster…"

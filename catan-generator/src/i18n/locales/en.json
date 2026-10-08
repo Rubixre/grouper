@@ -145,6 +145,22 @@
     "subject": "Hex Settlement Coach feedback",
     "bodyPrefix": "Describe the bug or idea:\n\nApp version: {{version}}\nLanguage: {{lang}}\n"
   },
+  "mobile": {
+    "coachBarLabel": "Board and opening coach",
+    "configureTitle": "Board & players",
+    "boardBase": "Base 3–4",
+    "boardExtension": "Extension 5–6",
+    "youAre": "You are",
+    "you": "You",
+    "getOpeningPicks": "Get opening picks",
+    "unlockOpeningPicks": "Opening picks · free trial",
+    "newBoard": "New board",
+    "flowHint": "Generate a board, then get ranked settlements and opening roads for your color.",
+    "doneHint": "Opening draft done. Start a new round on this board, or generate a fresh one.",
+    "legendSettlement": "Tap a marker or pick from the list, then confirm settlement",
+    "legendRoad": "Step 2: pick opening road (#1 recommended), then confirm",
+    "legendOpponent": "Place manually for this player — markers show the model’s top picks"
+  },
   "common": {
     "close": "Close",
     "loading": "Loading…"
