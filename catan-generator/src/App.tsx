@@ -54,6 +54,7 @@ import {
 import { BoardView } from './components/BoardView';
 import { BoardStoryPanel } from './components/BoardStoryPanel';
 import { MappingPanel } from './components/MappingPanel';
+import { MobileCoachBar, type MobileCoachStep } from './components/MobileCoachBar';
 import { PlayerSetupPanel, syncConfigPlayerCount } from './components/PlayerSetupPanel';
 import { SettingsModal } from './components/SettingsModal';
 import { PhotoBoardModal } from './components/PhotoBoardModal';
@@ -63,6 +64,7 @@ import { StrategyPicker } from './components/StrategyPicker';
 import { PremiumPaywallModal } from './components/PremiumPaywallModal';
 import { MidgamePanel } from './components/MidgamePanel';
 import { createBoardStory, type BoardStory } from './catan/boardStory';
+import { useIsMobileLayout } from './hooks/useIsMobileLayout';
 import {
   activateDevPremium,
   canUseBonanza,
@@ -91,6 +93,7 @@ const restoredSession = typeof window !== 'undefined' ? loadSession() : null;
 
 function App() {
   const { t, i18n } = useTranslation();
+  const isMobileLayout = useIsMobileLayout();
   const [settings, setSettings] = useState<GeneratorSettings>(
     () => restoredSession?.settings ?? DEFAULT_SETTINGS
   );
@@ -179,6 +182,12 @@ function App() {
     }
     if (size === 'base' && playerCount > 4) {
       const nextCount = 4 as PlayerCount;
+      setPlayerCount(nextCount);
+      setSimulationConfig((cfg) => syncConfigPlayerCount(cfg, nextCount));
+    }
+    // Mobile coach only offers 5–6 on the extension board.
+    if (size === 'extension56' && playerCount < 5) {
+      const nextCount = 5 as PlayerCount;
       setPlayerCount(nextCount);
       setSimulationConfig((cfg) => syncConfigPlayerCount(cfg, nextCount));
     }
@@ -524,10 +533,37 @@ function App() {
     return rankRoadDirections(selectedVertex, board, predictedPlacements, roadScoringCtx);
   }, [selectedVertex, board, predictedPlacements, roadScoringCtx]);
 
+  // Pre-select #1 road when entering the road step (fewer taps for everyday users).
+  useEffect(() => {
+    if (placementStep !== 'road') return;
+    if (selectedRoadTo) return;
+    const best = rankedRoads[0]?.toVertexId;
+    if (best) setSelectedRoadTo(best);
+  }, [placementStep, rankedRoads, selectedRoadTo]);
+
   const expansionTargets = useMemo(() => {
     if (!selectedVertex || !predictedPlacements) return [];
     return getExpansionTargets(selectedVertex, predictedPlacements);
   }, [selectedVertex, predictedPlacements]);
+
+  const mobileStep: MobileCoachStep = !board
+    ? 'configure'
+    : simActive && simulation?.finished
+      ? 'done'
+      : simActive
+        ? 'coaching'
+        : 'ready';
+
+  // Everyday mobile coach: skip 2-player edge case; keep count on the visible chips.
+  useEffect(() => {
+    if (!isMobileLayout || simActive) return;
+    if (boardSize === 'base' && playerCount < 3) {
+      handlePlayerCountChange(3);
+    }
+    if (boardSize === 'extension56' && playerCount < 5) {
+      handlePlayerCountChange(5);
+    }
+  }, [isMobileLayout, simActive, boardSize, playerCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Havnmarkering bare på din tur — skal ikke låse motstanderens plassering.
   const harborPlanHighlight =
@@ -599,12 +635,14 @@ function App() {
   };
 
   return (
-    <div className={`app ${simPlacing ? 'app-simulating' : ''}`}>
+    <div
+      className={`app ${simPlacing ? 'app-simulating' : ''} ${isMobileLayout ? 'app-mobile-coach' : ''}`}
+    >
       <header className="header">
         <div>
           <h1>{t('app.title')}</h1>
           <p className="subtitle">
-            {boardStory ? (
+            {boardStory && !isMobileLayout ? (
               <>
                 {boardStory.islandName}
                 <span className="subtitle-sep"> · </span>
@@ -633,56 +671,63 @@ function App() {
               {t('app.exit')}
             </button>
           )}
-          {entitlement.isPremium ? (
+          {!isMobileLayout &&
+            (entitlement.isPremium ? (
+              <button
+                type="button"
+                className="btn header-btn premium-status-chip header-sim-hide"
+                title={
+                  entitlement.expiresAt
+                    ? new Date(entitlement.expiresAt).toLocaleDateString(
+                        i18n.language === 'nb' ? 'nb-NO' : 'en-US'
+                      )
+                    : t('app.premium')
+                }
+                onClick={() => {
+                  if (!window.confirm(t('app.confirmClearPremium'))) {
+                    return;
+                  }
+                  refreshEntitlement(clearPremiumAccess());
+                }}
+              >
+                {entitlement.source === 'trial' ? t('app.premiumTrial') : t('app.premium')}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn header-btn header-sim-hide"
+                onClick={() => openPaywall('simulation')}
+              >
+                {t('app.tryPremium')}
+              </button>
+            ))}
+          {!isMobileLayout && (
             <button
               type="button"
-              className="btn header-btn premium-status-chip header-sim-hide"
-              title={
-                entitlement.expiresAt
-                  ? new Date(entitlement.expiresAt).toLocaleDateString(
-                      i18n.language === 'nb' ? 'nb-NO' : 'en-US'
-                    )
-                  : t('app.premium')
-              }
-              onClick={() => {
-                if (!window.confirm(t('app.confirmClearPremium'))) {
-                  return;
-                }
-                refreshEntitlement(clearPremiumAccess());
-              }}
+              className="btn header-btn header-sim-keep"
+              onClick={() => setSettingsOpen(true)}
             >
-              {entitlement.source === 'trial' ? t('app.premiumTrial') : t('app.premium')}
+              {t('app.settings')}
             </button>
-          ) : (
+          )}
+          {!isMobileLayout && (
             <button
               type="button"
               className="btn header-btn header-sim-hide"
-              onClick={() => openPaywall('simulation')}
+              onClick={() => setPhotoBoardOpen(true)}
             >
-              {t('app.tryPremium')}
+              {t('app.fromPhoto')}
             </button>
           )}
-          <button
-            type="button"
-            className="btn header-btn header-sim-keep"
-            onClick={() => setSettingsOpen(true)}
-          >
-            {t('app.settings')}
-          </button>
-          <button
-            type="button"
-            className="btn header-btn header-sim-hide"
-            onClick={() => setPhotoBoardOpen(true)}
-          >
-            {t('app.fromPhoto')}
-          </button>
-          <button
-            type="button"
-            className="btn primary header-sim-hide"
-            onClick={handleGenerate}
-          >
-            {t('app.generateBoard')}
-          </button>
+          {!isMobileLayout && (
+            <button
+              type="button"
+              className="btn primary header-sim-hide"
+              onClick={handleGenerate}
+            >
+              {t('app.generateBoard')}
+            </button>
+          )}
         </div>
       </header>
 
@@ -775,7 +820,7 @@ function App() {
               </div>
               {simPlacing && isYourTurn && (
                 <div className="placement-heatmap-legend placement-heatmap-legend-inline" aria-hidden>
-                  <strong>Dine beste plasseringer</strong>
+                  <strong>{t('mobile.getOpeningPicks')}</strong>
                   <div className="placement-legend-scale">
                     {['#f1c40f', '#2ecc71', '#58d68d', '#a9dfbf', '#d5f5e3'].map(
                       (color, i) => (
@@ -789,19 +834,17 @@ function App() {
                     )}
                   </div>
                   <span className="placement-legend-hint">
-                    {strategyChoice === 'harbor' || activeHarborPlan
-                      ? 'Oransje 1 / turkis 2 = havnplan · blå = havn · hvit stiplet = valgt startvei'
-                      : placementStep === 'road'
-                        ? 'Steg 2: trykk nabo for startvei, deretter Bekreft vei'
-                        : 'Steg 1: velg landsby og Bekreft landsby · gullkant = anbefalt strategi'}
+                    {placementStep === 'road'
+                      ? t('mobile.legendRoad')
+                      : t('mobile.legendSettlement')}
                   </span>
                 </div>
               )}
               {simPlacing && !isYourTurn && (
                 <div className="placement-heatmap-legend placement-heatmap-legend-inline" aria-hidden>
-                  <strong>Plasser manuelt for motspiller</strong>
+                  <strong>{t('sim.opponentTurn')}</strong>
                   <span className="placement-legend-hint">
-                    Markører viser modellens toppforslag for spilleren som har tur
+                    {t('mobile.legendOpponent')}
                   </span>
                 </div>
               )}
@@ -810,23 +853,44 @@ function App() {
             <div className="empty-board">{t('app.generating')}</div>
           )}
 
-          {boardStory && !mappingMode && !simPlacing && (
+          {boardStory && !mappingMode && !simPlacing && !isMobileLayout && (
             <BoardStoryPanel story={boardStory} />
           )}
 
-          {simulation?.finished && !midgameActive && (
+          {simulation?.finished && !midgameActive && !isMobileLayout && (
             <SimulationSummaryPanel state={simulation} />
           )}
         </main>
 
-        <aside className={`sidebar sidebar-right ${simActive ? 'sim-sidebar-active' : ''}`}>
+        {isMobileLayout && !simPlacing && (
+          <MobileCoachBar
+            step={mobileStep}
+            boardSize={boardSize}
+            playerCount={playerCount}
+            config={simulation?.config ?? simulationConfig}
+            canStartCoach={Boolean(board)}
+            premiumUnlocked={premiumSimulation}
+            onBoardSizeChange={handleBoardSizeChange}
+            onPlayerCountChange={handlePlayerCountChange}
+            onConfigChange={setSimulationConfig}
+            onGenerate={handleGenerate}
+            onStartCoach={startSimulation}
+            onOpenSettings={() => setSettingsOpen(true)}
+          />
+        )}
+
+        <aside
+          className={`sidebar sidebar-right ${simActive ? 'sim-sidebar-active' : ''} ${
+            isMobileLayout && !simActive ? 'mobile-coach-hide-desktop-setup' : ''
+          }`}
+        >
           {mappingMode ? (
             <MappingPanel
               mapping={boardMapping}
               onHighlightEdge={setHighlightEdge}
               onHighlightCorner={setHighlightCorner}
             />
-          ) : midgameActive && simulation && board && midgame ? (
+          ) : midgameActive && simulation && board && midgame && !isMobileLayout ? (
             <MidgamePanel
               board={board}
               placements={simulation.placements}
@@ -864,7 +928,7 @@ function App() {
             />
           ) : simActive && simulation ? (
             <>
-              {board && (
+              {board && !(isMobileLayout && simulation.finished) && (
                 <SettlementSimulator
                   state={simulation}
                   board={board}
@@ -890,8 +954,9 @@ function App() {
                   onUndo={handleUndo}
                   onCancel={resetSimulation}
                   onStrategyChoiceChange={handleStrategyChoiceChange}
-                  onStartMidgame={startMidgame}
+                  onStartMidgame={isMobileLayout ? undefined : startMidgame}
                   midgameLocked={!premiumMidgame}
+                  hideMidgame={isMobileLayout}
                 />
               )}
             </>
